@@ -1,0 +1,2 @@
+# numbering/infrastructure — Clean/Hexagonal layer placeholder (empty-but-wired scaffold).
+# Filled by the numbering feature brief; keep the dependency rule (domain imports no NestJS/TypeORM).

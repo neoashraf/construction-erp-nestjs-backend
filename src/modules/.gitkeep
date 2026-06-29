@@ -1,0 +1,3 @@
+# Feature modules (master-data, sales, purchase, payment, receipt, contra-journal, inventory,
+# requisition, hr, reporting, dashboard) are populated by the feature briefs. Empty in the scaffold.
+# A feature module may depend on core/, never on another feature module's repository.
