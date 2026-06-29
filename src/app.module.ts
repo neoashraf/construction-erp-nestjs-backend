@@ -4,12 +4,13 @@
  * `core/` kernel. Feature modules (`modules/*`) are added by their briefs. No business logic here.
  */
 import { Module } from '@nestjs/common';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppConfigModule } from './config/config.module';
 import { AppLoggerModule } from './infrastructure/logging/logger.module';
 import { DatabaseModule } from './database/database.module';
 import { InfrastructureModule } from './infrastructure/infrastructure.module';
 import { AllExceptionsFilter } from './infrastructure/http/all-exceptions.filter';
+import { ResponseEnvelopeInterceptor } from './infrastructure/http/response-envelope.interceptor';
 import { DiagnosticsModule } from './infrastructure/http/diagnostics.module';
 import { HealthModule } from './health/health.module';
 import { CoreModule } from './core/core.module';
@@ -29,7 +30,8 @@ import { MasterDataModule } from './modules/master-data/master-data.module';
     DiagnosticsModule.register(process.env.NODE_ENV !== 'production'),
   ],
   providers: [
-    // Global error-envelope filter (overview §6) for every route.
+    // Central response model (overview §6): success → { data, meta }, error → { error, meta }.
+    { provide: APP_INTERCEPTOR, useClass: ResponseEnvelopeInterceptor },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })

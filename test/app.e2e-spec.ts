@@ -43,27 +43,31 @@ describe('App smoke (e2e)', () => {
     if (container) await container.stop();
   });
 
-  it('GET /api/health → 200 with database indicator up', async () => {
+  it('GET /api/health → 200 with database indicator up (NOT enveloped — @NoEnvelope)', async () => {
     const res = await request(app.getHttpServer()).get('/api/health').expect(200);
+    // Terminus shape is preserved (no { data, meta } wrapper) for probes.
     expect(res.body.status).toBe('ok');
     expect(res.body.info.database.status).toBe('up');
+    expect(res.body.data).toBeUndefined();
   });
 
-  it('GET /api/_diag/domain-error → 400 with the error envelope (VALIDATION_ERROR)', async () => {
+  it('GET /api/_diag/domain-error → 400 with the { error, meta } envelope (VALIDATION_ERROR)', async () => {
     const res = await request(app.getHttpServer()).get('/api/_diag/domain-error').expect(400);
-    expect(res.body).toEqual({
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'deliberate domain error for smoke test',
-        details: { field: 'demo' },
-      },
+    expect(res.body.error).toEqual({
+      code: 'VALIDATION_ERROR',
+      message: 'deliberate domain error for smoke test',
+      details: { field: 'demo' },
     });
+    expect(typeof res.body.meta.requestId).toBe('string');
+    // requestId ties the body to the X-Request-Id header.
+    expect(res.body.meta.requestId).toBe(res.headers['x-request-id']);
   });
 
-  it('GET /api/_diag/unhandled → 500 with a redacted INTERNAL_ERROR envelope', async () => {
+  it('GET /api/_diag/unhandled → 500 with a redacted INTERNAL_ERROR envelope + meta', async () => {
     const res = await request(app.getHttpServer()).get('/api/_diag/unhandled').expect(500);
     expect(res.body.error.code).toBe('INTERNAL_ERROR');
     expect(res.body.error.message).toBe('An unexpected error occurred.');
+    expect(typeof res.body.meta.requestId).toBe('string');
     // internals must NOT leak
     expect(JSON.stringify(res.body)).not.toContain('deliberate unhandled error');
   });
@@ -71,6 +75,7 @@ describe('App smoke (e2e)', () => {
   it('GET /api/unknown-route → 404 in the error envelope', async () => {
     const res = await request(app.getHttpServer()).get('/api/unknown-route').expect(404);
     expect(res.body.error.code).toBe('NOT_FOUND');
+    expect(typeof res.body.meta.requestId).toBe('string');
   });
 
   it('POST /api/_diag/echo rejects an unknown extra field (forbidNonWhitelisted)', async () => {
@@ -82,12 +87,14 @@ describe('App smoke (e2e)', () => {
     expect(JSON.stringify(res.body)).toMatch(/surprise/);
   });
 
-  it('POST /api/_diag/echo accepts a valid DTO and returns the transformed instance', async () => {
+  it('POST /api/_diag/echo wraps a valid DTO in the { data, meta } success envelope', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/_diag/echo')
       .send({ name: 'x', count: 5 })
       .expect(200);
-    expect(res.body).toEqual({ name: 'x', count: 5, countType: 'number' });
+    expect(res.body.data).toEqual({ name: 'x', count: 5, countType: 'number' });
+    expect(typeof res.body.meta.requestId).toBe('string');
+    expect(res.body.error).toBeUndefined();
   });
 
   it('POST /api/_diag/echo rejects a wrong-typed field (count not an int)', async () => {

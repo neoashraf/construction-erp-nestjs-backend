@@ -21,7 +21,7 @@ import { CreateCompanyUseCase } from '../../application/company/create-company.u
 import { UpdateCompanyUseCase } from '../../application/company/update-company.use-case';
 import { UpdateLocalizationUseCase } from '../../application/company/update-localization.use-case';
 import { CompanyDto, CompanyQueryService } from '../read/company.query-service';
-import { PaginatedResult } from '../../read/pagination';
+import { Paginated } from '../../../../infrastructure/http/pagination';
 import { CreateCompanyDto, UpdateCompanyDto, UpdateLocalizationDto } from './dto/company.dto';
 
 @Controller('api/masters/companies')
@@ -34,7 +34,7 @@ export class CompanyController {
   ) {}
 
   @Get()
-  list(@CurrentActor() actor: Actor): Promise<PaginatedResult<CompanyDto>> {
+  list(@CurrentActor() actor: Actor): Promise<Paginated<CompanyDto>> {
     return this.query.list(actor);
   }
 
@@ -53,12 +53,12 @@ export class CompanyController {
     return this.createCompany.execute(
       {
         name: body.name,
-        legalName: body.legal_name,
+        legalName: body.legalName,
         bin: body.bin,
         tin: body.tin,
         address: body.address,
         currency: body.currency,
-        dateFormat: body.date_format,
+        dateFormat: body.dateFormat,
         locale: body.locale,
       },
       actor,
@@ -71,18 +71,8 @@ export class CompanyController {
     @Body() body: UpdateCompanyDto,
     @CurrentActor() actor: Actor,
   ): Promise<CompanyDto> {
-    await this.updateCompany.execute(
-      id,
-      {
-        name: body.name,
-        legalName: body.legal_name,
-        bin: body.bin,
-        tin: body.tin,
-        address: body.address,
-      },
-      body.version,
-      actor,
-    );
+    const { version, ...changes } = body;
+    await this.updateCompany.execute(id, changes, version, actor);
     return this.requireById(id, actor);
   }
 
@@ -92,12 +82,8 @@ export class CompanyController {
     @Body() body: UpdateLocalizationDto,
     @CurrentActor() actor: Actor,
   ): Promise<CompanyDto> {
-    await this.updateLocalization.execute(
-      id,
-      { currency: body.currency, dateFormat: body.date_format, locale: body.locale },
-      body.version,
-      actor,
-    );
+    const { version, ...changes } = body;
+    await this.updateLocalization.execute(id, changes, version, actor);
     return this.requireById(id, actor);
   }
 

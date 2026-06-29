@@ -1,7 +1,7 @@
 /**
- * FinancialYear request/query DTOs (PRESENTATION). Body JSON is snake_case (platform API convention);
- * pagination/filter QUERY params stay camelCase per overview §6 (`?page&pageSize&isActive`). The
- * domain validates `end_date > start_date` and the date format. `company_id` is never a body field.
+ * FinancialYear request/query DTOs (PRESENTATION). Wire JSON is camelCase per the platform API
+ * convention (overview §6). The domain validates `endDate > startDate` and the date format.
+ * `companyId` is never a body field — it comes from the actor (FR-MAS-001).
  */
 import { Transform } from 'class-transformer';
 import { IsBooleanString, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
@@ -13,10 +13,10 @@ export class CreateFinancialYearDto {
   label!: string;
 
   @IsString()
-  start_date!: string;
+  startDate!: string;
 
   @IsString()
-  end_date!: string;
+  endDate!: string;
 }
 
 export class UpdateFinancialYearDto {
@@ -28,11 +28,11 @@ export class UpdateFinancialYearDto {
 
   @IsOptional()
   @IsString()
-  start_date?: string;
+  startDate?: string;
 
   @IsOptional()
   @IsString()
-  end_date?: string;
+  endDate?: string;
 
   @IsInt()
   @Min(1)

@@ -21,7 +21,7 @@ import { CreateFinancialYearUseCase } from '../../application/financial-year/cre
 import { UpdateFinancialYearUseCase } from '../../application/financial-year/update-financial-year.use-case';
 import { SetActiveFinancialYearUseCase } from '../../application/financial-year/set-active-financial-year.use-case';
 import { FinancialYearDto, FinancialYearQueryService } from '../read/financial-year.query-service';
-import { PaginatedResult } from '../../read/pagination';
+import { Paginated } from '../../../../infrastructure/http/pagination';
 import {
   CreateFinancialYearDto,
   ListFinancialYearsQueryDto,
@@ -41,7 +41,7 @@ export class FinancialYearController {
   list(
     @Query() q: ListFinancialYearsQueryDto,
     @CurrentActor() actor: Actor,
-  ): Promise<PaginatedResult<FinancialYearDto>> {
+  ): Promise<Paginated<FinancialYearDto>> {
     const isActive = q.isActive === undefined ? undefined : q.isActive === 'true';
     return this.query.list({ page: q.page, pageSize: q.pageSize, isActive }, actor);
   }
@@ -51,10 +51,7 @@ export class FinancialYearController {
     @Body() body: CreateFinancialYearDto,
     @CurrentActor() actor: Actor,
   ): Promise<{ id: string }> {
-    return this.createFy.execute(
-      { label: body.label, startDate: body.start_date, endDate: body.end_date },
-      actor,
-    );
+    return this.createFy.execute(body, actor);
   }
 
   @Patch(':id')
@@ -63,12 +60,8 @@ export class FinancialYearController {
     @Body() body: UpdateFinancialYearDto,
     @CurrentActor() actor: Actor,
   ): Promise<FinancialYearDto> {
-    await this.updateFy.execute(
-      id,
-      { label: body.label, startDate: body.start_date, endDate: body.end_date },
-      body.version,
-      actor,
-    );
+    const { version, ...changes } = body;
+    await this.updateFy.execute(id, changes, version, actor);
     return this.requireById(id, actor);
   }
 
