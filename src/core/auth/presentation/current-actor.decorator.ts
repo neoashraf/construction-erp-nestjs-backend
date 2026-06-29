@@ -1,21 +1,17 @@
 /**
- * @CurrentActor() — resolves the request `Actor` (skill §9). PRESENTATION.
+ * @CurrentActor() — resolves the request `Actor` (skill §9). PRESENTATION, owned by AUD/auth.
  *
- * TEMP SEAM: the real JWT auth (strategy + guard that sets `request.user`) is owned by AUD and lands
- * in the `auth-jwt` brief. Until then this decorator:
+ * TEMP SEAM: the real JWT auth (strategy + guard that sets `request.user`) lands in the `auth-jwt`
+ * brief. Until then this decorator:
  *   1. returns `request.user` when present (future JWT path — zero change needed when auth lands), else
  *   2. OUTSIDE production only, synthesises an Actor from `x-company-id` / `x-user-id` / `x-role` /
- *      `x-financial-year-id` headers so MAS is exercisable end-to-end in dev/tests.
- * In production with no authenticated user it throws 401 — the header fallback never applies there.
- * The company is taken from the token/header context, NEVER from the request body (FR-MAS-001).
+ *      `x-financial-year-id` headers so modules are exercisable end-to-end in dev/tests.
+ * In production with no authenticated user it throws 401. The company always comes from the
+ * token/header context, NEVER from the request body (FR-MAS-001, NFR-005).
  */
-import {
-  createParamDecorator,
-  ExecutionContext,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { createParamDecorator, ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import type { Request } from 'express';
-import { Actor } from '../../../core/tenancy/tenant-context';
+import { Actor } from '../../tenancy/tenant-context';
 
 function header(req: Request, name: string): string | undefined {
   const v = req.headers[name];
@@ -44,6 +40,6 @@ export function resolveActor(req: Request): Actor {
   };
 }
 
-export const CurrentActor = createParamDecorator(
-  (_data: unknown, ctx: ExecutionContext): Actor => resolveActor(ctx.switchToHttp().getRequest<Request>()),
+export const CurrentActor = createParamDecorator((_data: unknown, ctx: ExecutionContext): Actor =>
+  resolveActor(ctx.switchToHttp().getRequest<Request>()),
 );

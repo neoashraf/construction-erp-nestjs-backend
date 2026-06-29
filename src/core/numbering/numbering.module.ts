@@ -1,11 +1,28 @@
 /**
- * Numbering kernel module (NUM) — EMPTY-BUT-WIRED.
- *
- * The gapless, transaction-safe voucher counter lands here in the `numbering-service` brief
- * (per company + financial year + voucher type, `SELECT … FOR UPDATE` inside the post tx, strictly
- * gapless for Mushak VAT). No business logic ships in the scaffold.
+ * Numbering kernel module (NUM) — composition root. Binds:
+ *   - NUMBERING_SERVICE (the allocator port consumed by PostingService) → TypeOrmNumberingService;
+ *   - NUMBERING_SERIES_ADMIN_REPOSITORY → TypeOrmNumberingSeriesRepository.
+ * Exports NUMBERING_SERVICE so LED's PostingModule can inject it. `AUDIT_SERVICE` is global (AuditModule).
  */
 import { Module } from '@nestjs/common';
+import { NUMBERING_SERVICE } from '../posting/domain/ports/numbering.service';
+import { TypeOrmNumberingService } from './infrastructure/typeorm-numbering.service';
+import { NUMBERING_SERIES_ADMIN_REPOSITORY } from './domain/ports/numbering-series.repository';
+import { TypeOrmNumberingSeriesRepository } from './infrastructure/typeorm-numbering-series.repository';
+import { CreateNumberingSeriesUseCase } from './application/create-numbering-series.use-case';
+import { UpdateNumberingSeriesUseCase } from './application/update-numbering-series.use-case';
+import { NumberingSeriesReadService } from './read/numbering-series.read-service';
+import { NumberingAdminController } from './presentation/numbering-admin.controller';
 
-@Module({})
+@Module({
+  controllers: [NumberingAdminController],
+  providers: [
+    { provide: NUMBERING_SERVICE, useClass: TypeOrmNumberingService },
+    { provide: NUMBERING_SERIES_ADMIN_REPOSITORY, useClass: TypeOrmNumberingSeriesRepository },
+    CreateNumberingSeriesUseCase,
+    UpdateNumberingSeriesUseCase,
+    NumberingSeriesReadService,
+  ],
+  exports: [NUMBERING_SERVICE],
+})
 export class NumberingModule {}

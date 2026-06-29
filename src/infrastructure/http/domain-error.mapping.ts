@@ -11,6 +11,8 @@ export const DOMAIN_ERROR_STATUS: Record<DomainErrorCode, HttpStatus> = {
   [DomainErrorCode.MISSING_DIMENSION]: HttpStatus.BAD_REQUEST,
   [DomainErrorCode.LEDGER_IMBALANCE]: HttpStatus.BAD_REQUEST,
   [DomainErrorCode.TENANT_SCOPE_MISSING]: HttpStatus.BAD_REQUEST,
+  [DomainErrorCode.CROSS_COMPANY_REFERENCE]: HttpStatus.BAD_REQUEST,
+  [DomainErrorCode.SERIES_ALREADY_EXISTS]: HttpStatus.CONFLICT,
   [DomainErrorCode.NUMBERING_EXHAUSTED]: HttpStatus.CONFLICT,
   [DomainErrorCode.PERIOD_CLOSED]: HttpStatus.CONFLICT,
   [DomainErrorCode.CONFLICT]: HttpStatus.CONFLICT,
