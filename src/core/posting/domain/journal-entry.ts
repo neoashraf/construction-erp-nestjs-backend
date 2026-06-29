@@ -159,8 +159,12 @@ export class JournalEntry extends AggregateRoot<string> {
     return new JournalEntry(id, props);
   }
 
-  /** Build a NEW reversal entry mirroring this one with Dr↔Cr swapped. Original untouched (FR-LED-025). */
-  reverse(reason: string, entryNo: string, ids: IdGenerator, clock: Clock): JournalEntry {
+  /**
+   * Build a NEW reversal entry mirroring this one with Dr↔Cr swapped; posted by the reversing actor.
+   * The original is never mutated (FR-LED-025). The new entry carries a fresh entry_no, is_reversal=true
+   * and reversal_of=this.id.
+   */
+  reverse(reason: string, entryNo: string, postedBy: string, ids: IdGenerator, clock: Clock): JournalEntry {
     const lines = this.props.lines.map((l, i) => l.swapped(i + 1));
     return new JournalEntry(ids.next(), {
       ...this.props,
@@ -168,6 +172,7 @@ export class JournalEntry extends AggregateRoot<string> {
       isReversal: true,
       reversalOf: this.id,
       postedAt: clock.now(),
+      postedBy,
       narration: `Reversal: ${reason}`,
       lines,
     });

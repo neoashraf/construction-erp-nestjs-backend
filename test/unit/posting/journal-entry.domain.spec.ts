@@ -110,9 +110,10 @@ describe('JournalEntry (domain)', () => {
       { next: () => 'orig-1' },
       clock,
     );
-    const reversal = original.reverse('correction', 'JV/2526/0002', { next: () => 'rev-1' }, clock);
+    const reversal = original.reverse('correction', 'JV/2526/0002', 'user-9', { next: () => 'rev-1' }, clock);
     expect(reversal.props.isReversal).toBe(true);
     expect(reversal.props.reversalOf).toBe('orig-1');
+    expect(reversal.props.postedBy).toBe('user-9');
     expect(reversal.props.lines[0].credit.equals(Money.of('100.0000'))).toBe(true); // was debit
     expect(reversal.props.lines[1].debit.equals(Money.of('100.0000'))).toBe(true); // was credit
     // original intact
