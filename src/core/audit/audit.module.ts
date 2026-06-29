@@ -1,10 +1,15 @@
 /**
- * Audit kernel module (AUD) — EMPTY-BUT-WIRED.
- *
- * `AuditService` + the `audit_log` table (jsonb before/after on every mutation + post/cancel,
- * NFR-003) land here in the `rbac-and-audit` brief. No business logic ships in the scaffold.
+ * Audit kernel module (AUD). Provides the canonical `AUDIT_SERVICE` port GLOBALLY so any module can
+ * record audit entries without importing a module. The `rbac-and-audit` brief replaces the
+ * `NoopAuditService` binding with the real `audit_log`-backed service (same token, same call shape).
  */
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
+import { AUDIT_SERVICE } from './application/audit.port';
+import { NoopAuditService } from './infrastructure/noop-audit.service';
 
-@Module({})
+@Global()
+@Module({
+  providers: [{ provide: AUDIT_SERVICE, useClass: NoopAuditService }],
+  exports: [AUDIT_SERVICE],
+})
 export class AuditModule {}

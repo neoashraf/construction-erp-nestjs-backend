@@ -16,7 +16,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { Actor } from '../../../../core/tenancy/tenant-context';
-import { CurrentActor } from '../../presentation/current-actor.decorator';
+import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
 import { CreateFinancialYearUseCase } from '../../application/financial-year/create-financial-year.use-case';
 import { UpdateFinancialYearUseCase } from '../../application/financial-year/update-financial-year.use-case';
 import { SetActiveFinancialYearUseCase } from '../../application/financial-year/set-active-financial-year.use-case';

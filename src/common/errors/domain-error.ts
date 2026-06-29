@@ -16,8 +16,11 @@ export enum DomainErrorCode {
   CONFLICT = 'CONFLICT',
   FORBIDDEN = 'FORBIDDEN',
   UNAUTHORIZED = 'UNAUTHORIZED',
-  // master data (MAS)
+  // master data (MAS) / shared
   OPTIMISTIC_LOCK_CONFLICT = 'OPTIMISTIC_LOCK_CONFLICT',
+  CROSS_COMPANY_REFERENCE = 'CROSS_COMPANY_REFERENCE',
+  // numbering (NUM)
+  SERIES_ALREADY_EXISTS = 'SERIES_ALREADY_EXISTS',
   // ledger / posting (LED)
   LEDGER_IMBALANCE = 'LEDGER_IMBALANCE',
   MISSING_DIMENSION = 'MISSING_DIMENSION',
@@ -82,6 +85,22 @@ export class TenantScopeMissingError extends DomainError {
 export class OptimisticLockConflictError extends DomainError {
   readonly code = DomainErrorCode.OPTIMISTIC_LOCK_CONFLICT;
   constructor(message = 'The record was modified by someone else; reload and retry.', details?: Record<string, unknown>) {
+    super(message, details);
+  }
+}
+
+/** A referenced entity belongs to another company (FR-MAS-028). Maps to HTTP 400. */
+export class CrossCompanyReferenceError extends DomainError {
+  readonly code = DomainErrorCode.CROSS_COMPANY_REFERENCE;
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, details);
+  }
+}
+
+/** A numbering series already exists for the (company, FY, voucher type) triple (FR-NUM-001). HTTP 409. */
+export class SeriesAlreadyExistsError extends DomainError {
+  readonly code = DomainErrorCode.SERIES_ALREADY_EXISTS;
+  constructor(message = 'A numbering series already exists for this company, year and voucher type.', details?: Record<string, unknown>) {
     super(message, details);
   }
 }

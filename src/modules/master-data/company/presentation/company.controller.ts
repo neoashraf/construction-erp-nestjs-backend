@@ -16,7 +16,7 @@ import {
   Put,
 } from '@nestjs/common';
 import { Actor } from '../../../../core/tenancy/tenant-context';
-import { CurrentActor } from '../../presentation/current-actor.decorator';
+import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
 import { CreateCompanyUseCase } from '../../application/company/create-company.use-case';
 import { UpdateCompanyUseCase } from '../../application/company/update-company.use-case';
 import { UpdateLocalizationUseCase } from '../../application/company/update-localization.use-case';
