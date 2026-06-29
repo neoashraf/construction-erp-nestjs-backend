@@ -1,22 +1,22 @@
 /**
  * FinancialYearQueryService — read side (skill §2.3): DTOs straight from SQL, company-scoped
- * (NFR-005). Supports the contracted list (`?page&pageSize&isActive`) and get-by-id (FR-MAS-002/003).
+ * (NFR-005). Response JSON is camelCase; the list returns `Paginated` (page info rides `meta`,
+ * overview §6). Supports `?page&pageSize&isActive` and get-by-id (FR-MAS-002/003).
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { DATA_SOURCE } from '../../../../database/database.module';
 import { getManager } from '../../../../infrastructure/unit-of-work/transaction-context';
 import { Actor } from '../../../../core/tenancy/tenant-context';
+import { PageRequest, Paginated, resolvePaging } from '../../../../infrastructure/http/pagination';
 import { FinancialYearOrmEntity } from '../infrastructure/persistence/financial-year.orm-entity';
-import { PageRequest, PaginatedResult, resolvePaging } from '../../read/pagination';
 
-/** Response shape — snake_case JSON per the platform API convention. */
 export interface FinancialYearDto {
   id: string;
   label: string;
-  start_date: string;
-  end_date: string;
-  is_active: boolean;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
   version: number;
 }
 
@@ -32,7 +32,7 @@ export class FinancialYearQueryService {
     return getManager(this.dataSource).getRepository(FinancialYearOrmEntity);
   }
 
-  async list(filter: FinancialYearListFilter, actor: Actor): Promise<PaginatedResult<FinancialYearDto>> {
+  async list(filter: FinancialYearListFilter, actor: Actor): Promise<Paginated<FinancialYearDto>> {
     const { page, pageSize, skip, take } = resolvePaging(filter);
     const where: Record<string, unknown> = { companyId: actor.companyId };
     if (filter.isActive !== undefined) where.isActive = filter.isActive;
@@ -42,7 +42,7 @@ export class FinancialYearQueryService {
       skip,
       take,
     });
-    return { data: rows.map(toDto), page, pageSize, total };
+    return new Paginated(rows.map(toDto), page, pageSize, total);
   }
 
   async getById(id: string, actor: Actor): Promise<FinancialYearDto | null> {
@@ -55,9 +55,9 @@ function toDto(row: FinancialYearOrmEntity): FinancialYearDto {
   return {
     id: row.id,
     label: row.label,
-    start_date: row.startDate,
-    end_date: row.endDate,
-    is_active: row.isActive,
+    startDate: row.startDate,
+    endDate: row.endDate,
+    isActive: row.isActive,
     version: row.version,
   };
 }

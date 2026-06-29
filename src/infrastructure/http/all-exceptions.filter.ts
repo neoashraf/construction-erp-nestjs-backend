@@ -27,6 +27,9 @@ interface ErrorEnvelope {
     message: string;
     details: Record<string, unknown>;
   };
+  meta: {
+    requestId?: string;
+  };
 }
 
 @Catch()
@@ -39,6 +42,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     const { status, body } = this.toEnvelope(exception);
+    // Stamp the per-request correlation id into meta (overview §6) — same id as X-Request-Id.
+    body.meta = {
+      requestId:
+        (request as Request & { id?: string }).id ??
+        (request.headers['x-request-id'] as string | undefined),
+    };
 
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
       this.logger.error(
@@ -66,6 +75,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
             message: exception.message,
             details: exception.details ?? {},
           },
+          meta: {},
         },
       };
     }
@@ -83,6 +93,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
             message,
             details,
           },
+          meta: {},
         },
       };
     }
@@ -96,6 +107,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
           message: 'An unexpected error occurred.',
           details: {},
         },
+        meta: {},
       },
     };
   }

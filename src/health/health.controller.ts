@@ -6,9 +6,11 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
 import { DatabaseHealthIndicator } from './database-health.indicator';
+import { NoEnvelope } from '../infrastructure/http/no-envelope.decorator';
 
 @ApiTags('health')
 @Controller('health')
+@NoEnvelope() // probes expect the Terminus shape — keep it out of the { data, meta } envelope.
 export class HealthController {
   constructor(
     private readonly health: HealthCheckService,
