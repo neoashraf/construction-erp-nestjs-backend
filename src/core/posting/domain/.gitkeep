@@ -1,0 +1,2 @@
+# posting/domain — Clean/Hexagonal layer placeholder (empty-but-wired scaffold).
+# Filled by the posting feature brief; keep the dependency rule (domain imports no NestJS/TypeORM).
