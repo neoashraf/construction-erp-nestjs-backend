@@ -10,6 +10,8 @@ export class Paginated<T> {
     readonly page: number,
     readonly pageSize: number,
     readonly total: number,
+    /** Extra endpoint-specific aggregates merged into `meta` (e.g. openingBalance, totals). */
+    readonly extraMeta?: Record<string, unknown>,
   ) {}
 }
 

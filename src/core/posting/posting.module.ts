@@ -19,15 +19,19 @@ import {
   AllowAllMasterLookupService,
   AllowAllProjectStatusService,
 } from './infrastructure/mas-seam.adapters';
+import { LedgerQueryService } from './read/ledger-query.service';
+import { LedgerController } from './presentation/ledger.controller';
 
 @Module({
   imports: [NumberingModule, PeriodModule],
+  controllers: [LedgerController],
   providers: [
     PostingService,
     { provide: JOURNAL_ENTRY_REPOSITORY, useClass: TypeOrmJournalEntryRepository },
     { provide: TAG_MATRIX, useClass: OverviewTagMatrix },
     { provide: PROJECT_STATUS_SERVICE, useClass: AllowAllProjectStatusService },
     { provide: MASTER_LOOKUP_SERVICE, useClass: AllowAllMasterLookupService },
+    LedgerQueryService,
   ],
   exports: [PostingService],
 })

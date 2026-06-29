@@ -10,9 +10,11 @@
  * `reverse(...)` is implemented in the ledger-reverse brief; the aggregate's reverse() exists already.
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { NotFoundError } from '../../../common/errors/domain-error';
 import { CLOCK, Clock } from '../../../common/ports/clock.port';
 import { ID_GENERATOR, IdGenerator } from '../../../common/ports/id-generator.port';
 import { JournalEntry } from '../domain/journal-entry';
+import { AlreadyReversedError, CannotReverseReversalError } from '../domain/errors';
 import { PostingCommand } from '../domain/posting-command';
 import { TAG_MATRIX, TagMatrix } from '../domain/tag-matrix';
 import {
@@ -73,5 +75,67 @@ export class PostingService {
     const entry = JournalEntry.create({ ...cmd, entryNo }, this.ids, this.clock);
     await this.entries.save(entry);
     return entry;
+  }
+
+  /**
+   * Append-only correction (FR-LED-025..029). Writes a NEW reversal entry (Dr↔Cr swapped, fresh
+   * entry_no) linked to the original via `reversal_of`; the original is never mutated. Runs inside the
+   * caller's UnitOfWork. Rejects reversing a reversal (CannotReverseReversalError), an already-reversed
+   * entry (AlreadyReversedError), and a correction into a closed period / against a closed project.
+   * Numbering is allocated LAST, only after all guards pass — a rejected reverse consumes no number.
+   */
+  async reverse(
+    entryId: string,
+    companyId: string,
+    reason: string,
+    reversedBy: string,
+  ): Promise<JournalEntry> {
+    const original = await this.entries.findById(entryId, companyId);
+    if (!original) throw new NotFoundError(`Journal entry ${entryId} not found`);
+    if (original.props.isReversal) throw new CannotReverseReversalError(entryId);
+    if (await this.entries.existsReversalOf(entryId, companyId)) {
+      throw new AlreadyReversedError(entryId);
+    }
+
+    // Re-check the ORIGINAL voucher date's period + its projects (FR-LED-029).
+    await this.period.assertOpen(
+      original.props.companyId,
+      original.props.financialYearId,
+      original.props.voucherDate,
+    );
+    const projectIds = [
+      ...new Set(
+        original.props.lines.map((l) => l.props.projectId).filter((p): p is string => !!p),
+      ),
+    ];
+    for (const projectId of projectIds) {
+      await this.projectStatus.assertNotClosed(companyId, projectId);
+    }
+
+    const entryNo = await this.numbering.next(
+      original.props.voucherType,
+      original.props.companyId,
+      original.props.financialYearId,
+    );
+    const reversal = original.reverse(reason, entryNo, reversedBy, this.ids, this.clock);
+    await this.entries.save(reversal);
+    return reversal;
+  }
+
+  /**
+   * Repost = reverse(original) + post(corrected) inside the ONE UnitOfWork the caller opened
+   * (FR-LED-027). If the corrected post fails after the reversal, both roll back — the original stays
+   * intact and unreversed.
+   */
+  async repost(
+    entryId: string,
+    companyId: string,
+    reason: string,
+    reversedBy: string,
+    corrected: PostingCommand,
+  ): Promise<{ reversal: JournalEntry; reposted: JournalEntry }> {
+    const reversal = await this.reverse(entryId, companyId, reason, reversedBy);
+    const reposted = await this.post(corrected);
+    return { reversal, reposted };
   }
 }

@@ -45,7 +45,13 @@ export class ResponseEnvelopeInterceptor implements NestInterceptor {
         if (value instanceof Paginated) {
           return {
             data: value.items,
-            meta: { requestId, page: value.page, pageSize: value.pageSize, total: value.total },
+            meta: {
+              requestId,
+              page: value.page,
+              pageSize: value.pageSize,
+              total: value.total,
+              ...(value.extraMeta ?? {}),
+            },
           } satisfies SuccessEnvelope;
         }
         return { data: value, meta: { requestId } } satisfies SuccessEnvelope;
