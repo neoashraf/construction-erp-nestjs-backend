@@ -16,6 +16,8 @@ export enum DomainErrorCode {
   CONFLICT = 'CONFLICT',
   FORBIDDEN = 'FORBIDDEN',
   UNAUTHORIZED = 'UNAUTHORIZED',
+  // master data (MAS)
+  OPTIMISTIC_LOCK_CONFLICT = 'OPTIMISTIC_LOCK_CONFLICT',
   // ledger / posting (LED)
   LEDGER_IMBALANCE = 'LEDGER_IMBALANCE',
   MISSING_DIMENSION = 'MISSING_DIMENSION',
@@ -69,6 +71,17 @@ export class ConflictError extends DomainError {
 export class TenantScopeMissingError extends DomainError {
   readonly code = DomainErrorCode.TENANT_SCOPE_MISSING;
   constructor(message: string, details?: Record<string, unknown>) {
+    super(message, details);
+  }
+}
+
+/**
+ * An update was attempted against a stale row version (optimistic concurrency, FR-MAS-032).
+ * Maps to HTTP 409. Distinct from a generic CONFLICT so clients can reload-and-retry.
+ */
+export class OptimisticLockConflictError extends DomainError {
+  readonly code = DomainErrorCode.OPTIMISTIC_LOCK_CONFLICT;
+  constructor(message = 'The record was modified by someone else; reload and retry.', details?: Record<string, unknown>) {
     super(message, details);
   }
 }

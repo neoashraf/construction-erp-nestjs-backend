@@ -14,6 +14,7 @@ export const DOMAIN_ERROR_STATUS: Record<DomainErrorCode, HttpStatus> = {
   [DomainErrorCode.NUMBERING_EXHAUSTED]: HttpStatus.CONFLICT,
   [DomainErrorCode.PERIOD_CLOSED]: HttpStatus.CONFLICT,
   [DomainErrorCode.CONFLICT]: HttpStatus.CONFLICT,
+  [DomainErrorCode.OPTIMISTIC_LOCK_CONFLICT]: HttpStatus.CONFLICT,
   [DomainErrorCode.APPEND_ONLY_VIOLATION]: HttpStatus.CONFLICT,
   [DomainErrorCode.NOT_FOUND]: HttpStatus.NOT_FOUND,
   [DomainErrorCode.UNAUTHORIZED]: HttpStatus.UNAUTHORIZED,

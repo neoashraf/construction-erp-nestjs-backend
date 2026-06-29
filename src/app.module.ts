@@ -13,6 +13,7 @@ import { AllExceptionsFilter } from './infrastructure/http/all-exceptions.filter
 import { DiagnosticsModule } from './infrastructure/http/diagnostics.module';
 import { HealthModule } from './health/health.module';
 import { CoreModule } from './core/core.module';
+import { MasterDataModule } from './modules/master-data/master-data.module';
 
 @Module({
   imports: [
@@ -22,6 +23,8 @@ import { CoreModule } from './core/core.module';
     InfrastructureModule,
     HealthModule,
     CoreModule,
+    // Feature modules (modules/*) — added by their briefs.
+    MasterDataModule,
     // Diagnostic throw-routes for the e2e error-envelope smoke — never in production.
     DiagnosticsModule.register(process.env.NODE_ENV !== 'production'),
   ],
