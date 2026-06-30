@@ -62,8 +62,10 @@ describe('Company use cases', () => {
     audit = new FakeAudit();
   });
 
+  // The standard-14 cost-centre seed runs inside company-create; stub it here (its own spec covers it).
+  const seedStub = { execute: () => Promise.resolve() } as unknown as ConstructorParameters<typeof CreateCompanyUseCase>[4];
   function createUc() {
-    return new CreateCompanyUseCase(repo, audit, passthroughUow, fixedIds('co-1'));
+    return new CreateCompanyUseCase(repo, audit, passthroughUow, fixedIds('co-1'), seedStub);
   }
 
   it('creates a company at version 1 and records a CREATE audit (FR-MAS-001/031)', async () => {

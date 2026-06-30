@@ -17,6 +17,7 @@ import {
 } from '../../company/domain/ports/company.repository';
 import { AUDIT_SERVICE, AuditService } from '../ports/audit.port';
 import { companySnapshot } from './company.snapshot';
+import { SeedStandardCostCentresUseCase } from '../../cost-centre/application/cost-centre.use-cases';
 
 export type CreateCompanyInput = NewCompany;
 
@@ -27,12 +28,15 @@ export class CreateCompanyUseCase {
     @Inject(AUDIT_SERVICE) private readonly audit: AuditService,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
     @Inject(ID_GENERATOR) private readonly ids: IdGenerator,
+    private readonly seedCostCentres: SeedStandardCostCentresUseCase,
   ) {}
 
   async execute(input: CreateCompanyInput, actor: Actor): Promise<{ id: string }> {
     const company = Company.create(input, this.ids);
     await this.uow.run(async () => {
       await this.companies.save(company);
+      // FR-MAS-009: seed the standard 14 cost centres for the new company (idempotent).
+      await this.seedCostCentres.execute(company.id);
       await this.audit.record({
         action: 'CREATE',
         entityType: 'Company',
