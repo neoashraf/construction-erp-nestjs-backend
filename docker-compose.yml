@@ -1,0 +1,26 @@
+# Local development Postgres for the Zakir Enterprise ERP backend.
+# The host port is 5433 (the workstation already runs a Postgres on 5432); the
+# container listens on the standard 5432 internally. Match .env: DB_PORT=5433.
+#   Start:  docker compose up -d
+#   Stop:   docker compose down        (add -v to also drop the data volume)
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: ze-erp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ze_erp
+    ports:
+      - "5433:5432"
+    volumes:
+      - ze-erp-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ze_erp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ze-erp-pgdata:
