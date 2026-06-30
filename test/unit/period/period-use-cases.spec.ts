@@ -24,7 +24,7 @@ import { Actor } from '../../../src/core/tenancy/tenant-context';
 
 const passthroughUow: UnitOfWork = { run: (work) => work() };
 const clock: Clock = { now: () => new Date('2026-07-15T10:00:00Z') };
-const actor: Actor = { userId: 'u-1', companyId: 'co-1', financialYearId: 'fy-1', role: 'Admin' };
+const actor: Actor = { userId: 'u-1', companyId: 'co-1', financialYearId: 'fy-1', role: 'Admin', isUnscoped: true, assignedProjectIds: [], approvalLimit: null };
 
 class FakeAudit implements AuditService {
   entries: AuditEntry[] = [];

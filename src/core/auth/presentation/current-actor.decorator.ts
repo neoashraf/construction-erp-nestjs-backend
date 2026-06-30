@@ -37,6 +37,9 @@ export function resolveActor(req: Request): Actor {
     companyId,
     financialYearId: header(req, 'x-financial-year-id') ?? '',
     role: header(req, 'x-role') ?? 'Admin',
+    isUnscoped: true,
+    assignedProjectIds: [],
+    approvalLimit: null,
   };
 }
 

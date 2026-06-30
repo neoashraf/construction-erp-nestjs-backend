@@ -38,7 +38,7 @@ jest.setTimeout(180_000);
 const CO = '00000000-0000-0000-0000-0000000000c0';
 const FY1 = '00000000-0000-0000-0000-0000000000f1';
 const USER = '00000000-0000-0000-0000-0000000000a1';
-const actor: Actor = { userId: USER, companyId: CO, financialYearId: FY1, role: 'Admin' };
+const actor: Actor = { userId: USER, companyId: CO, financialYearId: FY1, role: 'Admin', isUnscoped: true, assignedProjectIds: [], approvalLimit: null };
 const clock = { now: () => new Date('2026-07-15T10:00:00Z') };
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 

@@ -134,7 +134,7 @@ describe('NumberingService (real Postgres)', () => {
     await allocate();
     await allocate();
     const [series] = await dataSource.query(`SELECT id FROM numbering_series LIMIT 1`);
-    const actor: Actor = { userId: 'u', companyId: CO, financialYearId: FY1, role: 'Admin' };
+    const actor: Actor = { userId: 'u', companyId: CO, financialYearId: FY1, role: 'Admin', isUnscoped: true, assignedProjectIds: [], approvalLimit: null };
     const audit = await read.gapAudit(series.id, actor);
     expect(audit).toMatchObject({
       lowestSequence: 1,

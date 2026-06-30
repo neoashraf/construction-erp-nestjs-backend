@@ -124,9 +124,9 @@ describe('MAS reference masters — accounts / parties / items (real Postgres)',
 
     const { id } = await createCompany.execute(
       { name: 'ZE', legalName: 'ZE Ltd', bin: '1234567890123', tin: '123456789012' },
-      { userId: '00000000-0000-0000-0000-0000000000a1', companyId: 'bootstrap', financialYearId: '', role: 'Admin' },
+      { userId: '00000000-0000-0000-0000-0000000000a1', companyId: 'bootstrap', financialYearId: '', role: 'Admin', isUnscoped: true, assignedProjectIds: [], approvalLimit: null },
     );
-    actor = { userId: '00000000-0000-0000-0000-0000000000a1', companyId: id, financialYearId: '', role: 'Admin' };
+    actor = { userId: '00000000-0000-0000-0000-0000000000a1', companyId: id, financialYearId: '', role: 'Admin', isUnscoped: true, assignedProjectIds: [], approvalLimit: null };
   });
 
   afterAll(async () => {
