@@ -1,5 +1,6 @@
 /** CostCentreController — `/api/masters/cost-centres` (FR-MAS-009/010/029/033). Admin (guards via auth-jwt). */
 import { Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { IsString, MaxLength, MinLength } from 'class-validator';
 import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
@@ -16,6 +17,7 @@ class RenameCostCentreDto extends VersionBodyDto {
   @IsString() @MinLength(1) @MaxLength(120) name!: string;
 }
 
+@ApiTags('Dimensions')
 @Controller('api/masters/cost-centres')
 export class CostCentreController {
   constructor(

@@ -1,5 +1,6 @@
 /** ProjectController — `/api/masters/projects` (FR-MAS-005/006). */
 import { Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, MaxLength, Min, MinLength } from 'class-validator';
 import { Actor } from '../../../../core/tenancy/tenant-context';
@@ -42,6 +43,7 @@ class ListProjectsQueryDto {
   @IsOptional() @IsString() q?: string;
 }
 
+@ApiTags('Projects')
 @Controller('api/masters/projects')
 export class ProjectController {
   constructor(

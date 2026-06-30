@@ -1,5 +1,6 @@
 /** ProjectBudgetController — `/api/masters/projects/:projectId/budgets` (FR-MAS-007/008). */
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Put, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsInt, IsOptional, IsUUID, Matches, Min } from 'class-validator';
 import { Actor } from '../../../../core/tenancy/tenant-context';
@@ -18,6 +19,7 @@ class PagingQueryDto {
   @IsOptional() @Transform(({ value }) => (value === undefined ? undefined : Number(value))) @IsInt() @Min(1) pageSize?: number;
 }
 
+@ApiTags('Projects')
 @Controller('api/masters/projects/:projectId/budgets')
 export class ProjectBudgetController {
   constructor(

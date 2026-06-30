@@ -1,5 +1,6 @@
 /** PartyController — `/api/masters/parties` (FR-MAS-022/023/024/029/033). Admin/Accounts (guards via auth-jwt). */
 import { Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { IsBoolean, IsBooleanString, IsEmail, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
@@ -42,6 +43,7 @@ class PartyQueryDto extends MasterListQueryDto {
   @IsOptional() @IsBooleanString() isSupplier?: string;
 }
 
+@ApiTags('Parties')
 @Controller('api/masters/parties')
 export class PartyController {
   constructor(

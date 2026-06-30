@@ -15,6 +15,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Actor } from '../../tenancy/tenant-context';
 import { CurrentActor } from '../../auth/presentation/current-actor.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
@@ -31,6 +32,7 @@ import {
   ResolvePeriodQueryDto,
 } from './dto/period.dto';
 
+@ApiTags('Periods')
 @Controller('api/periods')
 export class PeriodController {
   constructor(

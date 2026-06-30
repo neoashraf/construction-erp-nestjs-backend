@@ -3,7 +3,7 @@
  *   - global `/api` prefix (overview §6),
  *   - nestjs-pino as the app logger (structured + correlation id),
  *   - global ValidationPipe (whitelist + forbidNonWhitelisted + transform),
- *   - OpenAPI/Swagger at `/api/docs`,
+ *   - OpenAPI/Swagger at `/api/v1/docs`,
  *   - graceful shutdown hooks (closes the DataSource).
  * The global error-envelope filter is bound in AppModule via APP_FILTER.
  */
@@ -43,9 +43,19 @@ async function bootstrap(): Promise<void> {
     .setDescription('Project-centric construction ERP — accounting, projects, HR on one ledger.')
     .setVersion('0.1.0')
     .addBearerAuth()
+    .addTag('Health', 'Liveness / readiness probes')
+    .addTag('Org', 'Companies and financial years')
+    .addTag('Numbering', 'Voucher numbering series configuration')
+    .addTag('Periods', 'Accounting period generation and lifecycle')
+    .addTag('Ledger', 'General ledger read — entries, lines, trial balance')
+    .addTag('Chart of Accounts', 'Account groups and accounts (CoA)')
+    .addTag('Projects', 'Projects, budgets, and purposes')
+    .addTag('Dimensions', 'Cost centres and godowns')
+    .addTag('Parties', 'Customers, suppliers, and sub-contractors')
+    .addTag('Items', 'Material / service items and UoM conversions')
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
+  SwaggerModule.setup('api/v1/docs', app, document);
 
   const { port } = getAppConfig(app.get(ConfigService));
   await app.listen(port);

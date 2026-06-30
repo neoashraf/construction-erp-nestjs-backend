@@ -1,5 +1,6 @@
 /** GodownController — `/api/masters/godowns` (FR-MAS-014/016/029/033). */
 import { Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsInt, IsOptional, IsString, IsUUID, MaxLength, Min, MinLength } from 'class-validator';
 import { Actor } from '../../../../core/tenancy/tenant-context';
@@ -26,6 +27,7 @@ class ListGodownsQueryDto {
   @IsOptional() @IsString() q?: string;
 }
 
+@ApiTags('Dimensions')
 @Controller('api/masters/godowns')
 export class GodownController {
   constructor(

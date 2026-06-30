@@ -15,6 +15,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Actor } from '../../tenancy/tenant-context';
 import { CurrentActor } from '../../auth/presentation/current-actor.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
@@ -32,6 +33,7 @@ import {
   UpdateNumberingSeriesDto,
 } from './dto/numbering-series.dto';
 
+@ApiTags('Numbering')
 @Controller('api/masters/numbering-series')
 export class NumberingAdminController {
   constructor(

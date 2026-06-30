@@ -13,6 +13,7 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { IsNumberString, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
@@ -46,6 +47,7 @@ class UpsertUomConversionDto {
   @IsNumberString() factorToBase!: string;
 }
 
+@ApiTags('Items')
 @Controller('api/masters/items')
 export class ItemController {
   constructor(

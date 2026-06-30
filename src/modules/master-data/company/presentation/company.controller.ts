@@ -15,6 +15,7 @@ import {
   Post,
   Put,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
 import { CreateCompanyUseCase } from '../../application/company/create-company.use-case';
@@ -24,6 +25,7 @@ import { CompanyDto, CompanyQueryService } from '../read/company.query-service';
 import { Paginated } from '../../../../infrastructure/http/pagination';
 import { CreateCompanyDto, UpdateCompanyDto, UpdateLocalizationDto } from './dto/company.dto';
 
+@ApiTags('Org')
 @Controller('api/masters/companies')
 export class CompanyController {
   constructor(

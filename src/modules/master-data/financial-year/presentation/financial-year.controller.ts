@@ -15,6 +15,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
 import { CreateFinancialYearUseCase } from '../../application/financial-year/create-financial-year.use-case';
@@ -28,6 +29,7 @@ import {
   UpdateFinancialYearDto,
 } from './dto/financial-year.dto';
 
+@ApiTags('Org')
 @Controller('api/masters/financial-years')
 export class FinancialYearController {
   constructor(

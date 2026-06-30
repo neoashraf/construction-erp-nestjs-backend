@@ -5,6 +5,7 @@
  * guard lands with auth-jwt; the actor is resolved via `@CurrentActor`.
  */
 import { Controller, Get, NotFoundException, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Actor } from '../../tenancy/tenant-context';
 import { CurrentActor } from '../../auth/presentation/current-actor.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
@@ -21,6 +22,7 @@ import {
   TrialBalanceQueryDto,
 } from '../read/dto/ledger-query.dto';
 
+@ApiTags('Ledger')
 @Controller('api/ledger')
 export class LedgerController {
   constructor(private readonly query: LedgerQueryService) {}

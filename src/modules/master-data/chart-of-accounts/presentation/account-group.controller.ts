@@ -1,5 +1,6 @@
 /** AccountGroupController — `/api/masters/account-groups` (FR-MAS-017). Admin (guards via auth-jwt). */
 import { Body, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
@@ -23,6 +24,7 @@ class AccountGroupQueryDto extends MasterListQueryDto {
   @IsOptional() @IsUUID() parentGroupId?: string;
 }
 
+@ApiTags('Chart of Accounts')
 @Controller('api/masters/account-groups')
 export class AccountGroupController {
   constructor(

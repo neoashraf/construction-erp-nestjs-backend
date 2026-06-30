@@ -1,5 +1,6 @@
 /** PurposeController — `/api/masters/projects/:projectId/purposes` (FR-MAS-011/012/013/029/033). */
 import { Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, Res } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { IsString, MaxLength, MinLength } from 'class-validator';
 import { Actor } from '../../../../core/tenancy/tenant-context';
@@ -16,6 +17,7 @@ class RenamePurposeDto extends VersionBodyDto {
   @IsString() @MinLength(1) @MaxLength(120) name!: string;
 }
 
+@ApiTags('Projects')
 @Controller('api/masters/projects/:projectId/purposes')
 export class PurposeController {
   constructor(
