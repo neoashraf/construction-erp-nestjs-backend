@@ -19,6 +19,11 @@ export enum DomainErrorCode {
   // master data (MAS) / shared
   OPTIMISTIC_LOCK_CONFLICT = 'OPTIMISTIC_LOCK_CONFLICT',
   CROSS_COMPANY_REFERENCE = 'CROSS_COMPANY_REFERENCE',
+  DUPLICATE_CODE = 'DUPLICATE_CODE',
+  DUPLICATE_NAME = 'DUPLICATE_NAME',
+  IMMUTABLE_PROJECT_CODE = 'IMMUTABLE_PROJECT_CODE',
+  INVALID_STATUS_TRANSITION = 'INVALID_STATUS_TRANSITION',
+  REFERENCED_MASTER = 'REFERENCED_MASTER',
   // numbering (NUM)
   SERIES_ALREADY_EXISTS = 'SERIES_ALREADY_EXISTS',
   // ledger / posting (LED)
@@ -106,6 +111,54 @@ export class CrossCompanyReferenceError extends DomainError {
   readonly code = DomainErrorCode.CROSS_COMPANY_REFERENCE;
   constructor(message: string, details?: Record<string, unknown>) {
     super(message, details);
+  }
+}
+
+/** A company-unique code already exists (project_code, cost_centre.code, …). HTTP 409. */
+export class DuplicateCodeError extends DomainError {
+  readonly code = DomainErrorCode.DUPLICATE_CODE;
+  constructor(value: string, details?: Record<string, unknown>) {
+    super(`Code '${value}' already exists for this company`, { value, ...details });
+  }
+}
+
+/** A scoped-unique name already exists (purpose per project, godown per project). HTTP 409. */
+export class DuplicateNameError extends DomainError {
+  readonly code = DomainErrorCode.DUPLICATE_NAME;
+  constructor(value: string, details?: Record<string, unknown>) {
+    super(`Name '${value}' already exists in this scope`, { value, ...details });
+  }
+}
+
+/** project_code change attempted after the project is referenced by a transaction (FR-MAS-005). HTTP 409. */
+export class ImmutableProjectCodeError extends DomainError {
+  readonly code = DomainErrorCode.IMMUTABLE_PROJECT_CODE;
+  constructor() {
+    super('project_code is immutable once the project is referenced by a transaction');
+  }
+}
+
+/** An illegal project status-machine move (FR-MAS-006). HTTP 409. */
+export class InvalidStatusTransitionError extends DomainError {
+  readonly code = DomainErrorCode.INVALID_STATUS_TRANSITION;
+  constructor(from: string, action: string) {
+    super(`Illegal project status transition '${action}' from ${from}`, { from, action });
+  }
+}
+
+/** A new godown/budget against a CLOSED project (FR-MAS-006). HTTP 409 (shares PROJECT_CLOSED). */
+export class ClosedProjectError extends DomainError {
+  readonly code = DomainErrorCode.PROJECT_CLOSED;
+  constructor(projectId: string) {
+    super(`Project ${projectId} is closed`, { projectId });
+  }
+}
+
+/** A hard-delete blocked because the row is referenced (FR-MAS-030). HTTP 409. */
+export class ReferencedMasterError extends DomainError {
+  readonly code = DomainErrorCode.REFERENCED_MASTER;
+  constructor(message = 'The record is referenced and cannot be deleted; deactivate instead.') {
+    super(message);
   }
 }
 
