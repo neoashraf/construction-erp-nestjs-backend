@@ -97,10 +97,10 @@ describe('Master Data — Company + FinancialYear (real Postgres)', () => {
 
   async function newCompanyActor(): Promise<Actor> {
     const { id } = await createCompany.execute(VALID_COMPANY, sysActor());
-    return { userId: 'u-1', companyId: id, financialYearId: '', role: 'Admin' };
+    return { userId: 'u-1', companyId: id, financialYearId: '', role: 'Admin', isUnscoped: true, assignedProjectIds: [], approvalLimit: null };
   }
   function sysActor(): Actor {
-    return { userId: 'bootstrap', companyId: 'bootstrap', financialYearId: '', role: 'Admin' };
+    return { userId: 'bootstrap', companyId: 'bootstrap', financialYearId: '', role: 'Admin', isUnscoped: true, assignedProjectIds: [], approvalLimit: null };
   }
 
   it('runs the migration and creates company + financial_year', async () => {

@@ -112,11 +112,11 @@ export class LedgerQueryService {
 
   // ---- helper: PM project-scope predicate over a line alias --------------------------------------
   private pmScopeClause(actor: Actor, params: unknown[], lineAlias: string): string | null {
-    if (!actor.projectScope) return null;
-    if (actor.projectScope.length === 0) {
-      return 'false'; // a PM with no assigned projects sees nothing
+    if (actor.isUnscoped) return null;
+    if (actor.assignedProjectIds.length === 0) {
+      return 'false'; // a scoped user with no assigned projects sees nothing
     }
-    params.push(actor.projectScope);
+    params.push(actor.assignedProjectIds);
     return `${lineAlias}.project_id = ANY($${params.length}::uuid[])`;
   }
 
@@ -201,7 +201,7 @@ export class LedgerQueryService {
       [id, actor.companyId],
     );
     if (!e) return null;
-    if (actor.projectScope && !(await this.entryInScope(id, actor))) return null;
+    if (!actor.isUnscoped && !(await this.entryInScope(id, actor))) return null;
     const lineRows = await this.manager().query(
       `${this.lineSelect()} WHERE l.journal_entry_id = $1 ORDER BY l.line_no ASC`,
       [id],
@@ -219,11 +219,11 @@ export class LedgerQueryService {
   }
 
   private async entryInScope(entryId: string, actor: Actor): Promise<boolean> {
-    if (!actor.projectScope) return true;
-    if (actor.projectScope.length === 0) return false;
+    if (actor.isUnscoped) return true;
+    if (actor.assignedProjectIds.length === 0) return false;
     const rows = await this.manager().query(
       `SELECT 1 FROM journal_line l WHERE l.journal_entry_id = $1 AND l.project_id = ANY($2::uuid[]) LIMIT 1`,
-      [entryId, actor.projectScope],
+      [entryId, actor.assignedProjectIds],
     );
     return rows.length > 0;
   }

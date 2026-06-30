@@ -1,15 +1,23 @@
 /**
- * Audit kernel module (AUD). Provides the canonical `AUDIT_SERVICE` port GLOBALLY so any module can
- * record audit entries without importing a module. The `rbac-and-audit` brief replaces the
- * `NoopAuditService` binding with the real `audit_log`-backed service (same token, same call shape).
+ * AuditModule (AUD rbac-and-audit brief) — replaces NoopAuditService with the real DB-backed
+ * implementation. Provides AUDIT_SERVICE globally; exports AUDIT_SERVICE + AUDIT_LOG_REPOSITORY.
  */
 import { Global, Module } from '@nestjs/common';
 import { AUDIT_SERVICE } from './application/audit.port';
-import { NoopAuditService } from './infrastructure/noop-audit.service';
+import { RealAuditService } from './application/real-audit.service';
+import { TypeOrmAuditLogRepository } from './infrastructure/typeorm-audit-log.repository';
+import { AUDIT_LOG_REPOSITORY } from './domain/ports/audit-log.repository.port';
+import { AuditLogsController } from './presentation/audit-logs.controller';
+import { AuditLogsQueryService } from './read/audit-logs.query-service';
 
 @Global()
 @Module({
-  providers: [{ provide: AUDIT_SERVICE, useClass: NoopAuditService }],
-  exports: [AUDIT_SERVICE],
+  controllers: [AuditLogsController],
+  providers: [
+    { provide: AUDIT_LOG_REPOSITORY, useClass: TypeOrmAuditLogRepository },
+    { provide: AUDIT_SERVICE, useClass: RealAuditService },
+    AuditLogsQueryService,
+  ],
+  exports: [AUDIT_SERVICE, AUDIT_LOG_REPOSITORY],
 })
 export class AuditModule {}

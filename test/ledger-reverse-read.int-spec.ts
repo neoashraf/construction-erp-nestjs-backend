@@ -48,7 +48,7 @@ const OTHER_PROJECT = '00000000-0000-0000-0000-00000000d099';
 const ACCT_A = '00000000-0000-0000-0000-00000000d005';
 const ACCT_B = '00000000-0000-0000-0000-00000000d006';
 
-const admin: Actor = { userId: USER, companyId: CO, financialYearId: FY1, role: 'Admin' };
+const admin: Actor = { userId: USER, companyId: CO, financialYearId: FY1, role: 'Admin', isUnscoped: true, assignedProjectIds: [], approvalLimit: null };
 
 function journal(dr: string, cr: string, amount: string, date: string, sourceId: string): PostingCommand {
   return {
@@ -152,7 +152,7 @@ describe('Ledger reverse + read (real Postgres)', () => {
     expect(orig.totalDebit).toBe('100.0000');
 
     // a PM scoped to a different project sees nothing
-    const pm: Actor = { ...admin, role: 'PM', projectScope: [OTHER_PROJECT] };
+    const pm: Actor = { ...admin, role: 'PM', isUnscoped: false, assignedProjectIds: [OTHER_PROJECT] };
     const none = await query.entries({ financialYearId: FY1 }, pm);
     expect(none.total).toBe(0);
   });

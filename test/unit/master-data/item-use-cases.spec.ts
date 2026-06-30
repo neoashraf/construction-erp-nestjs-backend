@@ -17,7 +17,7 @@ import { IdGenerator } from '../../../src/common/ports/id-generator.port';
 import { Actor } from '../../../src/core/tenancy/tenant-context';
 
 const passthroughUow: UnitOfWork = { run: (work) => work() };
-const actor: Actor = { userId: 'u-1', companyId: 'co-1', financialYearId: '', role: 'Admin' };
+const actor: Actor = { userId: 'u-1', companyId: 'co-1', financialYearId: '', role: 'Admin', isUnscoped: true, assignedProjectIds: [], approvalLimit: null };
 
 class FakeAudit implements AuditService {
   entries: AuditEntry[] = [];

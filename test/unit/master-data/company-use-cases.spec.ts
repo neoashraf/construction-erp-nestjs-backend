@@ -51,7 +51,7 @@ const VALID = {
   bin: '1234567890123',
   tin: '123456789012',
 };
-const actor: Actor = { userId: 'u-1', companyId: 'co-1', financialYearId: '', role: 'Admin' };
+const actor: Actor = { userId: 'u-1', companyId: 'co-1', financialYearId: '', role: 'Admin', isUnscoped: true, assignedProjectIds: [], approvalLimit: null };
 
 describe('Company use cases', () => {
   let repo: FakeCompanyRepo;

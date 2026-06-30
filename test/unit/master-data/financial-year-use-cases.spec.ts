@@ -58,7 +58,7 @@ function clone(fy: FinancialYear, version: number): FinancialYear {
   return FinancialYear.rehydrate(fy.id, { ...fy.props, version });
 }
 
-const actor: Actor = { userId: 'u-1', companyId: 'co-1', financialYearId: '', role: 'Admin' };
+const actor: Actor = { userId: 'u-1', companyId: 'co-1', financialYearId: '', role: 'Admin', isUnscoped: true, assignedProjectIds: [], approvalLimit: null };
 const FY1 = { label: '2025-26', startDate: '2025-07-01', endDate: '2026-06-30' };
 const FY2 = { label: '2026-27', startDate: '2026-07-01', endDate: '2027-06-30' };
 

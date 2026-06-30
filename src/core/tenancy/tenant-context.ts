@@ -7,19 +7,21 @@
  * P1 cross-tenant leak. The scoped-repository base makes that filter the default, not a thing you
  * remember.
  */
+import Decimal from 'decimal.js';
 
-/** The authenticated caller and their tenant scope. Role/permissions are filled in by the AUD brief. */
+/** The authenticated caller and their tenant scope. RBAC fields enriched by JwtStrategy (auth-rbac). */
 export interface Actor {
   readonly userId: string;
   readonly companyId: string;
   readonly financialYearId: string;
-  /** Single role per user (AUD Phase-1 rule); typed precisely once roles land. */
+  /** Single role per user (AUD Phase-1 rule). */
   readonly role: string;
-  /**
-   * Row-level project scope (F4): the project ids this actor may see. `undefined` = all projects
-   * (e.g. Accounts/Admin); a list = restricted (e.g. a PM sees only assigned projects).
-   */
-  readonly projectScope?: readonly string[];
+  /** True for unscoped roles (Admin, Accounts Team) — bypass project filter. FR-AUD-015. */
+  readonly isUnscoped: boolean;
+  /** Project ids this actor may see. Empty for scoped users with zero assignments. FR-AUD-014. */
+  readonly assignedProjectIds: readonly string[];
+  /** Max approvable value BDT. null = no approval authority (escalate-by-default). FR-AUD-016. */
+  readonly approvalLimit: Decimal | null;
 }
 
 /** The minimal tenant scope a repository needs to be safe. */
