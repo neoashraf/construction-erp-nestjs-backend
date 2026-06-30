@@ -62,10 +62,11 @@ describe('Company use cases', () => {
     audit = new FakeAudit();
   });
 
-  // The standard-14 cost-centre seed runs inside company-create; stub it here (its own spec covers it).
+  // The cost-centre + construction-CoA seeds run inside company-create; stub them (own specs cover them).
   const seedStub = { execute: () => Promise.resolve() } as unknown as ConstructorParameters<typeof CreateCompanyUseCase>[4];
+  const coaSeedStub = { execute: () => Promise.resolve() } as unknown as ConstructorParameters<typeof CreateCompanyUseCase>[5];
   function createUc() {
-    return new CreateCompanyUseCase(repo, audit, passthroughUow, fixedIds('co-1'), seedStub);
+    return new CreateCompanyUseCase(repo, audit, passthroughUow, fixedIds('co-1'), seedStub, coaSeedStub);
   }
 
   it('creates a company at version 1 and records a CREATE audit (FR-MAS-001/031)', async () => {

@@ -17,9 +17,15 @@ import { ProjectOrmEntity } from '../src/modules/master-data/project/infrastruct
 import { PurposeOrmEntity } from '../src/modules/master-data/purpose/infrastructure/purpose.orm-entity';
 import { GodownOrmEntity } from '../src/modules/master-data/godown/infrastructure/godown.orm-entity';
 import { ProjectBudgetOrmEntity } from '../src/modules/master-data/project-budget/infrastructure/project-budget.orm-entity';
+import { AccountGroupOrmEntity } from '../src/modules/master-data/chart-of-accounts/infrastructure/account-group.orm-entity';
+import { AccountOrmEntity } from '../src/modules/master-data/chart-of-accounts/infrastructure/account.orm-entity';
 import { InitialBaseline1700000000000 } from '../src/database/migrations/1700000000000-InitialBaseline';
 import { CreateCompanyFinancialYear1700000100000 } from '../src/database/migrations/1700000100000-CreateCompanyFinancialYear';
 import { CreateMasterDataDimensions1700000500000 } from '../src/database/migrations/1700000500000-CreateMasterDataDimensions';
+import { CreateMasterDataAccountsPartiesItems1700000600000 } from '../src/database/migrations/1700000600000-CreateMasterDataAccountsPartiesItems';
+import { TypeOrmAccountGroupRepository } from '../src/modules/master-data/chart-of-accounts/infrastructure/typeorm-account-group.repository';
+import { TypeOrmAccountRepository } from '../src/modules/master-data/chart-of-accounts/infrastructure/typeorm-account.repository';
+import { SeedConstructionCoaUseCase } from '../src/modules/master-data/chart-of-accounts/application/construction-coa.seed';
 import { TypeOrmUnitOfWork } from '../src/infrastructure/unit-of-work/typeorm-unit-of-work';
 import { UuidIdGenerator } from '../src/infrastructure/uuid-id-generator';
 import { NoopAuditService } from '../src/core/audit/infrastructure/noop-audit.service';
@@ -67,8 +73,8 @@ describe('MAS dimension masters (real Postgres)', () => {
       password: container.getPassword(),
       database: container.getDatabase(),
       synchronize: false,
-      entities: [CompanyOrmEntity, FinancialYearOrmEntity, CostCentreOrmEntity, ProjectOrmEntity, PurposeOrmEntity, GodownOrmEntity, ProjectBudgetOrmEntity],
-      migrations: [InitialBaseline1700000000000, CreateCompanyFinancialYear1700000100000, CreateMasterDataDimensions1700000500000],
+      entities: [CompanyOrmEntity, FinancialYearOrmEntity, CostCentreOrmEntity, ProjectOrmEntity, PurposeOrmEntity, GodownOrmEntity, ProjectBudgetOrmEntity, AccountGroupOrmEntity, AccountOrmEntity],
+      migrations: [InitialBaseline1700000000000, CreateCompanyFinancialYear1700000100000, CreateMasterDataDimensions1700000500000, CreateMasterDataAccountsPartiesItems1700000600000],
     });
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -79,7 +85,12 @@ describe('MAS dimension masters (real Postgres)', () => {
     const ccRepo = new TypeOrmCostCentreRepository(dataSource);
     const projRepo = new TypeOrmProjectRepository(dataSource);
     const seed = new SeedStandardCostCentresUseCase(ccRepo, ids);
-    createCompany = new CreateCompanyUseCase(new TypeOrmCompanyRepository(dataSource), new MasNoopAudit(), uow, ids, seed);
+    const coaSeed = new SeedConstructionCoaUseCase(
+      new TypeOrmAccountGroupRepository(dataSource),
+      new TypeOrmAccountRepository(dataSource),
+      ids,
+    );
+    createCompany = new CreateCompanyUseCase(new TypeOrmCompanyRepository(dataSource), new MasNoopAudit(), uow, ids, seed, coaSeed);
     createCostCentre = new CreateCostCentreUseCase(ccRepo, audit, uow, ids);
     createProject = new CreateProjectUseCase(projRepo, audit, uow, ids);
     changeStatus = new ChangeProjectStatusUseCase(projRepo, audit, uow, clock);

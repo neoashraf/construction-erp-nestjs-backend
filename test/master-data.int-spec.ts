@@ -11,12 +11,18 @@ import { DataSource } from 'typeorm';
 import { CompanyOrmEntity } from '../src/modules/master-data/company/infrastructure/persistence/company.orm-entity';
 import { FinancialYearOrmEntity } from '../src/modules/master-data/financial-year/infrastructure/persistence/financial-year.orm-entity';
 import { CostCentreOrmEntity } from '../src/modules/master-data/cost-centre/infrastructure/cost-centre.orm-entity';
+import { AccountGroupOrmEntity } from '../src/modules/master-data/chart-of-accounts/infrastructure/account-group.orm-entity';
+import { AccountOrmEntity } from '../src/modules/master-data/chart-of-accounts/infrastructure/account.orm-entity';
 import { InitialBaseline1700000000000 } from '../src/database/migrations/1700000000000-InitialBaseline';
 import { CreateCompanyFinancialYear1700000100000 } from '../src/database/migrations/1700000100000-CreateCompanyFinancialYear';
 import { CreateMasterDataDimensions1700000500000 } from '../src/database/migrations/1700000500000-CreateMasterDataDimensions';
+import { CreateMasterDataAccountsPartiesItems1700000600000 } from '../src/database/migrations/1700000600000-CreateMasterDataAccountsPartiesItems';
 import { TypeOrmCompanyRepository } from '../src/modules/master-data/company/infrastructure/persistence/typeorm-company.repository';
 import { TypeOrmCostCentreRepository } from '../src/modules/master-data/cost-centre/infrastructure/typeorm-cost-centre.repository';
 import { SeedStandardCostCentresUseCase } from '../src/modules/master-data/cost-centre/application/cost-centre.use-cases';
+import { TypeOrmAccountGroupRepository } from '../src/modules/master-data/chart-of-accounts/infrastructure/typeorm-account-group.repository';
+import { TypeOrmAccountRepository } from '../src/modules/master-data/chart-of-accounts/infrastructure/typeorm-account.repository';
+import { SeedConstructionCoaUseCase } from '../src/modules/master-data/chart-of-accounts/application/construction-coa.seed';
 import { TypeOrmFinancialYearRepository } from '../src/modules/master-data/financial-year/infrastructure/persistence/typeorm-financial-year.repository';
 import { TypeOrmUnitOfWork } from '../src/infrastructure/unit-of-work/typeorm-unit-of-work';
 import { UuidIdGenerator } from '../src/infrastructure/uuid-id-generator';
@@ -57,8 +63,8 @@ describe('Master Data — Company + FinancialYear (real Postgres)', () => {
       password: container.getPassword(),
       database: container.getDatabase(),
       synchronize: false,
-      entities: [CompanyOrmEntity, FinancialYearOrmEntity, CostCentreOrmEntity],
-      migrations: [InitialBaseline1700000000000, CreateCompanyFinancialYear1700000100000, CreateMasterDataDimensions1700000500000],
+      entities: [CompanyOrmEntity, FinancialYearOrmEntity, CostCentreOrmEntity, AccountGroupOrmEntity, AccountOrmEntity],
+      migrations: [InitialBaseline1700000000000, CreateCompanyFinancialYear1700000100000, CreateMasterDataDimensions1700000500000, CreateMasterDataAccountsPartiesItems1700000600000],
     });
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -69,7 +75,12 @@ describe('Master Data — Company + FinancialYear (real Postgres)', () => {
     const ids = new UuidIdGenerator();
     const audit = new NoopAuditService();
     const seed = new SeedStandardCostCentresUseCase(new TypeOrmCostCentreRepository(dataSource), ids);
-    createCompany = new CreateCompanyUseCase(companies, audit, uow, ids, seed);
+    const coaSeed = new SeedConstructionCoaUseCase(
+      new TypeOrmAccountGroupRepository(dataSource),
+      new TypeOrmAccountRepository(dataSource),
+      ids,
+    );
+    createCompany = new CreateCompanyUseCase(companies, audit, uow, ids, seed, coaSeed);
     updateCompany = new UpdateCompanyUseCase(companies, audit, uow);
     createFy = new CreateFinancialYearUseCase(years, audit, uow, ids);
     setActiveFy = new SetActiveFinancialYearUseCase(years, audit, uow);

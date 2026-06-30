@@ -24,6 +24,9 @@ export enum DomainErrorCode {
   IMMUTABLE_PROJECT_CODE = 'IMMUTABLE_PROJECT_CODE',
   INVALID_STATUS_TRANSITION = 'INVALID_STATUS_TRANSITION',
   REFERENCED_MASTER = 'REFERENCED_MASTER',
+  ACCOUNT_TYPE_MISMATCH = 'ACCOUNT_TYPE_MISMATCH',
+  ACCOUNT_TYPE_IMMUTABLE = 'ACCOUNT_TYPE_IMMUTABLE',
+  BASE_UOM_IMMUTABLE = 'BASE_UOM_IMMUTABLE',
   // numbering (NUM)
   SERIES_ALREADY_EXISTS = 'SERIES_ALREADY_EXISTS',
   // ledger / posting (LED)
@@ -159,6 +162,33 @@ export class ReferencedMasterError extends DomainError {
   readonly code = DomainErrorCode.REFERENCED_MASTER;
   constructor(message = 'The record is referenced and cannot be deleted; deactivate instead.') {
     super(message);
+  }
+}
+
+/** An account's `type` does not equal its group's `type` (FR-MAS-019). HTTP 400. */
+export class AccountTypeMismatchError extends DomainError {
+  readonly code = DomainErrorCode.ACCOUNT_TYPE_MISMATCH;
+  constructor(accountType: string, groupType: string) {
+    super(`Account type '${accountType}' must equal its group's type '${groupType}'`, {
+      accountType,
+      groupType,
+    });
+  }
+}
+
+/** A `type` change attempted on an account that already has ledger postings (FR-MAS-021). HTTP 409. */
+export class AccountTypeImmutableError extends DomainError {
+  readonly code = DomainErrorCode.ACCOUNT_TYPE_IMMUTABLE;
+  constructor() {
+    super("An account's type is immutable once it has ledger postings");
+  }
+}
+
+/** A `base_uom` change attempted after UoM conversions / stock references exist (FR-MAS-034). HTTP 409. */
+export class BaseUomImmutableError extends DomainError {
+  readonly code = DomainErrorCode.BASE_UOM_IMMUTABLE;
+  constructor() {
+    super("An item's base_uom is immutable once UoM conversions or stock/transaction references exist");
   }
 }
 
