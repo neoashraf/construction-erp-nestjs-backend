@@ -46,6 +46,27 @@ import { TypeOrmGodownRepository } from './godown/infrastructure/typeorm-godown.
 import { CreateGodownUseCase, UpdateGodownUseCase, SetGodownActiveUseCase } from './godown/application/godown.use-cases';
 import { GodownQueryService } from './godown/read/godown.query-service';
 import { GodownController } from './godown/presentation/godown.controller';
+// Reference masters (master-data-accounts-parties-items)
+import { TypeOrmAccountGroupRepository } from './chart-of-accounts/infrastructure/typeorm-account-group.repository';
+import { TypeOrmAccountRepository } from './chart-of-accounts/infrastructure/typeorm-account.repository';
+import { JournalLinePostingsAdapter } from './chart-of-accounts/infrastructure/journal-line-postings.adapter';
+import { LEDGER_POSTINGS_QUERY } from './chart-of-accounts/domain/ports/ledger-postings.port';
+import { CreateAccountGroupUseCase, UpdateAccountGroupUseCase } from './chart-of-accounts/application/account-group.use-cases';
+import { CreateAccountUseCase, UpdateAccountUseCase, DeactivateAccountUseCase, ReactivateAccountUseCase } from './chart-of-accounts/application/account.use-cases';
+import { SeedConstructionCoaUseCase } from './chart-of-accounts/application/construction-coa.seed';
+import { AccountGroupQueryService } from './chart-of-accounts/read/account-group.query-service';
+import { AccountQueryService } from './chart-of-accounts/read/account.query-service';
+import { AccountGroupController } from './chart-of-accounts/presentation/account-group.controller';
+import { AccountController } from './chart-of-accounts/presentation/account.controller';
+import { TypeOrmPartyRepository } from './party/infrastructure/typeorm-party.repository';
+import { CreatePartyUseCase, UpdatePartyUseCase, DeactivatePartyUseCase, ReactivatePartyUseCase } from './party/application/party.use-cases';
+import { PartyQueryService } from './party/read/party.query-service';
+import { PartyController } from './party/presentation/party.controller';
+import { TypeOrmItemRepository } from './item/infrastructure/typeorm-item.repository';
+import { TypeOrmItemUomConversionRepository } from './item/infrastructure/typeorm-item-uom-conversion.repository';
+import { CreateItemUseCase, UpdateItemUseCase, DeactivateItemUseCase, ReactivateItemUseCase, UpsertItemUomConversionUseCase, DeleteItemUomConversionUseCase } from './item/application/item.use-cases';
+import { ItemQueryService } from './item/read/item.query-service';
+import { ItemController } from './item/presentation/item.controller';
 
 @Module({
   controllers: [
@@ -56,6 +77,10 @@ import { GodownController } from './godown/presentation/godown.controller';
     ProjectBudgetController,
     PurposeController,
     GodownController,
+    AccountGroupController,
+    AccountController,
+    PartyController,
+    ItemController,
   ],
   providers: [
     { provide: COMPANY_REPOSITORY, useClass: TypeOrmCompanyRepository },
@@ -98,6 +123,37 @@ import { GodownController } from './godown/presentation/godown.controller';
     ProjectBudgetQueryService,
     PurposeQueryService,
     GodownQueryService,
+    // reference masters: repositories + seams
+    TypeOrmAccountGroupRepository,
+    TypeOrmAccountRepository,
+    TypeOrmPartyRepository,
+    TypeOrmItemRepository,
+    TypeOrmItemUomConversionRepository,
+    // LED has-postings SEAM (FR-MAS-021) — rebind to LED's exported service when it lands.
+    { provide: LEDGER_POSTINGS_QUERY, useClass: JournalLinePostingsAdapter },
+    // reference masters: use cases
+    CreateAccountGroupUseCase,
+    UpdateAccountGroupUseCase,
+    CreateAccountUseCase,
+    UpdateAccountUseCase,
+    DeactivateAccountUseCase,
+    ReactivateAccountUseCase,
+    SeedConstructionCoaUseCase,
+    CreatePartyUseCase,
+    UpdatePartyUseCase,
+    DeactivatePartyUseCase,
+    ReactivatePartyUseCase,
+    CreateItemUseCase,
+    UpdateItemUseCase,
+    DeactivateItemUseCase,
+    ReactivateItemUseCase,
+    UpsertItemUomConversionUseCase,
+    DeleteItemUomConversionUseCase,
+    // reference masters: read services
+    AccountGroupQueryService,
+    AccountQueryService,
+    PartyQueryService,
+    ItemQueryService,
   ],
 })
 export class MasterDataModule {}
