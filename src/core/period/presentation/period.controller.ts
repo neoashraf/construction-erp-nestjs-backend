@@ -1,8 +1,11 @@
 /**
  * PeriodController (PRESENTATION) — `/api/periods` (FR-PER-001..010). Generate / list / get / resolve
- * and the close · reopen · close-fy lifecycle transitions. Company implicit from the JWT. Role guards
- * (`period.generate` / `period.close` / `period.reopen`) land with `auth-jwt`; the actor is resolved
- * via `@CurrentActor`. The post-time guard is NOT here — it's invoked by PostingService (LED).
+ * and the close · reopen · close-fy lifecycle transitions. Company implicit from the JWT.
+ * Role guards: `@Roles({ module: 'PER', action: 'UPDATE' })` on every state-mutating route
+ * (`generate` / `close` / `reopen` / `close-fy`) — a caller lacking it is rejected `FORBIDDEN` (403)
+ * BEFORE the use case runs any existence/state/year-lock check (evaluation order, per-fy-lock-error
+ * brief §3). Read routes stay open to any authenticated user. The post-time guard is NOT here — it's
+ * invoked by PostingService (LED).
  */
 import {
   Body,
@@ -14,10 +17,14 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Actor } from '../../tenancy/tenant-context';
 import { CurrentActor } from '../../auth/presentation/current-actor.decorator';
+import { JwtAuthGuard } from '../../auth/presentation/jwt-auth.guard';
+import { RolesGuard } from '../../auth/presentation/roles.guard';
+import { Roles } from '../../auth/presentation/roles.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { GeneratePeriodsUseCase } from '../application/generate-periods.use-case';
 import { ClosePeriodUseCase } from '../application/close-period.use-case';
@@ -34,6 +41,7 @@ import {
 
 @ApiTags('Periods')
 @Controller('api/periods')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class PeriodController {
   constructor(
     private readonly generate: GeneratePeriodsUseCase,
@@ -52,6 +60,7 @@ export class PeriodController {
   }
 
   @Post('generate')
+  @Roles({ module: 'PER', action: 'UPDATE' })
   async generatePeriods(
     @Body() body: GeneratePeriodsDto,
     @CurrentActor() actor: Actor,
@@ -68,6 +77,7 @@ export class PeriodController {
 
   @Post('close-fy')
   @HttpCode(200)
+  @Roles({ module: 'PER', action: 'UPDATE' })
   async closeFinancialYear(
     @Body() body: CloseFyDto,
     @CurrentActor() actor: Actor,
@@ -98,6 +108,7 @@ export class PeriodController {
 
   @Post(':id/close')
   @HttpCode(200)
+  @Roles({ module: 'PER', action: 'UPDATE' })
   async close(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
@@ -107,6 +118,7 @@ export class PeriodController {
 
   @Post(':id/reopen')
   @HttpCode(200)
+  @Roles({ module: 'PER', action: 'UPDATE' })
   async reopen(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
