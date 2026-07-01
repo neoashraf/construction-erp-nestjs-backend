@@ -3,7 +3,11 @@
  * repost lifecycle. camelCase JSON + `{data,meta}` envelope (interceptor) + canonical/module error codes
  * (filter). The actor (company implicit) is resolved via @CurrentActor; PM project-scope is enforced in
  * the query service. Money is sent/returned as numeric(18,4) strings; dates 'YYYY-MM-DD'. `customerId`
- * and `currentlyDueAmount` are resolved/derived server-side, never client-supplied.
+ * and `currentlyDueAmount` are resolved/derived server-side, never client-supplied. Real
+ * `@UseGuards(JwtAuthGuard, RolesGuard)` + per-route `@Roles({module:'SAL', action})`
+ * (tier2-rbac-guard-wiring, FR-AUD-012/013/017) — GET /ipc, /ipc/:id -> READ, POST /ipc -> CREATE,
+ * PATCH /ipc/:id -> UPDATE, DELETE /ipc/:id -> DELETE, POST /ipc/:id/post|/ipc/:id/repost -> POST,
+ * POST /ipc/:id/cancel -> CANCEL.
  */
 import {
   Body,
@@ -17,6 +21,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
@@ -31,6 +36,9 @@ import {
 import { Type } from 'class-transformer';
 import { Actor } from '../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../core/auth/presentation/current-actor.decorator';
+import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
+import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
+import { Roles } from '../../../core/auth/presentation/roles.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { CreateIpcUseCase } from '../application/create-ipc.usecase';
 import { DeleteIpcUseCase, UpdateIpcDraftUseCase } from '../application/update-ipc-draft.usecase';
@@ -102,6 +110,7 @@ class IpcQueryDto {
 
 @ApiTags('Sales / IPC')
 @Controller('api/sales/ipc')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class SalesController {
   constructor(
     private readonly create: CreateIpcUseCase,
@@ -114,22 +123,26 @@ export class SalesController {
   ) {}
 
   @Get()
+  @Roles({ module: 'SAL', action: 'READ' })
   list(@Query() q: IpcQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<IpcSummaryDto>> {
     return this.query.list(q, actor);
   }
 
   @Get(':id')
+  @Roles({ module: 'SAL', action: 'READ' })
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<IpcDto> {
     return this.require(id, actor);
   }
 
   @Post()
   @HttpCode(201)
+  @Roles({ module: 'SAL', action: 'CREATE' })
   create_(@Body() body: CreateIpcDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.create.execute(body, actor);
   }
 
   @Patch(':id')
+  @Roles({ module: 'SAL', action: 'UPDATE' })
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateIpcDto,
@@ -142,12 +155,14 @@ export class SalesController {
 
   @Delete(':id')
   @HttpCode(204)
+  @Roles({ module: 'SAL', action: 'DELETE' })
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<void> {
     return this.del.execute(id, actor);
   }
 
   @Post(':id/post')
   @HttpCode(200)
+  @Roles({ module: 'SAL', action: 'POST' })
   async post(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() _body: PostIpcDto,
@@ -160,6 +175,7 @@ export class SalesController {
 
   @Post(':id/cancel')
   @HttpCode(200)
+  @Roles({ module: 'SAL', action: 'CANCEL' })
   async cancel(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: CancelIpcDto,
@@ -171,6 +187,7 @@ export class SalesController {
 
   @Post(':id/repost')
   @HttpCode(200)
+  @Roles({ module: 'SAL', action: 'POST' })
   async repost(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: RepostIpcDto,

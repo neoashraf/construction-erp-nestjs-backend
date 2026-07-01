@@ -5,7 +5,10 @@
  * codes (filter). The actor (company implicit) is resolved via @CurrentActor; PM project-scope is enforced
  * in the use cases + query service. Money/qty are numeric(18,4) strings; dates 'YYYY-MM-DD'. The ISSUE
  * endpoint (`…/issue`) is a SEPARATE downstream brief (#23 requisition-issue-posting) — this controller
- * exposes NO issue and writes NO ledger / moves NO stock.
+ * exposes NO issue and writes NO ledger / moves NO stock. Real `@UseGuards(JwtAuthGuard, RolesGuard)` +
+ * per-route `@Roles({module:'REQ', action})` (tier2-rbac-guard-wiring, FR-AUD-012/013/017) — GET
+ * list/:id/:id/approvals/:id/outstanding -> READ, POST -> CREATE, PATCH :id -> UPDATE, DELETE :id ->
+ * DELETE, POST :id/submit|:id/close -> UPDATE, POST :id/approve -> APPROVE, POST :id/reject -> REJECT.
  */
 import {
   Body,
@@ -19,6 +22,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -37,6 +41,9 @@ import {
 } from 'class-validator';
 import { Actor } from '../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../core/auth/presentation/current-actor.decorator';
+import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
+import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
+import { Roles } from '../../../core/auth/presentation/roles.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { PRIORITIES } from '../domain/requisition-status';
 import { CreateRequisitionUseCase } from '../application/create-requisition.usecase';
@@ -111,6 +118,7 @@ class RequisitionQueryDto {
 
 @ApiTags('Requisition')
 @Controller('api/requisition')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class RequisitionController {
   constructor(
     private readonly create: CreateRequisitionUseCase,
@@ -124,6 +132,7 @@ export class RequisitionController {
   ) {}
 
   @Get()
+  @Roles({ module: 'REQ', action: 'READ' })
   list(
     @Query() q: RequisitionQueryDto,
     @CurrentActor() actor: Actor,
@@ -132,11 +141,13 @@ export class RequisitionController {
   }
 
   @Get(':id')
+  @Roles({ module: 'REQ', action: 'READ' })
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<RequisitionDto> {
     return this.require(id, actor);
   }
 
   @Get(':id/approvals')
+  @Roles({ module: 'REQ', action: 'READ' })
   async approvals(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
@@ -147,6 +158,7 @@ export class RequisitionController {
   }
 
   @Get(':id/outstanding')
+  @Roles({ module: 'REQ', action: 'READ' })
   async outstanding(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
@@ -158,6 +170,7 @@ export class RequisitionController {
 
   @Post()
   @HttpCode(201)
+  @Roles({ module: 'REQ', action: 'CREATE' })
   create_(@Body() body: CreateRequisitionDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.create
       .execute(body as never, actor)
@@ -165,6 +178,7 @@ export class RequisitionController {
   }
 
   @Patch(':id')
+  @Roles({ module: 'REQ', action: 'UPDATE' })
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateRequisitionDto,
@@ -178,12 +192,14 @@ export class RequisitionController {
 
   @Delete(':id')
   @HttpCode(204)
+  @Roles({ module: 'REQ', action: 'DELETE' })
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<void> {
     return this.del.execute(id, actor);
   }
 
   @Post(':id/submit')
   @HttpCode(200)
+  @Roles({ module: 'REQ', action: 'UPDATE' })
   async submit(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() _body: VersionDto,
@@ -196,6 +212,7 @@ export class RequisitionController {
 
   @Post(':id/approve')
   @HttpCode(200)
+  @Roles({ module: 'REQ', action: 'APPROVE' })
   async approve(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ApproveDto,
@@ -207,6 +224,7 @@ export class RequisitionController {
 
   @Post(':id/reject')
   @HttpCode(200)
+  @Roles({ module: 'REQ', action: 'REJECT' })
   async reject(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ReasonDto,
@@ -218,6 +236,7 @@ export class RequisitionController {
 
   @Post(':id/close')
   @HttpCode(200)
+  @Roles({ module: 'REQ', action: 'UPDATE' })
   async close(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ReasonDto,

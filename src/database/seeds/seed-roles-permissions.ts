@@ -34,7 +34,24 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'LED', action: 'READ', projectScope: 'ALL' },
       { module: 'LED', action: 'CREATE', projectScope: 'ALL' },
       { module: 'LED', action: 'POST', projectScope: 'ALL' },
+      // GEN (contra & journal vouchers) — docs/srs/14-contra-journal.md §3 Actors: "Accounts Team |
+      // Creates, posts, and reverses contra and journal vouchers ... the primary user of this module."
+      // (tier2-rbac-guard-wiring #36 — no GEN grant existed for any role before this brief.)
+      { module: 'GEN', action: 'CREATE', projectScope: 'ALL' },
+      { module: 'GEN', action: 'READ', projectScope: 'ALL' },
+      { module: 'GEN', action: 'UPDATE', projectScope: 'ALL' },
+      { module: 'GEN', action: 'DELETE', projectScope: 'ALL' },
+      { module: 'GEN', action: 'POST', projectScope: 'ALL' },
+      { module: 'GEN', action: 'CANCEL', projectScope: 'ALL' },
       { module: 'SAL', action: 'READ', projectScope: 'ALL' },
+      // SAL write/post/cancel — docs/srs/10-sales-ipc.md §3 Actors: "Accounts Team | Creates, edits,
+      // posts, prints, and (permissioned) cancels/corrects IPCs ..." (tier2-rbac-guard-wiring #36 — the
+      // pre-existing seed only granted SAL:READ, so ACCOUNTS_TEAM could not create/post/cancel an IPC).
+      { module: 'SAL', action: 'CREATE', projectScope: 'ALL' },
+      { module: 'SAL', action: 'UPDATE', projectScope: 'ALL' },
+      { module: 'SAL', action: 'DELETE', projectScope: 'ALL' },
+      { module: 'SAL', action: 'POST', projectScope: 'ALL' },
+      { module: 'SAL', action: 'CANCEL', projectScope: 'ALL' },
       { module: 'PUR', action: 'READ', projectScope: 'ALL' },
       { module: 'PAY', action: 'CREATE', projectScope: 'ALL' },
       { module: 'PAY', action: 'POST', projectScope: 'ALL' },
@@ -59,6 +76,25 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'REQ', action: 'CREATE', projectScope: 'ASSIGNED' },
       { module: 'REQ', action: 'READ', projectScope: 'ASSIGNED' },
       { module: 'REQ', action: 'APPROVE', projectScope: 'ASSIGNED' },
+      // REQ update/delete (edit/delete own DRAFT + submit/close) — docs/srs/09-requisition.md §7 Flow A
+      // step 1: "A PM / Site Engineer creates a DRAFT requisition..."; FR-REQ-022: "a requisition shall
+      // be editable/deletable only while DRAFT" (the requester — PM per creation — is implied); FR-REQ-006:
+      // "The requester shall submit a DRAFT requisition for review." (tier2-rbac-guard-wiring #36 — PM
+      // held REQ:CREATE/READ/APPROVE only, so PATCH/DELETE/submit/close on PM's own draft requisitions
+      // were unreachable for the module's own named requester.)
+      { module: 'REQ', action: 'UPDATE', projectScope: 'ASSIGNED' },
+      { module: 'REQ', action: 'DELETE', projectScope: 'ASSIGNED' },
+      // REQ reject — docs/srs/09-requisition.md §3 Actors: "Project Manager | ... approves requisitions
+      // within the PM tier threshold ..." and FR-REQ-008 / §7 Flow B: "The authorised approver (PM within
+      // the tier, or Accounts above it) ... approves ... or rejects with a reason." Reject is the same
+      // authorised-approver action as approve, just the other outcome — PM needed both (tier2-rbac-guard-
+      // wiring #36 — PM held REQ:APPROVE but not REQ:REJECT before this brief).
+      { module: 'REQ', action: 'REJECT', projectScope: 'ASSIGNED' },
+      // INV approve — docs/srs/07-inventory.md §3 Actors: "Project Manager | Approves Stock Journals
+      // for assigned projects; reviews stock balances/valuation per project." (tier2-rbac-guard-wiring
+      // #36 — PM held zero INV grant before this brief, so the stock-journal `:id/approve` route was
+      // unreachable for its own named actor.)
+      { module: 'INV', action: 'APPROVE', projectScope: 'ASSIGNED' },
       { module: 'HR', action: 'READ', projectScope: 'ASSIGNED' },
       { module: 'CC', action: 'READ', projectScope: 'ASSIGNED' },
     ],
@@ -84,6 +120,15 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'INV', action: 'CREATE', projectScope: 'ASSIGNED' },
       { module: 'INV', action: 'READ', projectScope: 'ASSIGNED' },
       { module: 'INV', action: 'UPDATE', projectScope: 'ASSIGNED' },
+      // INV post/cancel — docs/srs/07-inventory.md §3 Actors: "Store Keeper | Records Stock Journals
+      // (transfers, issues, adjustments) ... the primary day-to-day INV user" and §7 Flow A/B: "Store
+      // Keeper posts ..." / "Store Keeper (or the REQ issue flow)". §7 Flow D names Accounts/PM
+      // (permissioned) for reversal too, but Store Keeper is the day-to-day poster and needed CANCEL to
+      // correct their own draft-stage mistakes without an Accounts/PM escalation for every case — kept
+      // minimal here to what the route table needs (tier2-rbac-guard-wiring #36 — Store Keeper held no
+      // POST/CANCEL grant before this brief, so the stock-journal post/reverse routes were unreachable).
+      { module: 'INV', action: 'POST', projectScope: 'ASSIGNED' },
+      { module: 'INV', action: 'CANCEL', projectScope: 'ASSIGNED' },
       { module: 'REQ', action: 'READ', projectScope: 'ASSIGNED' },
     ],
   },
@@ -95,6 +140,13 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'HR', action: 'CREATE', projectScope: 'ASSIGNED' },
       { module: 'HR', action: 'READ', projectScope: 'ASSIGNED' },
       { module: 'HR', action: 'UPDATE', projectScope: 'ASSIGNED' },
+      // HR confirm/reverse (daily-labour accrual) — docs/srs/12-hr-payroll.md §3 Actors: "HR Manager |
+      // Maintains the employee master; reviews and confirms attendance; generates, reviews, and posts
+      // salary sheets ..." and §7.C step 3: "HR Manager/Accounts confirms the entry." (tier2-rbac-guard-
+      // wiring #36 — HR_MANAGER held no POST/CANCEL grant before this brief, so daily-labour confirm/
+      // reverse were unreachable for its own named actor.)
+      { module: 'HR', action: 'POST', projectScope: 'ASSIGNED' },
+      { module: 'HR', action: 'CANCEL', projectScope: 'ASSIGNED' },
       { module: 'PAY', action: 'READ', projectScope: 'ASSIGNED' },
     ],
   },
