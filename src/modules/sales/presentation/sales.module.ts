@@ -1,13 +1,16 @@
 /**
- * SalesModule (SAL) — composition root. Binds the SAL ports → adapters and wires the IPC controller.
+ * SalesModule (SAL) — composition root. Binds the SAL ports → adapters and wires the IPC controllers.
  * Imports PostingModule (the single ledger writer, exported by core) and AuthModule. SAL posts every IPC
- * command through PostingService inside its own UnitOfWork; it never writes journal_entry/journal_line
- * directly (CLAUDE.md 1–2; FR-SAL-009).
+ * (and retention-release) command through PostingService inside its own UnitOfWork; it never writes
+ * journal_entry/journal_line directly (CLAUDE.md 1–2; FR-SAL-009, FR-SAL-018).
  *
  * SEAMS: the MAS ports (SalesAccountMapPort, IpcConfigPort) and the ledger-read AdvanceBalancePort are
  * bound to adapters that read MAS `account`/`project` + the LED `journal_line` directly (MAS/LED export
- * no repositories to SAL). When MAS exports a rate-config / account-map service, rebind here. AUDIT_SERVICE
- * + UNIT_OF_WORK + CLOCK + ID_GENERATOR are provided globally.
+ * no repositories to SAL). When MAS exports a rate-config / account-map service, rebind here.
+ * `ReceiptAllocationPort` (this brief, sales-ipc-retention-release) is bound to `ReceiptAllocationAdapter`,
+ * reading REC's `receipt_allocation` VIEW directly (REC exports no repository/service — the same
+ * cross-module read pattern REC's own IpcReferenceAdapter uses in the opposite direction).
+ * AUDIT_SERVICE + UNIT_OF_WORK + CLOCK + ID_GENERATOR are provided globally.
  */
 import { Module } from '@nestjs/common';
 import { PostingModule } from '../../../core/posting/posting.module';
@@ -17,26 +20,33 @@ import { DeleteIpcUseCase, UpdateIpcDraftUseCase } from '../application/update-i
 import { PostIpcUseCase } from '../application/post-ipc.usecase';
 import { CancelIpcUseCase } from '../application/cancel-ipc.usecase';
 import { RepostIpcUseCase } from '../application/repost-ipc.usecase';
+import { ReleaseRetentionUseCase } from '../application/release-retention.usecase';
 import { IpcQueryService } from '../application/ipc-query.service';
 import { IPC_REPOSITORY } from '../domain/ports/ipc.repository';
 import { SALES_ACCOUNT_MAP_PORT } from '../domain/ports/sales-account-map.port';
 import { IPC_CONFIG_PORT } from '../domain/ports/ipc-config.port';
 import { ADVANCE_BALANCE_PORT } from '../domain/ports/advance-balance.port';
+import { RETENTION_RELEASE_REPOSITORY } from '../domain/ports/retention-release.repository';
+import { RECEIPT_ALLOCATION_PORT } from '../domain/ports/receipt-allocation.port';
 import { TypeOrmIpcRepository } from '../infrastructure/typeorm-ipc.repository';
 import { SalesAccountMapAdapter } from '../infrastructure/sales-account-map.adapter';
 import { IpcConfigAdapter } from '../infrastructure/ipc-config.adapter';
 import { AdvanceBalanceAdapter } from '../infrastructure/advance-balance.adapter';
-import { SalesController } from './sales.controller';
+import { TypeOrmRetentionReleaseRepository } from '../infrastructure/typeorm-retention-release.repository';
+import { ReceiptAllocationAdapter } from '../infrastructure/receipt-allocation.adapter';
+import { SalesController, SalesProjectsController } from './sales.controller';
 
 @Module({
   imports: [PostingModule, AuthModule],
-  controllers: [SalesController],
+  controllers: [SalesController, SalesProjectsController],
   providers: [
     // ports → adapters
     { provide: IPC_REPOSITORY, useClass: TypeOrmIpcRepository },
     { provide: SALES_ACCOUNT_MAP_PORT, useClass: SalesAccountMapAdapter },
     { provide: IPC_CONFIG_PORT, useClass: IpcConfigAdapter },
     { provide: ADVANCE_BALANCE_PORT, useClass: AdvanceBalanceAdapter },
+    { provide: RETENTION_RELEASE_REPOSITORY, useClass: TypeOrmRetentionReleaseRepository },
+    { provide: RECEIPT_ALLOCATION_PORT, useClass: ReceiptAllocationAdapter },
     // use cases
     CreateIpcUseCase,
     UpdateIpcDraftUseCase,
@@ -44,6 +54,7 @@ import { SalesController } from './sales.controller';
     PostIpcUseCase,
     CancelIpcUseCase,
     RepostIpcUseCase,
+    ReleaseRetentionUseCase,
     // read
     IpcQueryService,
   ],

@@ -70,3 +70,11 @@ export class SalesAccountNotConfiguredError extends DomainError {
     });
   }
 }
+
+/** A retention release exceeds the retention currently held (un-released) for the IPC (FR-SAL-019, edge case 7). HTTP 409. */
+export class OverReleaseError extends DomainError {
+  readonly code = DomainErrorCode.OVER_RELEASE;
+  constructor(requested: string, held: string) {
+    super(`retention release ${requested} exceeds the retention held ${held} for this IPC`, { requested, held });
+  }
+}
