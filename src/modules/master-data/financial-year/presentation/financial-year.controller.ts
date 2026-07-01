@@ -1,7 +1,7 @@
 /**
  * FinancialYearController (PRESENTATION) — `/api/masters/financial-years` (FR-MAS-002, FR-MAS-003).
- * Thin: resolve the actor, delegate, map. Company comes from the actor. Auth/role guards land with the
- * `auth-jwt` brief.
+ * Thin: resolve the actor, delegate, map. Company comes from the actor. `@UseGuards(JwtAuthGuard,
+ * RolesGuard)` + per-route `@Roles({module:'MAS', action})` (mas-rbac-guard-wiring, FR-AUD-012/013).
  */
 import {
   Body,
@@ -14,10 +14,14 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
+import { JwtAuthGuard } from '../../../../core/auth/presentation/jwt-auth.guard';
+import { RolesGuard } from '../../../../core/auth/presentation/roles.guard';
+import { Roles } from '../../../../core/auth/presentation/roles.decorator';
 import { CreateFinancialYearUseCase } from '../../application/financial-year/create-financial-year.use-case';
 import { UpdateFinancialYearUseCase } from '../../application/financial-year/update-financial-year.use-case';
 import { SetActiveFinancialYearUseCase } from '../../application/financial-year/set-active-financial-year.use-case';
@@ -31,6 +35,7 @@ import {
 
 @ApiTags('Org')
 @Controller('api/masters/financial-years')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class FinancialYearController {
   constructor(
     private readonly createFy: CreateFinancialYearUseCase,
@@ -40,6 +45,7 @@ export class FinancialYearController {
   ) {}
 
   @Get()
+  @Roles({ module: 'MAS', action: 'READ' })
   list(
     @Query() q: ListFinancialYearsQueryDto,
     @CurrentActor() actor: Actor,
@@ -49,6 +55,7 @@ export class FinancialYearController {
   }
 
   @Post()
+  @Roles({ module: 'MAS', action: 'CREATE' })
   create(
     @Body() body: CreateFinancialYearDto,
     @CurrentActor() actor: Actor,
@@ -57,6 +64,7 @@ export class FinancialYearController {
   }
 
   @Patch(':id')
+  @Roles({ module: 'MAS', action: 'UPDATE' })
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateFinancialYearDto,
@@ -69,6 +77,7 @@ export class FinancialYearController {
 
   @Post(':id/set-active')
   @HttpCode(200)
+  @Roles({ module: 'MAS', action: 'UPDATE' })
   async setActive(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,

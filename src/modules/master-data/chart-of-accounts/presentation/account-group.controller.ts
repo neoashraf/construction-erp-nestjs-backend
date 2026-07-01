@@ -1,9 +1,16 @@
-/** AccountGroupController — `/api/masters/account-groups` (FR-MAS-017). Admin (guards via auth-jwt). */
-import { Body, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+/**
+ * AccountGroupController — `/api/masters/account-groups` (FR-MAS-017).
+ * `@UseGuards(JwtAuthGuard, RolesGuard)` + per-route `@Roles({module:'MAS', action})`
+ * (mas-rbac-guard-wiring, FR-AUD-012/013).
+ */
+import { Body, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
+import { JwtAuthGuard } from '../../../../core/auth/presentation/jwt-auth.guard';
+import { RolesGuard } from '../../../../core/auth/presentation/roles.guard';
+import { Roles } from '../../../../core/auth/presentation/roles.decorator';
 import { Paginated } from '../../../../infrastructure/http/pagination';
 import { MasterListQueryDto, VersionBodyDto } from '../../shared/dto';
 import { ACCOUNT_TYPES } from '../domain/account-type';
@@ -26,6 +33,7 @@ class AccountGroupQueryDto extends MasterListQueryDto {
 
 @ApiTags('Chart of Accounts')
 @Controller('api/masters/account-groups')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class AccountGroupController {
   constructor(
     private readonly create: CreateAccountGroupUseCase,
@@ -34,16 +42,19 @@ export class AccountGroupController {
   ) {}
 
   @Get()
+  @Roles({ module: 'MAS', action: 'READ' })
   list(@Query() q: AccountGroupQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<AccountGroupDto>> {
     return this.query.list({ page: q.page, pageSize: q.pageSize, type: q.type, parentGroupId: q.parentGroupId }, actor);
   }
 
   @Post()
+  @Roles({ module: 'MAS', action: 'CREATE' })
   create_(@Body() body: CreateAccountGroupDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.create.execute(body, actor);
   }
 
   @Patch(':id')
+  @Roles({ module: 'MAS', action: 'UPDATE' })
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateAccountGroupDto,

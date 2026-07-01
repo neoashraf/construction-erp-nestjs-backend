@@ -1,9 +1,16 @@
-/** PartyController — `/api/masters/parties` (FR-MAS-022/023/024/029/033). Admin/Accounts (guards via auth-jwt). */
-import { Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+/**
+ * PartyController — `/api/masters/parties` (FR-MAS-022/023/024/029/033).
+ * `@UseGuards(JwtAuthGuard, RolesGuard)` + per-route `@Roles({module:'MAS', action})`
+ * (mas-rbac-guard-wiring, FR-AUD-012/013).
+ */
+import { Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { IsBoolean, IsBooleanString, IsEmail, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
+import { JwtAuthGuard } from '../../../../core/auth/presentation/jwt-auth.guard';
+import { RolesGuard } from '../../../../core/auth/presentation/roles.guard';
+import { Roles } from '../../../../core/auth/presentation/roles.decorator';
 import { Paginated } from '../../../../infrastructure/http/pagination';
 import { MasterListQueryDto, VersionBodyDto, parseActive } from '../../shared/dto';
 import {
@@ -45,6 +52,7 @@ class PartyQueryDto extends MasterListQueryDto {
 
 @ApiTags('Parties')
 @Controller('api/masters/parties')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class PartyController {
   constructor(
     private readonly create: CreatePartyUseCase,
@@ -55,6 +63,7 @@ export class PartyController {
   ) {}
 
   @Get()
+  @Roles({ module: 'MAS', action: 'READ' })
   list(@Query() q: PartyQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<PartyDto>> {
     return this.query.list(
       {
@@ -70,16 +79,19 @@ export class PartyController {
   }
 
   @Get(':id')
+  @Roles({ module: 'MAS', action: 'READ' })
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<PartyDto> {
     return this.require(id, actor);
   }
 
   @Post()
+  @Roles({ module: 'MAS', action: 'CREATE' })
   create_(@Body() body: CreatePartyDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.create.execute(body, actor);
   }
 
   @Patch(':id')
+  @Roles({ module: 'MAS', action: 'UPDATE' })
   async patch(@Param('id', ParseUUIDPipe) id: string, @Body() body: UpdatePartyDto, @CurrentActor() actor: Actor): Promise<PartyDto> {
     const { version, ...rest } = body;
     await this.update.execute(id, rest, version, actor);
@@ -88,6 +100,7 @@ export class PartyController {
 
   @Post(':id/deactivate')
   @HttpCode(200)
+  @Roles({ module: 'MAS', action: 'UPDATE' })
   async deactivate_(@Param('id', ParseUUIDPipe) id: string, @Body() body: VersionBodyDto, @CurrentActor() actor: Actor): Promise<PartyDto> {
     await this.deactivate.execute(id, body.version, actor);
     return this.require(id, actor);
@@ -95,6 +108,7 @@ export class PartyController {
 
   @Post(':id/reactivate')
   @HttpCode(200)
+  @Roles({ module: 'MAS', action: 'UPDATE' })
   async reactivate_(@Param('id', ParseUUIDPipe) id: string, @Body() body: VersionBodyDto, @CurrentActor() actor: Actor): Promise<PartyDto> {
     await this.reactivate.execute(id, body.version, actor);
     return this.require(id, actor);
