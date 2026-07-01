@@ -7,7 +7,7 @@ import Decimal from 'decimal.js';
 export const MODULE_CODES = [
   'AUD', 'NUM', 'PER', 'LED', 'MAS',
   'SAL', 'PUR', 'REQ', 'INV', 'REC',
-  'HR', 'PAY', 'GEN', 'RPT', 'DSH',
+  'HR', 'PAY', 'GEN', 'RPT', 'DSH', 'CC',
 ] as const;
 export type ModuleCode = (typeof MODULE_CODES)[number];
 

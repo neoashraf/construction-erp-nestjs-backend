@@ -3,14 +3,19 @@
  * owns no write endpoint: budget-vs-actual, profitability, and alerts read the LED ledger + MAS
  * budgets; `budget-check` is a read that carries draft lines in a POST body and NEVER blocks a post
  * (FR-CC-014). Company is implicit from the JWT; a PM is restricted to assigned projects (F4) — an
- * explicit filter on an unassigned project is rejected 403. `cost-control:read` guard lands with the
- * RBAC seed; the actor is resolved via `@CurrentActor`.
+ * explicit filter on an unassigned project is rejected 403. Guards: `@UseGuards(JwtAuthGuard,
+ * RolesGuard)` at class level + `@Roles({module:'CC', action:'READ'})` on every route incl.
+ * `budget-check` (advisory only, FR-CC-014 — still gated as a READ), mirroring `period.controller.ts`
+ * (per-fy-lock-error) — FR-AUD-012/013/017. The actor is resolved via `@CurrentActor`.
  */
-import { Body, Controller, ForbiddenException, Get, Inject, Post, Query } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Inject, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import Decimal from 'decimal.js';
 import { Actor } from '../../tenancy/tenant-context';
 import { CurrentActor } from '../../auth/presentation/current-actor.decorator';
+import { JwtAuthGuard } from '../../auth/presentation/jwt-auth.guard';
+import { RolesGuard } from '../../auth/presentation/roles.guard';
+import { Roles } from '../../auth/presentation/roles.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import {
   BudgetVsActualRow,
@@ -43,6 +48,7 @@ interface ProspectiveResultDto {
 
 @ApiTags('Cost Control')
 @Controller('api/cost-control')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class CostControlController {
   constructor(
     private readonly query: CostControlQueryService,
@@ -50,6 +56,7 @@ export class CostControlController {
   ) {}
 
   @Get('budget-vs-actual')
+  @Roles({ module: 'CC', action: 'READ' })
   budgetVsActual(
     @Query() q: BudgetVsActualQueryDto,
     @CurrentActor() actor: Actor,
@@ -59,6 +66,7 @@ export class CostControlController {
   }
 
   @Get('profitability')
+  @Roles({ module: 'CC', action: 'READ' })
   profitability(
     @Query() q: ProfitabilityQueryDto,
     @CurrentActor() actor: Actor,
@@ -68,6 +76,7 @@ export class CostControlController {
   }
 
   @Get('alerts')
+  @Roles({ module: 'CC', action: 'READ' })
   alerts(
     @Query() q: AlertsQueryDto,
     @CurrentActor() actor: Actor,
@@ -77,6 +86,7 @@ export class CostControlController {
   }
 
   @Post('budget-check')
+  @Roles({ module: 'CC', action: 'READ' })
   async budgetCheckEndpoint(
     @Body() body: BudgetCheckBodyDto,
     @CurrentActor() actor: Actor,

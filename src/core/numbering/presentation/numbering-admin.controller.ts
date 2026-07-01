@@ -1,8 +1,11 @@
 /**
  * NumberingAdminController (PRESENTATION) — `/api/masters/numbering-series`. Admin config + read-only
  * state/preview/gap-audit. There is deliberately NO allocate/reserve/consume endpoint — allocation is
- * internal to the post transaction via the NumberingService port (FR-NUM-007/008). Role guards (Admin
- * for writes) land with `auth-jwt`; the actor is resolved via `@CurrentActor`.
+ * internal to the post transaction via the NumberingService port (FR-NUM-007/008). Guards:
+ * `@UseGuards(JwtAuthGuard, RolesGuard)` at class level + `@Roles({module:'NUM', action})` per route
+ * (list/:id/next-preview/gap-audit -> READ, create -> CREATE, patch -> UPDATE), mirroring
+ * `period.controller.ts` (per-fy-lock-error) — FR-AUD-012/013/017. The actor is resolved via
+ * `@CurrentActor`.
  */
 import {
   Body,
@@ -14,10 +17,14 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Actor } from '../../tenancy/tenant-context';
 import { CurrentActor } from '../../auth/presentation/current-actor.decorator';
+import { JwtAuthGuard } from '../../auth/presentation/jwt-auth.guard';
+import { RolesGuard } from '../../auth/presentation/roles.guard';
+import { Roles } from '../../auth/presentation/roles.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { CreateNumberingSeriesUseCase } from '../application/create-numbering-series.use-case';
 import { UpdateNumberingSeriesUseCase } from '../application/update-numbering-series.use-case';
@@ -35,6 +42,7 @@ import {
 
 @ApiTags('Numbering')
 @Controller('api/masters/numbering-series')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class NumberingAdminController {
   constructor(
     private readonly createSeries: CreateNumberingSeriesUseCase,
@@ -43,6 +51,7 @@ export class NumberingAdminController {
   ) {}
 
   @Get()
+  @Roles({ module: 'NUM', action: 'READ' })
   list(
     @Query() q: ListNumberingSeriesQueryDto,
     @CurrentActor() actor: Actor,
@@ -51,6 +60,7 @@ export class NumberingAdminController {
   }
 
   @Post()
+  @Roles({ module: 'NUM', action: 'CREATE' })
   create(
     @Body() body: CreateNumberingSeriesDto,
     @CurrentActor() actor: Actor,
@@ -59,6 +69,7 @@ export class NumberingAdminController {
   }
 
   @Get(':id')
+  @Roles({ module: 'NUM', action: 'READ' })
   async getById(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
@@ -69,6 +80,7 @@ export class NumberingAdminController {
   }
 
   @Patch(':id')
+  @Roles({ module: 'NUM', action: 'UPDATE' })
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateNumberingSeriesDto,
@@ -81,6 +93,7 @@ export class NumberingAdminController {
   }
 
   @Get(':id/next-preview')
+  @Roles({ module: 'NUM', action: 'READ' })
   nextPreview(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
@@ -89,6 +102,7 @@ export class NumberingAdminController {
   }
 
   @Get(':id/gap-audit')
+  @Roles({ module: 'NUM', action: 'READ' })
   gapAudit(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,

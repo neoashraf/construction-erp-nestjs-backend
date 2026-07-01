@@ -14,7 +14,7 @@ type RoleSeed = {
   permissions: { module: string; action: string; projectScope: string }[];
 };
 
-const ALL_MODULES = ['AUD', 'NUM', 'PER', 'LED', 'MAS', 'SAL', 'PUR', 'REQ', 'INV', 'REC', 'HR', 'PAY', 'GEN', 'RPT', 'DSH'];
+const ALL_MODULES = ['AUD', 'NUM', 'PER', 'LED', 'MAS', 'SAL', 'PUR', 'REQ', 'INV', 'REC', 'HR', 'PAY', 'GEN', 'RPT', 'DSH', 'CC'];
 const ADMIN_PERMS = ALL_MODULES.flatMap(m =>
   ['CREATE', 'READ', 'UPDATE', 'DELETE', 'POST', 'CANCEL', 'APPROVE', 'REJECT'].map(a => ({ module: m, action: a, projectScope: 'ALL' })),
 );
@@ -42,6 +42,7 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'REC', action: 'POST', projectScope: 'ALL' },
       { module: 'RPT', action: 'READ', projectScope: 'ALL' },
       { module: 'MAS', action: 'READ', projectScope: 'ALL' },
+      { module: 'CC', action: 'READ', projectScope: 'ALL' },
     ],
   },
   {
@@ -59,6 +60,7 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'REQ', action: 'READ', projectScope: 'ASSIGNED' },
       { module: 'REQ', action: 'APPROVE', projectScope: 'ASSIGNED' },
       { module: 'HR', action: 'READ', projectScope: 'ASSIGNED' },
+      { module: 'CC', action: 'READ', projectScope: 'ASSIGNED' },
     ],
   },
   {
