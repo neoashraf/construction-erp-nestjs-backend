@@ -8,11 +8,15 @@
 export type AuditAction =
   | 'CREATE'
   | 'UPDATE'
+  | 'DELETE'
   | 'DEACTIVATE'
   | 'REACTIVATE'
   | 'ACTIVATE'
   | 'POST'
-  | 'CANCEL';
+  | 'CANCEL'
+  | 'APPROVE'
+  | 'REJECT'
+  | 'EXPORT';
 
 export interface AuditEntry {
   readonly action: AuditAction;
