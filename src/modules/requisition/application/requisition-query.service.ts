@@ -15,6 +15,8 @@ import { Actor } from '../../../core/tenancy/tenant-context';
 import { Paginated, resolvePaging } from '../../../infrastructure/http/pagination';
 import { RequisitionApprovalOrmEntity } from '../infrastructure/requisition-approval.orm-entity';
 import { RequisitionLineOrmEntity } from '../infrastructure/requisition-line.orm-entity';
+import { RequisitionIssueLineOrmEntity } from '../infrastructure/requisition-issue-line.orm-entity';
+import { RequisitionIssueOrmEntity } from '../infrastructure/requisition-issue.orm-entity';
 import { RequisitionOrmEntity } from '../infrastructure/requisition.orm-entity';
 
 export interface RequisitionListFilter {
@@ -92,6 +94,31 @@ export interface OutstandingDto {
   status: string;
   lines: OutstandingLineDto[];
   totalOutstandingValueIndicative: string;
+}
+
+export interface RequisitionIssueLineDto {
+  requisitionLineId: string;
+  itemId: string;
+  godownId: string;
+  stockMovementId: string;
+  issuedQuantity: string;
+  rate: string;
+  value: string;
+}
+
+export interface RequisitionIssueDto {
+  requisitionId: string;
+  requisitionIssueId: string;
+  issueNo: number;
+  journalEntryId: string;
+  entryNo: string | null;
+  issuedValue: string;
+  fromGodownId: string;
+  lines: RequisitionIssueLineDto[];
+  issuedById: string;
+  issuedAt: string;
+  reversedAt: string | null;
+  reversedById: string | null;
 }
 
 @Injectable()
@@ -199,6 +226,26 @@ export class RequisitionQueryService {
     };
   }
 
+  async issues(id: string, actor: Actor): Promise<RequisitionIssueDto[] | null> {
+    const m = getManager(this.dataSource);
+    const row = await m
+      .getRepository(RequisitionOrmEntity)
+      .findOne({ where: { id, companyId: actor.companyId, deletedAt: null } as never });
+    if (!row) return null;
+    this.assertProjectVisible(actor, row.projectId);
+    const issues = await m
+      .getRepository(RequisitionIssueOrmEntity)
+      .find({ where: { requisitionId: id }, order: { issueNo: 'ASC' } });
+    const result: RequisitionIssueDto[] = [];
+    for (const issue of issues) {
+      const lines = await m
+        .getRepository(RequisitionIssueLineOrmEntity)
+        .find({ where: { requisitionIssueId: issue.id } });
+      result.push(issueDto(issue, lines));
+    }
+    return result;
+  }
+
   private assertProjectVisible(actor: Actor, projectId: string): void {
     if (!actor.isUnscoped && !actor.assignedProjectIds.includes(projectId)) {
       throw new ForbiddenException('Project not assigned to this user');
@@ -254,6 +301,34 @@ function fullDto(r: RequisitionOrmEntity, lines: RequisitionLineOrmEntity[]): Re
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
     lines: lines.map(lineDto),
+  };
+}
+
+function issueDto(
+  issue: RequisitionIssueOrmEntity,
+  lines: RequisitionIssueLineOrmEntity[],
+): RequisitionIssueDto {
+  return {
+    requisitionId: issue.requisitionId,
+    requisitionIssueId: issue.id,
+    issueNo: issue.issueNo,
+    journalEntryId: issue.journalEntryId,
+    entryNo: issue.entryNo,
+    issuedValue: new Decimal(issue.issuedValue).toFixed(4),
+    fromGodownId: issue.fromGodownId,
+    lines: lines.map((l) => ({
+      requisitionLineId: l.requisitionLineId,
+      itemId: l.itemId,
+      godownId: l.godownId,
+      stockMovementId: l.stockMovementId,
+      issuedQuantity: new Decimal(l.issuedQuantity).toFixed(4),
+      rate: new Decimal(l.rate).toFixed(4),
+      value: new Decimal(l.value).toFixed(4),
+    })),
+    issuedById: issue.issuedById,
+    issuedAt: issue.issuedAt.toISOString(),
+    reversedAt: issue.reversedAt ? issue.reversedAt.toISOString() : null,
+    reversedById: issue.reversedById,
   };
 }
 
