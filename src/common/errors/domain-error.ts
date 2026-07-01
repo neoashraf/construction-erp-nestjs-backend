@@ -79,6 +79,16 @@ export enum DomainErrorCode {
   DUPLICATE_ATTENDANCE = 'DUPLICATE_ATTENDANCE',
   HR_ACCOUNT_NOT_CONFIGURED = 'HR_ACCOUNT_NOT_CONFIGURED',
   LABOUR_COST_CENTRE_NOT_CONFIGURED = 'LABOUR_COST_CENTRE_NOT_CONFIGURED',
+  // requisition (REQ)
+  REQUISITION_NOT_SUBMITTED = 'REQUISITION_NOT_SUBMITTED',
+  REQUISITION_NOT_APPROVED = 'REQUISITION_NOT_APPROVED',
+  APPROVAL_BEYOND_AUTHORITY = 'APPROVAL_BEYOND_AUTHORITY',
+  MISSING_REJECT_REASON = 'MISSING_REJECT_REASON',
+  NO_OUTSTANDING_BALANCE = 'NO_OUTSTANDING_BALANCE',
+  INVALID_REQUISITION_TRANSITION = 'INVALID_REQUISITION_TRANSITION',
+  ISSUE_EXCEEDS_BALANCE = 'ISSUE_EXCEEDS_BALANCE',
+  GODOWN_NOT_IN_PROJECT = 'GODOWN_NOT_IN_PROJECT',
+  INACTIVE_MASTER_REFERENCE = 'INACTIVE_MASTER_REFERENCE',
   // tenancy
   TENANT_SCOPE_MISSING = 'TENANT_SCOPE_MISSING',
 }
@@ -219,6 +229,22 @@ export class BaseUomImmutableError extends DomainError {
   readonly code = DomainErrorCode.BASE_UOM_IMMUTABLE;
   constructor() {
     super("An item's base_uom is immutable once UoM conversions or stock/transaction references exist");
+  }
+}
+
+/** A referenced item/godown/cost-centre is deactivated (MAS deactivate-not-delete) (FR-REQ-004). HTTP 400. */
+export class InactiveMasterReferenceError extends DomainError {
+  readonly code = DomainErrorCode.INACTIVE_MASTER_REFERENCE;
+  constructor(kind: string, id: string) {
+    super(`The referenced ${kind} ${id} is inactive`, { kind, id });
+  }
+}
+
+/** An issue/reference godown does not belong to the requisition's project (FR-REQ-003/-012). HTTP 400. */
+export class GodownNotInProjectError extends DomainError {
+  readonly code = DomainErrorCode.GODOWN_NOT_IN_PROJECT;
+  constructor(godownId: string, projectId: string) {
+    super(`Godown ${godownId} does not belong to project ${projectId}`, { godownId, projectId });
   }
 }
 
