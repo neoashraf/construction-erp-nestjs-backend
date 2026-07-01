@@ -74,8 +74,15 @@ export class AuthService {
     user.recordSuccessfulLogin(now);
     await this.users.save(user);
 
+    // Resolve the real company from the found user — the `companyId` param is empty
+    // on the normal login path (the client sends only email+password; findByEmail
+    // resolves the user globally in Phase-1 single-company). Using the empty param
+    // here would write "" into the refresh_token.company_id uuid column (crash) and
+    // mint a refresh token with an empty company claim.
+    const resolvedCompanyId = user.props.companyId;
+
     const refreshExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    const jti = await this.store.issue(user.id, companyId, refreshExpiresAt);
+    const jti = await this.store.issue(user.id, resolvedCompanyId, refreshExpiresAt);
 
     const claims: AccessClaims = {
       sub: user.id,
@@ -84,7 +91,7 @@ export class AuthService {
       role: user.props.role,
     };
     const accessToken = this.signer.signAccess(claims);
-    const refreshToken = this.signer.signRefresh({ sub: user.id, jti, companyId });
+    const refreshToken = this.signer.signRefresh({ sub: user.id, jti, companyId: resolvedCompanyId });
 
     return {
       accessToken,

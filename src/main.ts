@@ -22,8 +22,9 @@ async function bootstrap(): Promise<void> {
   // nestjs-pino is the app logger (NFR-010).
   app.useLogger(app.get(Logger));
 
-  // All routes under /api (overview §6).
-  app.setGlobalPrefix('api');
+  // NOTE: routes are already namespaced under /api by each @Controller('api/...')
+  // (business controllers) — do NOT also call app.setGlobalPrefix('api') here or
+  // every business route doubles to /api/api/... . Health/_diag live at /health, /_diag.
 
   // Global validation (ADR-0002 §2.3): strip unknown fields, reject extras, coerce types.
   app.useGlobalPipes(
