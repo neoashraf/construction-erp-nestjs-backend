@@ -15,6 +15,7 @@ import { DiagnosticsModule } from './infrastructure/http/diagnostics.module';
 import { HealthModule } from './health/health.module';
 import { CoreModule } from './core/core.module';
 import { MasterDataModule } from './modules/master-data/master-data.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { MasterDataModule } from './modules/master-data/master-data.module';
     CoreModule,
     // Feature modules (modules/*) — added by their briefs.
     MasterDataModule,
+    InventoryModule,
     // Diagnostic throw-routes for the e2e error-envelope smoke — never in production.
     DiagnosticsModule.register(process.env.NODE_ENV !== 'production'),
   ],
