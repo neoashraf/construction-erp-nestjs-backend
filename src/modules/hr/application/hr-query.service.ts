@@ -1,9 +1,14 @@
 /**
- * HrQueryService — read side (skill §2.3): company-scoped Employee / Attendance / assignment DTOs straight
- * from SQL for the list/read endpoints. No aggregates. Money serialises as numeric(18,4) JSON strings;
- * dates 'YYYY-MM-DD'; timestamps ISO-8601 UTC (overview §6). Bank account number/name and TIN are
- * write-only / MASKED on read (sensitive — NFR-002). Scoped (Site Engineer/PM) readers are filtered to
+ * HrQueryService — read side (skill §2.3): company-scoped Employee / Attendance / assignment / SalarySheet
+ * DTOs straight from SQL for the list/read endpoints. No aggregates. Money serialises as numeric(18,4)
+ * JSON strings; dates 'YYYY-MM-DD'; timestamps ISO-8601 UTC (overview §6). Bank account number/name and TIN
+ * are write-only / MASKED on read (sensitive — NFR-002). Scoped (Site Engineer/PM) readers are filtered to
  * assigned projects (F4): excluded silently on list, 403 on a direct fetch of an unassigned project's row.
+ *
+ * `SalarySheet.status` in the DTO is the DERIVED status (design §3): the stored column is DRAFT|POSTED
+ * only; a `salarySheetDto` looks up whether a `journal_entry` with `reversal_of = salary_entry_id` exists
+ * and reports `REVERSED` when it does — the write-side aggregate never stores that literal (salary-sheet.ts
+ * header comment). This is the ONE place the derived status is computed for API responses.
  */
 import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
@@ -15,8 +20,11 @@ import { Paginated, resolvePaging } from '../../../infrastructure/http/paginatio
 import { EmployeeOrmEntity } from '../infrastructure/employee.orm-entity';
 import { AttendanceRecordOrmEntity } from '../infrastructure/attendance-record.orm-entity';
 import { EmployeeAssignmentOrmEntity } from '../infrastructure/employee-assignment.orm-entity';
+import { SalarySheetOrmEntity } from '../infrastructure/salary-sheet.orm-entity';
+import { SalarySheetLineOrmEntity } from '../infrastructure/salary-sheet-line.orm-entity';
 import { EmployeeListFilter } from '../domain/ports/employee.repository';
 import { AttendanceListFilter } from '../domain/ports/attendance.repository';
+import { SalarySheetListFilter } from '../domain/ports/salary-sheet.repository';
 
 export interface EmployeeDto {
   id: string;
@@ -66,6 +74,37 @@ export interface AttendanceDto {
   source: string;
   isConfirmed: boolean;
   accrualEntryId: string | null;
+}
+
+export interface SalarySheetLineDto {
+  id: string;
+  employeeId: string;
+  projectId: string;
+  costCentreId: string;
+  purposeId: string;
+  paidDays: string;
+  grossAmount: string;
+  allowances: string;
+  tds: string;
+  pf: string;
+  advanceRecovery: string;
+  otherDeductions: string;
+  netAmount: string;
+}
+
+export interface SalarySheetDto {
+  id: string;
+  financialYearId: string;
+  periodLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  status: 'DRAFT' | 'POSTED' | 'REVERSED';
+  salaryEntryId: string | null;
+  totalGross: string;
+  totalDeductions: string;
+  totalNet: string;
+  version: number;
+  lines?: SalarySheetLineDto[];
 }
 
 @Injectable()
@@ -163,6 +202,77 @@ export class HrQueryService {
     return attendanceDto(row);
   }
 
+  async listSalarySheets(filter: SalarySheetListFilter, actor: Actor): Promise<Paginated<SalarySheetDto>> {
+    const { page, pageSize, skip, take } = resolvePaging(filter);
+    const qb = getManager(this.dataSource)
+      .getRepository(SalarySheetOrmEntity)
+      .createQueryBuilder('s')
+      .where('s.company_id = :companyId', { companyId: actor.companyId });
+    if (filter.financialYearId) qb.andWhere('s.financial_year_id = :fy', { fy: filter.financialYearId });
+    if (filter.periodLabel) qb.andWhere('s.period_label = :pl', { pl: filter.periodLabel });
+    const [rows, total] = await qb
+      .orderBy('s.period_label', 'DESC')
+      .skip(skip)
+      .take(take)
+      .getManyAndCount();
+    const dtos = await Promise.all(rows.map((r) => this.salarySheetDto(r, false)));
+    const filtered = filter.status ? dtos.filter((d) => d.status === filter.status) : dtos;
+    return new Paginated(filtered, page, pageSize, total);
+  }
+
+  async getSalarySheet(id: string, includeLines: boolean, actor: Actor): Promise<SalarySheetDto | null> {
+    const row = await getManager(this.dataSource)
+      .getRepository(SalarySheetOrmEntity)
+      .findOne({ where: { id, companyId: actor.companyId } as never });
+    if (!row) return null;
+    return this.salarySheetDto(row, includeLines);
+  }
+
+  private async salarySheetDto(row: SalarySheetOrmEntity, includeLines: boolean): Promise<SalarySheetDto> {
+    const manager = getManager(this.dataSource);
+    const lineRows = await manager
+      .getRepository(SalarySheetLineOrmEntity)
+      .find({ where: { salarySheetId: row.id } as never, order: { createdAt: 'ASC' } });
+
+    let status: SalarySheetDto['status'] = row.status as 'DRAFT' | 'POSTED';
+    if (row.status === 'POSTED' && row.salaryEntryId) {
+      // REVERSED is DERIVED (design §3): the stored column stays POSTED; report REVERSED only when a
+      // journal_entry with reversal_of = salary_entry_id exists.
+      const [reversal] = await manager.query(`SELECT id FROM journal_entry WHERE reversal_of = $1 LIMIT 1`, [
+        row.salaryEntryId,
+      ]);
+      if (reversal) status = 'REVERSED';
+    }
+
+    let totalGross = new Decimal(0);
+    let totalDeductions = new Decimal(0);
+    let totalNet = new Decimal(0);
+    for (const l of lineRows) {
+      totalGross = totalGross.plus(l.grossAmount);
+      totalDeductions = totalDeductions
+        .plus(l.tds)
+        .plus(l.pf)
+        .plus(l.advanceRecovery)
+        .plus(l.otherDeductions);
+      totalNet = totalNet.plus(l.netAmount);
+    }
+
+    return {
+      id: row.id,
+      financialYearId: row.financialYearId,
+      periodLabel: row.periodLabel,
+      periodStart: row.periodStart,
+      periodEnd: row.periodEnd,
+      status,
+      salaryEntryId: row.salaryEntryId,
+      totalGross: totalGross.toFixed(4),
+      totalDeductions: totalDeductions.toFixed(4),
+      totalNet: totalNet.toFixed(4),
+      version: row.version,
+      lines: includeLines ? lineRows.map(salarySheetLineDto) : undefined,
+    };
+  }
+
   private assertProjectVisible(actor: Actor, projectId: string): void {
     if (!actor.isUnscoped && !actor.assignedProjectIds.includes(projectId)) {
       throw new ForbiddenException('Project not assigned to this user');
@@ -219,5 +329,23 @@ function attendanceDto(r: AttendanceRecordOrmEntity): AttendanceDto {
     source: r.source,
     isConfirmed: r.isConfirmed,
     accrualEntryId: r.accrualEntryId,
+  };
+}
+
+function salarySheetLineDto(r: SalarySheetLineOrmEntity): SalarySheetLineDto {
+  return {
+    id: r.id,
+    employeeId: r.employeeId,
+    projectId: r.projectId,
+    costCentreId: r.costCentreId,
+    purposeId: r.purposeId,
+    paidDays: new Decimal(r.paidDays).toFixed(4),
+    grossAmount: new Decimal(r.grossAmount).toFixed(4),
+    allowances: new Decimal(r.allowances).toFixed(4),
+    tds: new Decimal(r.tds).toFixed(4),
+    pf: new Decimal(r.pf).toFixed(4),
+    advanceRecovery: new Decimal(r.advanceRecovery).toFixed(4),
+    otherDeductions: new Decimal(r.otherDeductions).toFixed(4),
+    netAmount: new Decimal(r.netAmount).toFixed(4),
   };
 }
