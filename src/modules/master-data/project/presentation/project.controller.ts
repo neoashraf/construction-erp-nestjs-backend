@@ -1,10 +1,17 @@
-/** ProjectController — `/api/masters/projects` (FR-MAS-005/006). */
-import { Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+/**
+ * ProjectController — `/api/masters/projects` (FR-MAS-005/006).
+ * `@UseGuards(JwtAuthGuard, RolesGuard)` + per-route `@Roles({module:'MAS', action})`
+ * (mas-rbac-guard-wiring, FR-AUD-012/013).
+ */
+import { Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, MaxLength, Min, MinLength } from 'class-validator';
 import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
+import { JwtAuthGuard } from '../../../../core/auth/presentation/jwt-auth.guard';
+import { RolesGuard } from '../../../../core/auth/presentation/roles.guard';
+import { Roles } from '../../../../core/auth/presentation/roles.decorator';
 import { Paginated } from '../../../../infrastructure/http/pagination';
 import { CreateProjectUseCase, UpdateProjectUseCase, ChangeProjectStatusUseCase } from '../application/project.use-cases';
 import { ProjectDto, ProjectQueryService } from '../read/project.query-service';
@@ -45,6 +52,7 @@ class ListProjectsQueryDto {
 
 @ApiTags('Projects')
 @Controller('api/masters/projects')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ProjectController {
   constructor(
     private readonly create: CreateProjectUseCase,
@@ -54,21 +62,25 @@ export class ProjectController {
   ) {}
 
   @Get()
+  @Roles({ module: 'MAS', action: 'READ' })
   list(@Query() q: ListProjectsQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<ProjectDto>> {
     return this.query.list(q, actor);
   }
 
   @Get(':id')
+  @Roles({ module: 'MAS', action: 'READ' })
   async getById(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<ProjectDto> {
     return this.require(id, actor);
   }
 
   @Post()
+  @Roles({ module: 'MAS', action: 'CREATE' })
   create_(@Body() body: CreateProjectDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.create.execute(body, actor);
   }
 
   @Patch(':id')
+  @Roles({ module: 'MAS', action: 'UPDATE' })
   async patch(@Param('id', ParseUUIDPipe) id: string, @Body() body: UpdateProjectDto, @CurrentActor() actor: Actor): Promise<ProjectDto> {
     const { version, ...changes } = body;
     await this.update.execute(id, changes, version, actor);
@@ -77,6 +89,7 @@ export class ProjectController {
 
   @Post(':id/status')
   @HttpCode(200)
+  @Roles({ module: 'MAS', action: 'UPDATE' })
   async status(@Param('id', ParseUUIDPipe) id: string, @Body() body: StatusDto, @CurrentActor() actor: Actor): Promise<ProjectDto> {
     await this.changeStatus.execute(id, body.action, body.version, actor);
     return this.require(id, actor);
