@@ -8,6 +8,7 @@ import { UNIT_OF_WORK, UnitOfWork } from '../../../../common/ports/unit-of-work.
 import { ID_GENERATOR, IdGenerator } from '../../../../common/ports/id-generator.port';
 import { Actor } from '../../../../core/tenancy/tenant-context';
 import { AUDIT_SERVICE, AuditService, AuditAction } from '../../../../core/audit/application/audit.port';
+import { AccessPolicy } from '../../../../core/auth/domain/access-policy';
 import { assertVersion } from '../../application/optimistic-lock';
 import { TypeOrmProjectRepository } from '../../project/infrastructure/typeorm-project.repository';
 import { Godown } from '../domain/godown';
@@ -60,11 +61,14 @@ export class SetGodownActiveUseCase {
     private readonly repo: TypeOrmGodownRepository,
     @Inject(AUDIT_SERVICE) private readonly audit: AuditService,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
+    private readonly policy: AccessPolicy,
   ) {}
   async execute(id: string, version: number, active: boolean, actor: Actor): Promise<void> {
     await this.uow.run(async () => {
       const g = await this.repo.findById(id, actor.companyId);
       if (!g) throw new NotFoundError(`Godown ${id} not found`);
+      // FR-MAS-033 / FR-AUD-014: PM may only deactivate/reactivate godowns in assigned projects.
+      this.policy.assertProjectInScope(actor, g.props.projectId);
       assertVersion(g.version, version, 'Godown', id);
       if (active) g.reactivate();
       else g.deactivate();

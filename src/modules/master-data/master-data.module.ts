@@ -9,6 +9,7 @@
  *     `@CurrentActor` for now.
  */
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../../core/auth/auth.module';
 import { COMPANY_REPOSITORY } from './company/domain/ports/company.repository';
 import { TypeOrmCompanyRepository } from './company/infrastructure/persistence/typeorm-company.repository';
 import { FINANCIAL_YEAR_REPOSITORY } from './financial-year/domain/ports/financial-year.repository';
@@ -69,6 +70,7 @@ import { ItemQueryService } from './item/read/item.query-service';
 import { ItemController } from './item/presentation/item.controller';
 
 @Module({
+  imports: [AuthModule],
   controllers: [
     CompanyController,
     FinancialYearController,
