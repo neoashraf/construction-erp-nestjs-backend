@@ -19,6 +19,7 @@ import { InventoryModule } from './modules/inventory/inventory.module';
 import { ContraJournalModule } from './modules/contra-journal/presentation/contra-journal.module';
 import { SalesModule } from './modules/sales/presentation/sales.module';
 import { HrModule } from './modules/hr/presentation/hr.module';
+import { RequisitionModule } from './modules/requisition/presentation/requisition.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { HrModule } from './modules/hr/presentation/hr.module';
     ContraJournalModule,
     SalesModule,
     HrModule,
+    RequisitionModule,
     // Diagnostic throw-routes for the e2e error-envelope smoke — never in production.
     DiagnosticsModule.register(process.env.NODE_ENV !== 'production'),
   ],
