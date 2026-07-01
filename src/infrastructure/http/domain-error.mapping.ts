@@ -24,6 +24,7 @@ export const DOMAIN_ERROR_STATUS: Record<DomainErrorCode, HttpStatus> = {
   [DomainErrorCode.ACCOUNT_TYPE_MISMATCH]: HttpStatus.BAD_REQUEST,
   [DomainErrorCode.ACCOUNT_TYPE_IMMUTABLE]: HttpStatus.CONFLICT,
   [DomainErrorCode.BASE_UOM_IMMUTABLE]: HttpStatus.CONFLICT,
+  [DomainErrorCode.CROSS_PROJECT_DIMENSION]: HttpStatus.BAD_REQUEST,
   [DomainErrorCode.SERIES_ALREADY_EXISTS]: HttpStatus.CONFLICT,
   [DomainErrorCode.NUMBERING_EXHAUSTED]: HttpStatus.CONFLICT,
   [DomainErrorCode.PERIOD_CLOSED]: HttpStatus.CONFLICT,
