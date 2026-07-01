@@ -8,7 +8,10 @@
  * own — the caller's UnitOfWork must already be active when these are called (mirrors
  * `PostStockJournalUseCase`'s per-side movement writes exactly). `reverseIssueOut` (brief #23) mirrors
  * `ReverseStockJournalUseCase`'s OUT-mirror branch exactly: `applyTransferIn(prev, quantity, value)` to
- * restore the precise value that left, then an `IN, isReversal:true` movement.
+ * restore the precise value that left, then an `IN, isReversal:true` movement. `reverseReceipt` (brief
+ * purchase-po-bill-posting) mirrors the IN-mirror branch exactly: `valueIssue(prev, quantity,
+ * {allowNegative:true})` to value the undo at the CURRENT source average, then an `OUT, isReversal:true`
+ * movement.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
@@ -26,6 +29,7 @@ import {
   PostCtx,
   ReceiveInInput,
   ReverseIssueOutInput,
+  ReverseReceiptInput,
 } from '../domain/ports/inventory.service.port';
 
 @Injectable()
@@ -110,6 +114,34 @@ export class InventoryServiceAdapter implements InventoryService {
         rate,
         value: input.value,
         balanceAfter: restored,
+        isReversal: true,
+        voucherDate: ctx.voucherDate,
+        postedBy: ctx.postedBy,
+      },
+      this.ids.next(),
+      this.clock.now(),
+    );
+    await this.movements.append(movement);
+  }
+
+  async reverseReceipt(ctx: PostCtx, input: ReverseReceiptInput): Promise<void> {
+    const prev = await this.movements.currentBalanceForUpdate(ctx.companyId, input.godownId, input.itemId);
+    // Value the undo at the CURRENT source average (never the original receipt rate) — mirrors
+    // ReverseStockJournalUseCase's IN-mirror branch exactly; allowNegative:true because a reversal must
+    // always be able to complete structurally (design doc, InventoryService port).
+    const { issuedValue, rate, newBalance } = valueIssue(prev, input.qty, { allowNegative: true });
+    const movement = StockMovement.create(
+      {
+        companyId: ctx.companyId,
+        godownId: input.godownId,
+        itemId: input.itemId,
+        sourceType: 'GRN',
+        sourceId: input.sourceId,
+        direction: 'OUT',
+        quantity: input.qty,
+        rate,
+        value: issuedValue,
+        balanceAfter: newBalance,
         isReversal: true,
         voucherDate: ctx.voucherDate,
         postedBy: ctx.postedBy,
