@@ -45,6 +45,7 @@ export const DOMAIN_ERROR_STATUS: Record<DomainErrorCode, HttpStatus> = {
   [DomainErrorCode.ADVANCE_EXCEEDS_REMAINING]: HttpStatus.CONFLICT,
   [DomainErrorCode.CERTIFIED_NOT_POSITIVE]: HttpStatus.BAD_REQUEST,
   [DomainErrorCode.SALES_ACCOUNT_NOT_CONFIGURED]: HttpStatus.CONFLICT,
+  [DomainErrorCode.OVER_RELEASE]: HttpStatus.CONFLICT,
   [DomainErrorCode.ALREADY_CONFIRMED]: HttpStatus.CONFLICT,
   [DomainErrorCode.NOT_ACCRUABLE_MODE]: HttpStatus.CONFLICT,
   [DomainErrorCode.ATTENDANCE_CONFIRMED_IMMUTABLE]: HttpStatus.CONFLICT,
