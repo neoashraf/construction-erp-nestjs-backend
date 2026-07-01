@@ -1,18 +1,21 @@
 /**
  * InventoryServiceAdapter (APPLICATION) — implements InventoryService, the ONE seam PUR/REQ use to move
  * stock through INV's mechanics (FR-INV-006). Thin: delegates every valuation computation to brief-1's
- * pure `valuation.ts` (`applyReceipt`/`valueIssue`) and every write to the brief-1 `StockMovementRepository`
- * — the SAME locked `currentBalanceForUpdate` re-roll a Stock Journal post uses (FR-INV-010, design §5.4),
- * so a concurrent `issueOut` and a concurrent Stock-Journal post on the same `(godown, item)` serialise
- * through the one lock, not two. Opens NO transaction of its own — the caller's UnitOfWork must already be
- * active when these are called (mirrors `PostStockJournalUseCase`'s per-side movement writes exactly).
+ * pure `valuation.ts` (`applyReceipt`/`valueIssue`/`applyTransferIn`) and every write to the brief-1
+ * `StockMovementRepository` — the SAME locked `currentBalanceForUpdate` re-roll a Stock Journal post uses
+ * (FR-INV-010, design §5.4), so a concurrent `issueOut`/`reverseIssueOut` and a concurrent Stock-Journal
+ * post on the same `(godown, item)` serialise through the one lock, not two. Opens NO transaction of its
+ * own — the caller's UnitOfWork must already be active when these are called (mirrors
+ * `PostStockJournalUseCase`'s per-side movement writes exactly). `reverseIssueOut` (brief #23) mirrors
+ * `ReverseStockJournalUseCase`'s OUT-mirror branch exactly: `applyTransferIn(prev, quantity, value)` to
+ * restore the precise value that left, then an `IN, isReversal:true` movement.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
 import { CLOCK, Clock } from '../../../common/ports/clock.port';
 import { ID_GENERATOR, IdGenerator } from '../../../common/ports/id-generator.port';
 import { StockMovement } from '../domain/stock-movement';
-import { applyReceipt, averageRate, valueIssue } from '../domain/valuation';
+import { applyReceipt, applyTransferIn, averageRate, valueIssue } from '../domain/valuation';
 import {
   STOCK_MOVEMENT_REPOSITORY,
   StockMovementRepository,
@@ -22,6 +25,7 @@ import {
   IssueOutInput,
   PostCtx,
   ReceiveInInput,
+  ReverseIssueOutInput,
 } from '../domain/ports/inventory.service.port';
 
 @Injectable()
@@ -57,11 +61,15 @@ export class InventoryServiceAdapter implements InventoryService {
     return { avgRate: averageRate(after) };
   }
 
-  async issueOut(ctx: PostCtx, input: IssueOutInput): Promise<{ issuedValue: Decimal; rate: Decimal }> {
+  async issueOut(
+    ctx: PostCtx,
+    input: IssueOutInput,
+  ): Promise<{ issuedValue: Decimal; rate: Decimal; movementId: string }> {
     const prev = await this.movements.currentBalanceForUpdate(ctx.companyId, input.godownId, input.itemId);
     const { issuedValue, rate, newBalance } = valueIssue(prev, input.qty, {
       allowNegative: input.allowNegative,
     });
+    const movementId = this.ids.next();
     const movement = StockMovement.create(
       {
         companyId: ctx.companyId,
@@ -77,10 +85,38 @@ export class InventoryServiceAdapter implements InventoryService {
         voucherDate: ctx.voucherDate,
         postedBy: ctx.postedBy,
       },
+      movementId,
+      this.clock.now(),
+    );
+    await this.movements.append(movement);
+    return { issuedValue, rate, movementId };
+  }
+
+  async reverseIssueOut(ctx: PostCtx, input: ReverseIssueOutInput): Promise<void> {
+    const prev = await this.movements.currentBalanceForUpdate(ctx.companyId, input.godownId, input.itemId);
+    // Restore the EXACT qty/value that left — never re-valued (design §5.3, mirrors
+    // ReverseStockJournalUseCase's OUT-mirror branch exactly).
+    const restored = applyTransferIn(prev, input.qty, input.value);
+    const rate = input.qty.isZero() ? new Decimal(0) : input.value.dividedBy(input.qty);
+    const movement = StockMovement.create(
+      {
+        companyId: ctx.companyId,
+        godownId: input.godownId,
+        itemId: input.itemId,
+        sourceType: 'REQ_ISSUE',
+        sourceId: input.sourceId,
+        direction: 'IN',
+        quantity: input.qty,
+        rate,
+        value: input.value,
+        balanceAfter: restored,
+        isReversal: true,
+        voucherDate: ctx.voucherDate,
+        postedBy: ctx.postedBy,
+      },
       this.ids.next(),
       this.clock.now(),
     );
     await this.movements.append(movement);
-    return { issuedValue, rate };
   }
 }

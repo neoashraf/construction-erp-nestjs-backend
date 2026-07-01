@@ -77,3 +77,11 @@ export class IssueExceedsBalanceError extends DomainError {
     super(`issue quantity ${issueQty} must be in (0, balance ${balance}]`, { issueQty, balance });
   }
 }
+
+/** `…/issues/:issueId/reverse` on an issue already reversed (FR-REQ-017, edge 12). HTTP 409. */
+export class AlreadyReversedIssueError extends DomainError {
+  readonly code = DomainErrorCode.ALREADY_REVERSED;
+  constructor(issueId: string) {
+    super(`Requisition issue ${issueId} is already reversed`, { issueId });
+  }
+}

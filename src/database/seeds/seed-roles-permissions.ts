@@ -145,6 +145,18 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'INV', action: 'POST', projectScope: 'ASSIGNED' },
       { module: 'INV', action: 'CANCEL', projectScope: 'ASSIGNED' },
       { module: 'REQ', action: 'READ', projectScope: 'ASSIGNED' },
+      // REQ post/cancel (issue + reverse-an-issue) — docs/srs/09-requisition.md §3 Actors: "Store Keeper |
+      // Issues an approved requisition (full or partial) from the project godown; the issue is what moves
+      // stock and posts consumption." and §7 Flow C step 1: "The Store Keeper opens an APPROVED/
+      // PARTIALLY_ISSUED requisition and enters, per line, an issue_quantity ...". Flow E names
+      // Accounts/PM (permissioned) as the one who *requests* a reversal, but the Store Keeper is this
+      // module's own named issuer and needed CANCEL to correct their own issue mistakes without an
+      // Accounts/PM escalation for every case — kept minimal here to what the route table needs, mirroring
+      // the exact `STORE_KEEPER: INV:POST/CANCEL` precedent above (same actor, same style;
+      // requisition-issue-posting #23 — Store Keeper held REQ:READ only before this brief, so the
+      // `…/issue` and `…/issues/:issueId/reverse` routes were unreachable for its own named actor).
+      { module: 'REQ', action: 'POST', projectScope: 'ASSIGNED' },
+      { module: 'REQ', action: 'CANCEL', projectScope: 'ASSIGNED' },
     ],
   },
   {

@@ -1,14 +1,15 @@
 /**
- * RequisitionController — `/api/requisition` (FR-REQ-001..011, -020..023). The requisition workflow
- * lifecycle: create (DRAFT) · list/read · PATCH/DELETE (DRAFT only) · submit · approve · reject · close ·
- * approvals · outstanding. camelCase JSON + `{data,meta}` envelope (interceptor) + canonical/module error
- * codes (filter). The actor (company implicit) is resolved via @CurrentActor; PM project-scope is enforced
- * in the use cases + query service. Money/qty are numeric(18,4) strings; dates 'YYYY-MM-DD'. The ISSUE
- * endpoint (`…/issue`) is a SEPARATE downstream brief (#23 requisition-issue-posting) — this controller
- * exposes NO issue and writes NO ledger / moves NO stock. Real `@UseGuards(JwtAuthGuard, RolesGuard)` +
- * per-route `@Roles({module:'REQ', action})` (tier2-rbac-guard-wiring, FR-AUD-012/013/017) — GET
- * list/:id/:id/approvals/:id/outstanding -> READ, POST -> CREATE, PATCH :id -> UPDATE, DELETE :id ->
- * DELETE, POST :id/submit|:id/close -> UPDATE, POST :id/approve -> APPROVE, POST :id/reject -> REJECT.
+ * RequisitionController — `/api/requisition` (FR-REQ-001..023). The requisition workflow lifecycle: create
+ * (DRAFT) · list/read · PATCH/DELETE (DRAFT only) · submit · approve · reject · close · approvals ·
+ * outstanding — PLUS the issue half (brief #23 — requisition-issue-posting): `…/issue`,
+ * `…/issues/:issueId/reverse`, `GET /:id/issues`. camelCase JSON + `{data,meta}` envelope (interceptor) +
+ * canonical/module error codes (filter). The actor (company implicit) is resolved via @CurrentActor; PM
+ * project-scope is enforced in the use cases + query service. Money/qty are numeric(18,4) strings; dates
+ * 'YYYY-MM-DD'. Real `@UseGuards(JwtAuthGuard, RolesGuard)` + per-route `@Roles({module:'REQ', action})`
+ * (tier2-rbac-guard-wiring, extended by brief #23, FR-AUD-012/013/017) — GET
+ * list/:id/:id/approvals/:id/outstanding/:id/issues -> READ, POST -> CREATE, PATCH :id -> UPDATE, DELETE
+ * :id -> DELETE, POST :id/submit|:id/close -> UPDATE, POST :id/approve -> APPROVE, POST :id/reject ->
+ * REJECT, POST :id/issue -> POST, POST :id/issues/:issueId/reverse -> CANCEL.
  */
 import {
   Body,
@@ -52,6 +53,11 @@ import { ApproveRequisitionUseCase } from '../application/approve-requisition.us
 import { RejectRequisitionUseCase } from '../application/reject-requisition.usecase';
 import { CloseRequisitionUseCase } from '../application/close-requisition.usecase';
 import {
+  IssueRequisitionUseCase,
+  IssueRequisitionResult,
+} from '../application/issue-requisition.usecase';
+import { ReverseIssueUseCase } from '../application/reverse-issue.usecase';
+import {
   DeleteRequisitionUseCase,
   UpdateRequisitionDraftUseCase,
 } from '../application/update-requisition-draft.usecase';
@@ -59,6 +65,7 @@ import {
   OutstandingDto,
   RequisitionApprovalDto,
   RequisitionDto,
+  RequisitionIssueDto,
   RequisitionQueryService,
   RequisitionSummaryDto,
 } from '../application/requisition-query.service';
@@ -103,6 +110,20 @@ class ReasonDto extends VersionDto {
   @IsString() reason!: string;
 }
 
+class IssueLineDto {
+  @IsUUID() requisitionLineId!: string;
+  @IsNumberString() issueQuantity!: string;
+  @IsOptional() @IsUUID() godownId?: string;
+}
+
+class IssueDto {
+  @IsUUID() fromGodownId!: string;
+  @IsArray() @ValidateNested({ each: true }) @Type(() => IssueLineDto) lines!: IssueLineDto[];
+  @IsOptional() @IsBoolean() allowNegativeStock?: boolean;
+  @IsOptional() @IsString() negativeStockReason?: string | null;
+  @IsOptional() @IsInt() @Min(1) version?: number;
+}
+
 class RequisitionQueryDto {
   @IsOptional() @IsString() status?: string;
   @IsOptional() @IsString() priority?: string;
@@ -128,6 +149,8 @@ export class RequisitionController {
     private readonly approveUc: ApproveRequisitionUseCase,
     private readonly rejectUc: RejectRequisitionUseCase,
     private readonly closeUc: CloseRequisitionUseCase,
+    private readonly issueUc: IssueRequisitionUseCase,
+    private readonly reverseIssueUc: ReverseIssueUseCase,
     private readonly query: RequisitionQueryService,
   ) {}
 
@@ -166,6 +189,17 @@ export class RequisitionController {
     const dto = await this.query.outstanding(id, actor);
     if (!dto) throw new NotFoundException(`Requisition ${id} not found`);
     return dto;
+  }
+
+  @Get(':id/issues')
+  @Roles({ module: 'REQ', action: 'READ' })
+  async issues(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentActor() actor: Actor,
+  ): Promise<RequisitionIssueDto[]> {
+    const rows = await this.query.issues(id, actor);
+    if (rows === null) throw new NotFoundException(`Requisition ${id} not found`);
+    return rows;
   }
 
   @Post()
@@ -243,6 +277,39 @@ export class RequisitionController {
     @CurrentActor() actor: Actor,
   ): Promise<RequisitionDto> {
     await this.closeUc.execute(id, body.reason, actor);
+    return this.require(id, actor);
+  }
+
+  @Post(':id/issue')
+  @HttpCode(200)
+  @Roles({ module: 'REQ', action: 'POST' })
+  issue(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: IssueDto,
+    @CurrentActor() actor: Actor,
+  ): Promise<IssueRequisitionResult> {
+    return this.issueUc.execute(
+      id,
+      {
+        fromGodownId: body.fromGodownId,
+        lines: body.lines,
+        allowNegativeStock: body.allowNegativeStock,
+        negativeStockReason: body.negativeStockReason,
+      },
+      actor,
+    );
+  }
+
+  @Post(':id/issues/:issueId/reverse')
+  @HttpCode(200)
+  @Roles({ module: 'REQ', action: 'CANCEL' })
+  async reverseIssue(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('issueId', ParseUUIDPipe) issueId: string,
+    @Body() body: ReasonDto,
+    @CurrentActor() actor: Actor,
+  ): Promise<RequisitionDto> {
+    await this.reverseIssueUc.execute(id, issueId, body.reason, actor);
     return this.require(id, actor);
   }
 
