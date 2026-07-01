@@ -57,6 +57,16 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'PAY', action: 'POST', projectScope: 'ALL' },
       { module: 'REC', action: 'CREATE', projectScope: 'ALL' },
       { module: 'REC', action: 'POST', projectScope: 'ALL' },
+      // REC read/update/delete/cancel — docs/srs/11-receipts.md §3 Actors: "Accounts Team | Creates,
+      // edits, posts, prints, and (permissioned) cancels/corrects receipts; selects the IPC an IPC-linked
+      // receipt settles; records general receipts; reviews per-IPC balance due after a receipt." (receipts-
+      // voucher-core #24 — the pre-existing seed only granted REC:CREATE/POST, so ACCOUNTS_TEAM could not
+      // read/edit/delete a draft receipt or cancel/repost a posted one, despite being this module's
+      // primary named actor for the full lifecycle.)
+      { module: 'REC', action: 'READ', projectScope: 'ALL' },
+      { module: 'REC', action: 'UPDATE', projectScope: 'ALL' },
+      { module: 'REC', action: 'DELETE', projectScope: 'ALL' },
+      { module: 'REC', action: 'CANCEL', projectScope: 'ALL' },
       { module: 'RPT', action: 'READ', projectScope: 'ALL' },
       { module: 'MAS', action: 'READ', projectScope: 'ALL' },
       { module: 'CC', action: 'READ', projectScope: 'ALL' },
@@ -97,6 +107,11 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'INV', action: 'APPROVE', projectScope: 'ASSIGNED' },
       { module: 'HR', action: 'READ', projectScope: 'ASSIGNED' },
       { module: 'CC', action: 'READ', projectScope: 'ASSIGNED' },
+      // REC read — docs/srs/11-receipts.md §3 Actors: "Project Manager | Reads receipts and the resulting
+      // per-IPC outstanding for assigned projects (collection visibility); does not post receipts."
+      // (receipts-voucher-core #24 — PM held zero REC grant before this brief, so project-scoped receipt
+      // visibility was unreachable for its own named read-only actor.)
+      { module: 'REC', action: 'READ', projectScope: 'ASSIGNED' },
     ],
   },
   {
