@@ -3,7 +3,8 @@
  * TypeORM adapter implements it. Persist/load the Employee aggregate + its append-only assignment history;
  * every method is companyId-scoped (F3). `existsCode` backs the company-unique employee_code guard
  * (FR-HR-001; the DB unique index is the backstop). `appendAssignment` inserts a history row and never
- * overwrites a prior one (FR-HR-002).
+ * overwrites a prior one (FR-HR-002). `activeForCompany` backs salary generation — INACTIVE employees are
+ * excluded from a new sheet (FR-HR-003; design §5.2), optionally scoped to one project.
  */
 import { Employee, EmployeeAssignment } from '../employee';
 
@@ -25,6 +26,8 @@ export interface EmployeeRepository {
   findByCode(companyId: string, employeeCode: string): Promise<Employee | null>;
   appendAssignment(assignment: EmployeeAssignment): Promise<void>;
   listAssignments(employeeId: string, companyId: string): Promise<EmployeeAssignment[]>;
+  /** ACTIVE employees for salary generation (FR-HR-003); optionally scoped to one project. */
+  activeForCompany(companyId: string, projectId?: string): Promise<Employee[]>;
 }
 
 export const EMPLOYEE_REPOSITORY = Symbol('EmployeeRepository');

@@ -2,9 +2,10 @@
  * HR domain errors (PURE — no Nest). HR's people-and-attendance rejections that LED/MAS do not own: the
  * daily-labour confirm/re-confirm guards, the not-accruable-mode guard (subcontractor/office never post),
  * the confirmed-row-immutable guard, the office-staff-only policy, the immutable employee code, the
- * reassignment date guard, the biometric reconciliation conflict, and unresolved HR posting accounts /
- * the Labour cost centre. Stable codes (overview §6); both domain-error.ts and the presentation mapping
- * are tsc-enforced exhaustive Records.
+ * reassignment date guard, the biometric reconciliation conflict, unresolved HR posting accounts / the
+ * Labour cost centre, and (this brief) the salary-sheet lifecycle guards — not-draft, duplicate-draft,
+ * not-posted (payslips gate). Stable codes (overview §6); both domain-error.ts and the presentation
+ * mapping are tsc-enforced exhaustive Records.
  */
 import { DomainError, DomainErrorCode } from '../../../common/errors/domain-error';
 
@@ -97,5 +98,40 @@ export class LabourCostCentreNotConfiguredError extends DomainError {
   readonly code = DomainErrorCode.LABOUR_COST_CENTRE_NOT_CONFIGURED;
   constructor() {
     super('The Labour cost centre is not configured in master data; configure it before confirming');
+  }
+}
+
+/** post()/line-edit attempted on a non-DRAFT salary sheet (design §3). HTTP 409. */
+export class SalaryNotDraftError extends DomainError {
+  readonly code = DomainErrorCode.SALARY_NOT_DRAFT;
+  constructor(sheetId: string) {
+    super(`Salary sheet ${sheetId} is not a DRAFT; edit/post is not allowed`, { sheetId });
+  }
+}
+
+/** generate() attempted for a (financialYearId, periodLabel) that already has a DRAFT (edge §12.4). HTTP 409. */
+export class DuplicateDraftSheetError extends DomainError {
+  readonly code = DomainErrorCode.DUPLICATE_DRAFT_SHEET;
+  constructor(financialYearId: string, periodLabel: string) {
+    super(`A DRAFT salary sheet already exists for ${periodLabel}; edit it instead of generating a new one`, {
+      financialYearId,
+      periodLabel,
+    });
+  }
+}
+
+/** reverse()/payslips requested on a sheet that has not been posted. HTTP 409. */
+export class SalaryNotPostedError extends DomainError {
+  readonly code = DomainErrorCode.SALARY_NOT_POSTED;
+  constructor(sheetId: string) {
+    super(`Salary sheet ${sheetId} is not posted; payslips/reverse are not available`, { sheetId });
+  }
+}
+
+/** A salary sheet line lookup by id (within its sheet) failed. HTTP 404. */
+export class SalarySheetLineNotFoundError extends DomainError {
+  readonly code = DomainErrorCode.NOT_FOUND;
+  constructor(lineId: string, sheetId: string) {
+    super(`Salary sheet line ${lineId} not found on sheet ${sheetId}`, { lineId, sheetId });
   }
 }

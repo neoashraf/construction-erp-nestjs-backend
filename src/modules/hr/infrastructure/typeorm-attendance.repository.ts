@@ -7,11 +7,12 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import Decimal from 'decimal.js';
 import { DATA_SOURCE } from '../../../database/database.module';
 import { OptimisticLockConflictError } from '../../../common/errors/domain-error';
 import { getManager } from '../../../infrastructure/unit-of-work/transaction-context';
 import { AttendanceRecord } from '../domain/attendance-record';
-import { AttendanceRepository } from '../domain/ports/attendance.repository';
+import { AttendanceRepository, OfficeAttendanceSummary } from '../domain/ports/attendance.repository';
 import { AttendanceRecordMapper } from './attendance-record.mapper';
 import { AttendanceRecordOrmEntity } from './attendance-record.orm-entity';
 
@@ -92,5 +93,49 @@ export class TypeOrmAttendanceRepository implements AttendanceRepository {
       .getRepository(AttendanceRecordOrmEntity)
       .findOne({ where: { companyId, employeeId, attendanceDate, mode: 'OFFICE' } as never });
     return row ? AttendanceRecordMapper.toDomain(row) : null;
+  }
+
+  async summarizeOffice(
+    companyId: string,
+    employeeId: string,
+    periodStart: string,
+    periodEnd: string,
+  ): Promise<OfficeAttendanceSummary> {
+    const rows: Array<{ day_status: string; overtime_hours: string | null; project_id: string }> =
+      await getManager(this.dataSource).query(
+        `SELECT day_status, overtime_hours::text AS overtime_hours, project_id
+           FROM attendance_record
+          WHERE company_id = $1 AND employee_id = $2 AND mode = 'OFFICE'
+            AND attendance_date BETWEEN $3 AND $4`,
+        [companyId, employeeId, periodStart, periodEnd],
+      );
+
+    let paidDays = 0;
+    let attendedDays = 0;
+    let overtimeHours = new Decimal(0);
+    const projectCounts = new Map<string, number>();
+
+    for (const r of rows) {
+      if (r.day_status === 'PRESENT' || r.day_status === 'PAID_LEAVE') paidDays += 1;
+      if (r.day_status === 'PRESENT') attendedDays += 1;
+      if (r.overtime_hours) overtimeHours = overtimeHours.plus(r.overtime_hours);
+      projectCounts.set(r.project_id, (projectCounts.get(r.project_id) ?? 0) + 1);
+    }
+
+    let primaryProjectId: string | null = null;
+    let max = -1;
+    for (const [pid, count] of projectCounts) {
+      if (count > max) {
+        max = count;
+        primaryProjectId = pid;
+      }
+    }
+
+    return {
+      paidDays: String(paidDays),
+      attendedDays: String(attendedDays),
+      overtimeHours: overtimeHours.toFixed(4),
+      primaryProjectId,
+    };
   }
 }

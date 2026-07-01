@@ -91,6 +91,19 @@ export class TypeOrmEmployeeRepository implements EmployeeRepository {
     return row ? EmployeeMapper.toDomain(row) : null;
   }
 
+  async activeForCompany(companyId: string, projectId?: string): Promise<Employee[]> {
+    const qb = getManager(this.dataSource)
+      .getRepository(EmployeeOrmEntity)
+      .createQueryBuilder('e')
+      .where('e.company_id = :companyId AND e.deleted_at IS NULL AND e.status = :status', {
+        companyId,
+        status: 'ACTIVE',
+      });
+    if (projectId) qb.andWhere('e.default_project_id = :projectId', { projectId });
+    const rows = await qb.orderBy('e.employee_code', 'ASC').getMany();
+    return rows.map((r) => EmployeeMapper.toDomain(r));
+  }
+
   async appendAssignment(assignment: EmployeeAssignment): Promise<void> {
     await getManager(this.dataSource)
       .getRepository(EmployeeAssignmentOrmEntity)
