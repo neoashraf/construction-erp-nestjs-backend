@@ -8,6 +8,7 @@ import { UNIT_OF_WORK, UnitOfWork } from '../../../../common/ports/unit-of-work.
 import { ID_GENERATOR, IdGenerator } from '../../../../common/ports/id-generator.port';
 import { Actor } from '../../../../core/tenancy/tenant-context';
 import { AUDIT_SERVICE, AuditService, AuditAction } from '../../../../core/audit/application/audit.port';
+import { AccessPolicy } from '../../../../core/auth/domain/access-policy';
 import { assertVersion } from '../../application/optimistic-lock';
 import { Purpose, reqName } from '../domain/purpose';
 import { TypeOrmPurposeRepository } from '../infrastructure/typeorm-purpose.repository';
@@ -68,11 +69,14 @@ export class SetPurposeActiveUseCase {
     private readonly repo: TypeOrmPurposeRepository,
     @Inject(AUDIT_SERVICE) private readonly audit: AuditService,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
+    private readonly policy: AccessPolicy,
   ) {}
   async execute(id: string, version: number, active: boolean, actor: Actor): Promise<void> {
     await this.uow.run(async () => {
       const purpose = await this.repo.findById(id, actor.companyId);
       if (!purpose) throw new NotFoundError(`Purpose ${id} not found`);
+      // FR-MAS-033 / FR-AUD-014: PM may only deactivate/reactivate purposes in assigned projects.
+      this.policy.assertProjectInScope(actor, purpose.props.projectId);
       assertVersion(purpose.version, version, 'Purpose', id);
       if (active) purpose.reactivate();
       else purpose.deactivate();
