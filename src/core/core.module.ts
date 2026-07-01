@@ -9,6 +9,7 @@ import { PeriodModule } from './period/period.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { TenancyModule } from './tenancy/tenancy.module';
+import { CostControlModule } from './cost-control/cost-control.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { TenancyModule } from './tenancy/tenancy.module';
     AuditModule,
     AuthModule,
     TenancyModule,
+    CostControlModule,
   ],
   exports: [
     PostingModule,
@@ -26,6 +28,7 @@ import { TenancyModule } from './tenancy/tenancy.module';
     AuditModule,
     AuthModule,
     TenancyModule,
+    CostControlModule,
   ],
 })
 export class CoreModule {}
