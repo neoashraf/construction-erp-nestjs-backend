@@ -8,6 +8,15 @@
  * optional. The party rule is keyed on the account being a control account, regardless of voucher type
  * (design §10 item 3). RECEIPT requires cost_centre+purpose; project is supplied by the REC module for
  * IPC-linked receipts (it knows the IPC link) — LED enforces what it can see on the command.
+ *
+ * PURCHASE is a per-line SPECIAL CASE (purchase-po-bill-posting, architectural decision 5), mirroring the
+ * JOURNAL/OPENING per-line branch: godown is required only on a line that actually moves inventory
+ * (`line.isStockLine === true`, a hint PUR's `buildPurchaseBillCommand` supplies); the AP/VAT-input/TDS/AIT
+ * lines of the SAME bill carry project+cost_centre+purpose but NO godown (design §4.1's worked table —
+ * those rows show godown "—"). The flat `REQUIRED.PURCHASE` list (still project+cost_centre+purpose+godown)
+ * is used only as the fallback for a PURCHASE line that doesn't set `isStockLine` at all (defensive — no
+ * currently-shipped caller omits the hint). STOCK_JOURNAL is unaffected — both its sides are always
+ * inventory movements, so it keeps the flat REQUIRED list (all four dims on every line).
  */
 import { PostingCommand, PostingLine } from './posting-command';
 import { TagMatrixError } from './errors';
@@ -67,6 +76,13 @@ export class OverviewTagMatrix implements TagMatrix {
       return line.accountType && PNL_TYPES.has(line.accountType)
         ? ['projectId', 'costCentreId', 'purposeId']
         : [];
+    }
+    if (voucherType === 'PURCHASE') {
+      // Per-line special case (decision 5): godown only on a line that moves inventory. A line that
+      // doesn't set the `isStockLine` hint at all falls back to the flat (godown-required) list.
+      return line.isStockLine === false
+        ? ['projectId', 'costCentreId', 'purposeId']
+        : REQUIRED.PURCHASE;
     }
     return REQUIRED[voucherType];
   }

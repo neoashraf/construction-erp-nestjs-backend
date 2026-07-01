@@ -53,6 +53,16 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'SAL', action: 'POST', projectScope: 'ALL' },
       { module: 'SAL', action: 'CANCEL', projectScope: 'ALL' },
       { module: 'PUR', action: 'READ', projectScope: 'ALL' },
+      // PUR write/post/cancel — docs/srs/08-purchase.md §3 Actors: "Accounts Team | Creates, edits, posts,
+      // and (permissioned) cancels/corrects purchase bills; configures supplier-bill tax; reviews per-bill
+      // outstanding and supplier payables." (purchase-po-bill-posting — the pre-existing seed only granted
+      // PUR:READ, so ACCOUNTS_TEAM could not create/update/delete/post/cancel a purchase bill, despite
+      // being this module's primary named actor for the full bill lifecycle.)
+      { module: 'PUR', action: 'CREATE', projectScope: 'ALL' },
+      { module: 'PUR', action: 'UPDATE', projectScope: 'ALL' },
+      { module: 'PUR', action: 'DELETE', projectScope: 'ALL' },
+      { module: 'PUR', action: 'POST', projectScope: 'ALL' },
+      { module: 'PUR', action: 'CANCEL', projectScope: 'ALL' },
       { module: 'PAY', action: 'CREATE', projectScope: 'ALL' },
       { module: 'PAY', action: 'POST', projectScope: 'ALL' },
       { module: 'REC', action: 'CREATE', projectScope: 'ALL' },
@@ -83,6 +93,13 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'SAL', action: 'READ', projectScope: 'ASSIGNED' },
       { module: 'PUR', action: 'CREATE', projectScope: 'ASSIGNED' },
       { module: 'PUR', action: 'READ', projectScope: 'ASSIGNED' },
+      // PUR approve (PO approval) — docs/srs/08-purchase.md §3 Actors: "Project Manager | Raises /
+      // approves purchase orders for assigned projects; sees the entry-time over-budget warning; reviews
+      // committed-vs-actual procurement spend for a project." (purchase-po-bill-posting — the pre-existing
+      // seed granted PM only PUR:CREATE/READ, so the PO `…/approve` route was unreachable for its own
+      // named actor. Store Keeper is intentionally granted NOTHING for PUR — GRN, their action, is the
+      // next brief.)
+      { module: 'PUR', action: 'APPROVE', projectScope: 'ASSIGNED' },
       { module: 'REQ', action: 'CREATE', projectScope: 'ASSIGNED' },
       { module: 'REQ', action: 'READ', projectScope: 'ASSIGNED' },
       { module: 'REQ', action: 'APPROVE', projectScope: 'ASSIGNED' },

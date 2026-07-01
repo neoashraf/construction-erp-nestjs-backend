@@ -22,6 +22,12 @@ export interface PostingLine {
   /** Account classification hints (supplied by the voucher module from MAS) for tag-matrix policy. */
   accountType?: AccountType;
   isControlAccount?: boolean;
+  /**
+   * PURCHASE-only hint (purchase-po-bill-posting, decision 5): true on an inventory-debit line (requires
+   * godown), false/omitted on the bill's non-inventory lines (AP/VAT-input/TDS/AIT — no godown). Ignored
+   * by every other voucher type's tag-matrix rule.
+   */
+  isStockLine?: boolean;
 }
 
 export interface PostingCommand {
