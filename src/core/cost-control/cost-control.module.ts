@@ -5,8 +5,11 @@
  * GEN/INV/HR/SAL) can depend on them by interface at their own draft-validation step. CC owns NO
  * migration and NO ledger write — it only reads (DATA_SOURCE is global). `PostingService` never imports
  * or calls CC; the over-budget control is advisory (FR-CC-014).
+ * Imports AuthModule for JwtAuthGuard/RolesGuard (+ their ROLE/PERMISSION repository deps) consumed by
+ * CostControlController's `@Roles({ module: 'CC', action: 'READ' })` guards (num-led-cc-rbac-guard-wiring).
  */
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { CostControlQueryService } from './application/cost-control-query.service';
 import { BudgetCheckServiceImpl } from './application/budget-check.service';
 import { TagConsistencyServiceImpl } from './application/tag-consistency.service';
@@ -17,6 +20,7 @@ import { TypeOrmCostControlReadRepository } from './infrastructure/typeorm-cost-
 import { CostControlController } from './presentation/cost-control.controller';
 
 @Module({
+  imports: [AuthModule],
   controllers: [CostControlController],
   providers: [
     CostControlQueryService,

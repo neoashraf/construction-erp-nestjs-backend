@@ -5,8 +5,11 @@
  *   - NUMBERING_SERVICE / PERIOD_SERVICE → re-exported from NumberingModule / PeriodModule;
  *   - PROJECT_STATUS_SERVICE / MASTER_LOOKUP_SERVICE → permissive MAS seams (rebind when MAS lands).
  * Exports PostingService so voucher modules can post inside their own UnitOfWork. AUDIT_SERVICE global.
+ * Imports AuthModule for JwtAuthGuard/RolesGuard (+ their ROLE/PERMISSION repository deps) consumed by
+ * LedgerController's `@Roles({ module: 'LED', action: 'READ' })` guards (num-led-cc-rbac-guard-wiring).
  */
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { NumberingModule } from '../numbering/numbering.module';
 import { PeriodModule } from '../period/period.module';
 import { PostingService } from './application/posting.service';
@@ -23,7 +26,7 @@ import { LedgerQueryService } from './read/ledger-query.service';
 import { LedgerController } from './presentation/ledger.controller';
 
 @Module({
-  imports: [NumberingModule, PeriodModule],
+  imports: [AuthModule, NumberingModule, PeriodModule],
   controllers: [LedgerController],
   providers: [
     PostingService,
