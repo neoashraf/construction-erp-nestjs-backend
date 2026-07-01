@@ -4,6 +4,10 @@
  * camelCase JSON + `{data,meta}` envelope + canonical/module error codes. The daily-labour accrual posts
  * via the internal PostingService — there is NO `POST /api/ledger`; the ledger impact is triggered by
  * `.../daily-labour/:id/confirm` only. Subcontractor capture posts NOTHING (no `.../confirm` for it).
+ * Real `@UseGuards(JwtAuthGuard, RolesGuard)` + per-route `@Roles({module:'HR', action})`
+ * (tier2-rbac-guard-wiring, FR-AUD-012/013/017) — GET list -> READ, POST office/office/import/
+ * subcontractor/daily-labour -> CREATE, PATCH daily-labour/:id -> UPDATE, POST daily-labour/:id/confirm
+ * -> POST, POST daily-labour/:id/reverse -> CANCEL.
  */
 import {
   Body,
@@ -16,6 +20,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
@@ -34,6 +39,9 @@ import {
 import { Type } from 'class-transformer';
 import { Actor } from '../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../core/auth/presentation/current-actor.decorator';
+import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
+import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
+import { Roles } from '../../../core/auth/presentation/roles.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import {
   AttendanceService,
@@ -126,6 +134,7 @@ class AttendanceQueryDto {
 
 @ApiTags('HR / Attendance')
 @Controller('api/attendance')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class AttendanceController {
   constructor(
     private readonly service: AttendanceService,
@@ -133,6 +142,7 @@ export class AttendanceController {
   ) {}
 
   @Get()
+  @Roles({ module: 'HR', action: 'READ' })
   list(
     @Query() q: AttendanceQueryDto,
     @CurrentActor() actor: Actor,
@@ -142,6 +152,7 @@ export class AttendanceController {
 
   @Post('office')
   @HttpCode(201)
+  @Roles({ module: 'HR', action: 'CREATE' })
   captureOffice(
     @Body() body: OfficeCaptureDto,
     @CurrentActor() actor: Actor,
@@ -151,6 +162,7 @@ export class AttendanceController {
 
   @Post('office/import')
   @HttpCode(200)
+  @Roles({ module: 'HR', action: 'CREATE' })
   importBiometric(
     @Body() body: BiometricImportDto,
     @CurrentActor() actor: Actor,
@@ -165,6 +177,7 @@ export class AttendanceController {
 
   @Post('subcontractor')
   @HttpCode(201)
+  @Roles({ module: 'HR', action: 'CREATE' })
   captureSubcontractor(
     @Body() body: SubcontractorCaptureDto,
     @CurrentActor() actor: Actor,
@@ -174,6 +187,7 @@ export class AttendanceController {
 
   @Post('daily-labour')
   @HttpCode(201)
+  @Roles({ module: 'HR', action: 'CREATE' })
   captureDailyLabour(
     @Body() body: DailyLabourCaptureDto,
     @CurrentActor() actor: Actor,
@@ -182,6 +196,7 @@ export class AttendanceController {
   }
 
   @Patch('daily-labour/:id')
+  @Roles({ module: 'HR', action: 'UPDATE' })
   async editDailyLabour(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: EditDailyLabourDto,
@@ -194,6 +209,7 @@ export class AttendanceController {
 
   @Post('daily-labour/:id/confirm')
   @HttpCode(200)
+  @Roles({ module: 'HR', action: 'POST' })
   confirm(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ConfirmDto,
@@ -204,6 +220,7 @@ export class AttendanceController {
 
   @Post('daily-labour/:id/reverse')
   @HttpCode(200)
+  @Roles({ module: 'HR', action: 'CANCEL' })
   reverse(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ReverseDto,

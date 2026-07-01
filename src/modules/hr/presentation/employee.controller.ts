@@ -3,7 +3,10 @@
  * (append-only history) + deactivate/reactivate. camelCase JSON + `{data,meta}` envelope (interceptor) +
  * canonical/module error codes (filter). The actor (company implicit) is resolved via @CurrentActor. Money
  * is sent/returned as numeric(18,4) strings; dates 'YYYY-MM-DD'. Bank account no/name + TIN are write-only
- * (masked on read — NFR-002). Deactivate, not delete (no hard DELETE).
+ * (masked on read — NFR-002). Deactivate, not delete (no hard DELETE). Real
+ * `@UseGuards(JwtAuthGuard, RolesGuard)` + per-route `@Roles({module:'HR', action})`
+ * (tier2-rbac-guard-wiring, FR-AUD-012/013/017) — GET list/:id/:id/assignments -> READ, POST -> CREATE,
+ * PATCH :id -> UPDATE, POST :id/reassign|:id/deactivate|:id/reactivate -> UPDATE.
  */
 import {
   Body,
@@ -16,6 +19,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
@@ -32,6 +36,9 @@ import {
 import { Type } from 'class-transformer';
 import { Actor } from '../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../core/auth/presentation/current-actor.decorator';
+import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
+import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
+import { Roles } from '../../../core/auth/presentation/roles.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { EmployeeService } from '../application/employee.service';
 import { AssignmentDto, EmployeeDto, HrQueryService } from '../application/hr-query.service';
@@ -96,6 +103,7 @@ class EmployeeQueryDto {
 
 @ApiTags('HR / Employees')
 @Controller('api/hr/employees')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class EmployeeController {
   constructor(
     private readonly service: EmployeeService,
@@ -103,16 +111,19 @@ export class EmployeeController {
   ) {}
 
   @Get()
+  @Roles({ module: 'HR', action: 'READ' })
   list(@Query() q: EmployeeQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<EmployeeDto>> {
     return this.query.listEmployees(q, actor);
   }
 
   @Get(':id')
+  @Roles({ module: 'HR', action: 'READ' })
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<EmployeeDto> {
     return this.require(id, actor);
   }
 
   @Get(':id/assignments')
+  @Roles({ module: 'HR', action: 'READ' })
   assignments(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
@@ -122,11 +133,13 @@ export class EmployeeController {
 
   @Post()
   @HttpCode(201)
+  @Roles({ module: 'HR', action: 'CREATE' })
   create(@Body() body: CreateEmployeeDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.service.create(body as unknown as NewEmployee, actor);
   }
 
   @Patch(':id')
+  @Roles({ module: 'HR', action: 'UPDATE' })
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateEmployeeDto,
@@ -139,6 +152,7 @@ export class EmployeeController {
 
   @Post(':id/reassign')
   @HttpCode(200)
+  @Roles({ module: 'HR', action: 'UPDATE' })
   async reassign(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ReassignDto,
@@ -151,6 +165,7 @@ export class EmployeeController {
 
   @Post(':id/deactivate')
   @HttpCode(200)
+  @Roles({ module: 'HR', action: 'UPDATE' })
   async deactivate(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: VersionDto,
@@ -162,6 +177,7 @@ export class EmployeeController {
 
   @Post(':id/reactivate')
   @HttpCode(200)
+  @Roles({ module: 'HR', action: 'UPDATE' })
   async reactivate(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: VersionDto,

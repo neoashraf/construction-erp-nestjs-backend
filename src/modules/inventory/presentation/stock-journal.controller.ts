@@ -1,10 +1,12 @@
 /**
  * StockJournalController — `/api/stock-journal` (FR-INV-007..022). The Stock Journal voucher lifecycle:
  * create (DRAFT) · list/read · PATCH/DELETE (DRAFT only) · approve · post · reverse. camelCase JSON +
- * `{data,meta}` envelope (interceptor) + canonical/module error codes (filter). No RBAC guards on this
- * controller — matches the established Tier-2 convention (contra-journal, sales, requisition controllers
- * carry none yet; architectural decision 2). The actor (company implicit) is resolved via @CurrentActor.
- * Money/qty are numeric(18,4) strings; dates 'YYYY-MM-DD'.
+ * `{data,meta}` envelope (interceptor) + canonical/module error codes (filter). Real
+ * `@UseGuards(JwtAuthGuard, RolesGuard)` + per-route `@Roles({module:'INV', action})`
+ * (tier2-rbac-guard-wiring, FR-AUD-012/013/017) — GET list/:id -> READ, POST -> CREATE, PATCH -> UPDATE,
+ * DELETE -> DELETE, POST :id/approve -> APPROVE, POST :id/post -> POST, POST :id/reverse -> CANCEL.
+ * The actor (company implicit) is resolved via @CurrentActor. Money/qty are numeric(18,4) strings;
+ * dates 'YYYY-MM-DD'.
  */
 import {
   Body,
@@ -18,6 +20,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
@@ -33,6 +36,9 @@ import {
 } from 'class-validator';
 import { Actor } from '../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../core/auth/presentation/current-actor.decorator';
+import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
+import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
+import { Roles } from '../../../core/auth/presentation/roles.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { STOCK_JOURNAL_MODES } from '../domain/stock-journal-mode';
 import { CreateStockJournalUseCase } from '../application/create-stock-journal.usecase';
@@ -103,6 +109,7 @@ class StockJournalQueryDto {
 
 @ApiTags('Stock Journal')
 @Controller('api/stock-journal')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class StockJournalController {
   constructor(
     private readonly create: CreateStockJournalUseCase,
@@ -115,6 +122,7 @@ export class StockJournalController {
   ) {}
 
   @Get()
+  @Roles({ module: 'INV', action: 'READ' })
   list(
     @Query() q: StockJournalQueryDto,
     @CurrentActor() actor: Actor,
@@ -123,17 +131,20 @@ export class StockJournalController {
   }
 
   @Get(':id')
+  @Roles({ module: 'INV', action: 'READ' })
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<StockJournalDto> {
     return this.require(id, actor);
   }
 
   @Post()
   @HttpCode(201)
+  @Roles({ module: 'INV', action: 'CREATE' })
   create_(@Body() body: CreateStockJournalDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.create.execute(body as never, actor);
   }
 
   @Patch(':id')
+  @Roles({ module: 'INV', action: 'UPDATE' })
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateStockJournalDto,
@@ -145,12 +156,14 @@ export class StockJournalController {
 
   @Delete(':id')
   @HttpCode(204)
+  @Roles({ module: 'INV', action: 'DELETE' })
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<void> {
     return this.del.execute(id, actor);
   }
 
   @Post(':id/approve')
   @HttpCode(200)
+  @Roles({ module: 'INV', action: 'APPROVE' })
   async approve(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() _body: VersionDto,
@@ -163,6 +176,7 @@ export class StockJournalController {
 
   @Post(':id/post')
   @HttpCode(200)
+  @Roles({ module: 'INV', action: 'POST' })
   async post_(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: PostStockJournalDto,
@@ -178,6 +192,7 @@ export class StockJournalController {
 
   @Post(':id/reverse')
   @HttpCode(200)
+  @Roles({ module: 'INV', action: 'CANCEL' })
   async reverse(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ReasonDto,

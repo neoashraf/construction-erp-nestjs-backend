@@ -2,7 +2,10 @@
  * JournalController — `/api/journal` (FR-GEN-004..020) plus `POST /api/journal/opening` for the one-time
  * go-live opening journal (FR-GEN-009..013). Journal draft→post→reverse lifecycle; the opening journal
  * is assembled from MAS figures and posted in one action. camelCase JSON + `{data,meta}` envelope +
- * canonical error codes. Money as strings; the actor is resolved via @CurrentActor.
+ * canonical error codes. Real `@UseGuards(JwtAuthGuard, RolesGuard)` + per-route
+ * `@Roles({module:'GEN', action})` (tier2-rbac-guard-wiring, FR-AUD-012/013/017) — GET list/:id -> READ,
+ * POST /opening -> POST, POST -> CREATE, PATCH -> UPDATE, DELETE -> DELETE, POST :id/post -> POST,
+ * POST :id/reverse -> CANCEL. Money as strings.
  */
 import {
   Body,
@@ -16,6 +19,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
@@ -34,6 +38,9 @@ import {
 import { Type } from 'class-transformer';
 import { Actor } from '../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../core/auth/presentation/current-actor.decorator';
+import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
+import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
+import { Roles } from '../../../core/auth/presentation/roles.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { CreateJournalUseCase } from '../application/create-journal.usecase';
 import { DeleteJournalUseCase, UpdateJournalUseCase } from '../application/update-journal.usecase';
@@ -88,6 +95,7 @@ class JournalQueryDto {
 
 @ApiTags('Journal Voucher')
 @Controller('api/journal')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class JournalController {
   constructor(
     private readonly create: CreateJournalUseCase,
@@ -100,27 +108,32 @@ export class JournalController {
   ) {}
 
   @Get()
+  @Roles({ module: 'GEN', action: 'READ' })
   list(@Query() q: JournalQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<JournalVoucherDto>> {
     return this.query.listJournal(q, actor);
   }
 
   @Post('opening')
+  @Roles({ module: 'GEN', action: 'POST' })
   async opening(@Body() body: OpeningDto, @CurrentActor() actor: Actor): Promise<JournalVoucherDto> {
     const { id } = await this.openingUc.execute(body, actor);
     return this.require(id, actor);
   }
 
   @Get(':id')
+  @Roles({ module: 'GEN', action: 'READ' })
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<JournalVoucherDto> {
     return this.require(id, actor);
   }
 
   @Post()
+  @Roles({ module: 'GEN', action: 'CREATE' })
   create_(@Body() body: CreateJournalDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.create.execute(body, actor);
   }
 
   @Patch(':id')
+  @Roles({ module: 'GEN', action: 'UPDATE' })
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateJournalDto,
@@ -137,12 +150,14 @@ export class JournalController {
 
   @Delete(':id')
   @HttpCode(204)
+  @Roles({ module: 'GEN', action: 'DELETE' })
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<void> {
     return this.del.execute(id, actor);
   }
 
   @Post(':id/post')
   @HttpCode(200)
+  @Roles({ module: 'GEN', action: 'POST' })
   async post(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<JournalVoucherDto> {
     await this.postUc.execute(id, actor);
     return this.require(id, actor);
@@ -150,6 +165,7 @@ export class JournalController {
 
   @Post(':id/reverse')
   @HttpCode(200)
+  @Roles({ module: 'GEN', action: 'CANCEL' })
   async reverse(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ReverseDto,
