@@ -14,6 +14,7 @@ import {
   ExecutionContext,
   Injectable,
   NestInterceptor,
+  StreamableFile,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
@@ -41,7 +42,9 @@ export class ResponseEnvelopeInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       map((value: unknown): unknown => {
-        if (skip || value === undefined) return value; // @NoEnvelope or 204 — leave untouched
+        // @NoEnvelope, 204/no-body, or a binary file download (RPT Excel/PDF export — the one deliberate
+        // exception to the envelope, overview §6): leave the response untouched.
+        if (skip || value === undefined || value instanceof StreamableFile) return value;
         if (value instanceof Paginated) {
           return {
             data: value.items,

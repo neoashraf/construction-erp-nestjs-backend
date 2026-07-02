@@ -8,13 +8,14 @@
 import { Injectable } from '@nestjs/common';
 import { ReportFormat } from '../../domain/report-descriptor';
 import { ReportResult } from '../../domain/report-result.model';
-import { FileExporter } from '../../domain/ports/file-exporter.port';
+import { ExportContext, FileExporter } from '../../domain/ports/file-exporter.port';
 
 @Injectable()
 export class JsonExporter implements FileExporter {
   readonly format: ReportFormat = 'json';
 
-  render<Row>(result: ReportResult<Row>): ReportResult<Row> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  render<Row>(result: ReportResult<Row>, _ctx?: ExportContext): ReportResult<Row> {
     return result;
   }
 }
