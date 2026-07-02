@@ -3,7 +3,7 @@
  * (overview §6): plain value → { data, meta:{requestId} }; Paginated → page info in meta;
  * @NoEnvelope and 204/undefined pass through untouched.
  */
-import { CallHandler, ExecutionContext } from '@nestjs/common';
+import { CallHandler, ExecutionContext, StreamableFile } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { firstValueFrom, of } from 'rxjs';
 import { ResponseEnvelopeInterceptor } from '../../src/infrastructure/http/response-envelope.interceptor';
@@ -47,5 +47,11 @@ describe('ResponseEnvelopeInterceptor', () => {
   it('leaves an undefined (204 / no body) response untouched', async () => {
     const out = await firstValueFrom(make(false).intercept(ctxWith(), handlerOf(undefined)));
     expect(out).toBeUndefined();
+  });
+
+  it('passes a StreamableFile (binary download) through un-enveloped (RPT export exception)', async () => {
+    const file = new StreamableFile(Buffer.from('%PDF-1.4'));
+    const out = await firstValueFrom(make(false).intercept(ctxWith(), handlerOf(file)));
+    expect(out).toBe(file);
   });
 });

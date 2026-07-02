@@ -7,17 +7,22 @@
  * SEAM: `LEDGER_READ_PORT` → `LedgerReadAdapter` runs the SAME canonical aggregation LED's read service
  * uses (LED does not export its `LedgerQueryService` and this brief forbids modifying LED — so RPT runs
  * the identical scoped SQL over `journal_line`/`journal_entry`, never a second definition, FR-RPT-004).
- * `FILE_EXPORTER` → `JsonExporter` (this brief); the Excel/PDF adapters are added in RPT #30. Later RPT
+ * `FILE_EXPORTER` is a MULTI provider — one `FileExporter` adapter per format (`JsonExporter` +, from RPT
+ * #30, `ExcelExporter` / `PdfExporter`); the controller selects the adapter by the `format` parameter.
+ * `CompanyQueryService` supplies the BIN/TIN header block for statutory exports (FR-RPT-030). Later RPT
  * briefs add the CC/SAL/INV/HR/REQ read ports for the project/inventory/HR reports.
  */
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../../core/auth/auth.module';
+import { CompanyQueryService } from '../../modules/master-data/company/read/company.query-service';
 import { ReportQueryService } from '../application/report-query.service';
 import { ReportScopeService } from '../application/report-scope.service';
 import { LEDGER_READ_PORT } from '../domain/ports/ledger.read.port';
 import { FILE_EXPORTER } from '../domain/ports/file-exporter.port';
 import { LedgerReadAdapter } from '../infrastructure/ledger.read.adapter';
 import { JsonExporter } from '../infrastructure/exporters/json.exporter';
+import { ExcelExporter } from '../infrastructure/exporters/excel.exporter';
+import { PdfExporter } from '../infrastructure/exporters/pdf.exporter';
 import { ReportsController } from './reports.controller';
 
 @Module({
@@ -26,8 +31,18 @@ import { ReportsController } from './reports.controller';
   providers: [
     ReportQueryService,
     ReportScopeService,
+    CompanyQueryService,
+    JsonExporter,
+    ExcelExporter,
+    PdfExporter,
     { provide: LEDGER_READ_PORT, useClass: LedgerReadAdapter },
-    { provide: FILE_EXPORTER, useClass: JsonExporter },
+    // One FileExporter adapter per format, exposed as an array; the controller keys it by `format`
+    // and selects the right adapter (FR-RPT-029). Adding CSV later is a fourth adapter here, no more.
+    {
+      provide: FILE_EXPORTER,
+      useFactory: (json: JsonExporter, excel: ExcelExporter, pdf: PdfExporter) => [json, excel, pdf],
+      inject: [JsonExporter, ExcelExporter, PdfExporter],
+    },
   ],
 })
 export class ReportsModule {}

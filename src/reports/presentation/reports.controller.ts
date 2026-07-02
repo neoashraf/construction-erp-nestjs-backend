@@ -7,13 +7,27 @@
  * `@Roles({ module:'RPT', action:'READ' })` on every route (FR-RPT-008; the brief's "reports:financial"
  * permission maps to RPT:READ). The actor is resolved via `@CurrentActor`.
  *
- * JSON is the only format wired in this brief (the JSON exporter); `format=excel|pdf` is rejected with a
- * clear `400` until the exporters land in RPT #30. Non-paginated reports (trial-balance, profit-and-loss,
- * balance-sheet) return a `ReportResult` (the interceptor wraps it in `data`); paginated reports
- * (account-ledger, daybook, cash-bank-book) return `Paginated` so the running balance / page info ride
- * `meta`.
+ * Export is a FORMAT parameter, not an endpoint (FR-RPT-029): `format=json` (default) returns the report
+ * body wrapped by the platform `{ data, meta }` envelope (paginated reports ride `meta`); `format=excel` /
+ * `format=pdf` return a BINARY FILE DOWNLOAD — the one deliberate exception to the envelope (overview §6).
+ * The binary response carries `Content-Type`, `Content-Disposition: attachment; filename="…"`, and the
+ * request id via `X-Request-Id` (FR-RPT-031). The SAME format-neutral `ReportResult` is handed to the
+ * selected `FileExporter`, so a report's numbers are identical across all three formats (FR-RPT-029).
+ * Non-paginated reports (trial-balance, profit-and-loss, balance-sheet) return a `ReportResult`; paginated
+ * reports (account-ledger, daybook, cash-bank-book) return `Paginated`.
  */
-import { Controller, Get, Inject, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Inject,
+  Query,
+  Req,
+  Res,
+  StreamableFile,
+  UseGuards,
+} from '@nestjs/common';
+import { Request, Response } from 'express';
+import { Readable } from 'stream';
 import { ApiTags } from '@nestjs/swagger';
 import { ValidationError } from '../../common/errors/domain-error';
 import { Actor } from '../../core/tenancy/tenant-context';
@@ -22,8 +36,9 @@ import { JwtAuthGuard } from '../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/presentation/roles.guard';
 import { Roles } from '../../core/auth/presentation/roles.decorator';
 import { Paginated } from '../../infrastructure/http/pagination';
+import { CompanyQueryService } from '../../modules/master-data/company/read/company.query-service';
 import { REPORT_CATALOG } from '../domain/report-catalog';
-import { ReportDescriptor } from '../domain/report-descriptor';
+import { ReportDescriptor, ReportFormat } from '../domain/report-descriptor';
 import {
   AccountLedgerRow,
   BalanceSheetRow,
@@ -31,7 +46,12 @@ import {
   ReportResult,
   TrialBalanceRow,
 } from '../domain/report-result.model';
-import { FileExporter, FILE_EXPORTER } from '../domain/ports/file-exporter.port';
+import {
+  BinaryDownload,
+  CompanyHeader,
+  FileExporter,
+  FILE_EXPORTER,
+} from '../domain/ports/file-exporter.port';
 import { ReportQueryService } from '../application/report-query.service';
 import {
   AccountLedgerReportQueryDto,
@@ -46,10 +66,15 @@ import {
 @Controller('api/reports')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ReportsController {
+  private readonly exporters: Map<ReportFormat, FileExporter>;
+
   constructor(
     private readonly query: ReportQueryService,
-    @Inject(FILE_EXPORTER) private readonly exporter: FileExporter,
-  ) {}
+    private readonly company: CompanyQueryService,
+    @Inject(FILE_EXPORTER) exporters: FileExporter[],
+  ) {
+    this.exporters = new Map(exporters.map((e) => [e.format, e]));
+  }
 
   /** The report catalog (FR-RPT-001) — the authoritative list of runnable reports. */
   @Get()
@@ -63,9 +88,11 @@ export class ReportsController {
   async trialBalance(
     @Query() q: TrialBalanceReportQueryDto,
     @CurrentActor() actor: Actor,
-  ): Promise<ReportResult<TrialBalanceRow>> {
-    this.assertJson(q.format);
-    return this.exporter.render(await this.query.trialBalance(q, actor)) as ReportResult<TrialBalanceRow>;
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<ReportResult<TrialBalanceRow> | StreamableFile> {
+    const result = await this.query.trialBalance(q, actor);
+    return this.respond(result, q.format, actor, res, req);
   }
 
   @Get('account-ledger')
@@ -73,9 +100,11 @@ export class ReportsController {
   async accountLedger(
     @Query() q: AccountLedgerReportQueryDto,
     @CurrentActor() actor: Actor,
-  ): Promise<Paginated<AccountLedgerRow>> {
-    this.assertJson(q.format);
-    return this.query.accountLedger(q, actor);
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<Paginated<AccountLedgerRow> | StreamableFile> {
+    const paged = await this.query.accountLedger(q, actor);
+    return this.respondPaged('account-ledger', paged, q, actor, res, req);
   }
 
   @Get('daybook')
@@ -83,9 +112,11 @@ export class ReportsController {
   async daybook(
     @Query() q: DaybookReportQueryDto,
     @CurrentActor() actor: Actor,
-  ): Promise<Paginated<AccountLedgerRow>> {
-    this.assertJson(q.format);
-    return this.query.daybook(q, actor);
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<Paginated<AccountLedgerRow> | StreamableFile> {
+    const paged = await this.query.daybook(q, actor);
+    return this.respondPaged('daybook', paged, q, actor, res, req);
   }
 
   @Get('cash-bank-book')
@@ -93,9 +124,11 @@ export class ReportsController {
   async cashBankBook(
     @Query() q: CashBankBookReportQueryDto,
     @CurrentActor() actor: Actor,
-  ): Promise<Paginated<AccountLedgerRow>> {
-    this.assertJson(q.format);
-    return this.query.cashBankBook(q, actor);
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<Paginated<AccountLedgerRow> | StreamableFile> {
+    const paged = await this.query.cashBankBook(q, actor);
+    return this.respondPaged('cash-bank-book', paged, q, actor, res, req);
   }
 
   @Get('profit-and-loss')
@@ -103,9 +136,11 @@ export class ReportsController {
   async profitAndLoss(
     @Query() q: ProfitAndLossReportQueryDto,
     @CurrentActor() actor: Actor,
-  ): Promise<ReportResult<ProjectPnlRow>> {
-    this.assertJson(q.format);
-    return this.exporter.render(await this.query.profitAndLoss(q, actor)) as ReportResult<ProjectPnlRow>;
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<ReportResult<ProjectPnlRow> | StreamableFile> {
+    const result = await this.query.profitAndLoss(q, actor);
+    return this.respond(result, q.format, actor, res, req);
   }
 
   @Get('balance-sheet')
@@ -113,17 +148,88 @@ export class ReportsController {
   async balanceSheet(
     @Query() q: BalanceSheetReportQueryDto,
     @CurrentActor() actor: Actor,
-  ): Promise<ReportResult<BalanceSheetRow>> {
-    this.assertJson(q.format);
-    return this.exporter.render(await this.query.balanceSheet(q, actor)) as ReportResult<BalanceSheetRow>;
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<ReportResult<BalanceSheetRow> | StreamableFile> {
+    const result = await this.query.balanceSheet(q, actor);
+    return this.respond(result, q.format, actor, res, req);
   }
 
-  /** Only `format=json` is wired in this brief; Excel/PDF exporters land in RPT #30 (FR-RPT-029). */
-  private assertJson(format?: string): void {
-    if (format && format !== 'json') {
-      throw new ValidationError(`format '${format}' is not yet available; use json (Excel/PDF land in RPT #30)`, {
-        field: 'format',
-      });
+  // ── format dispatch ───────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Render a non-paginated `ReportResult`: JSON → the plain body (interceptor wraps it in `{ data, meta }`);
+   * Excel/PDF → a binary file download (headers set here; the StreamableFile bypasses the envelope).
+   */
+  private async respond<Row>(
+    result: ReportResult<Row>,
+    format: ReportFormat | undefined,
+    actor: Actor,
+    res: Response,
+    req: Request & { id?: string },
+  ): Promise<ReportResult<Row> | StreamableFile> {
+    const fmt = format ?? 'json';
+    const exporter = this.exporterFor(fmt);
+    if (fmt === 'json') return exporter.render(result) as ReportResult<Row>;
+
+    const ctx = { company: await this.companyHeader(actor) };
+    const download = exporter.render(result, ctx) as BinaryDownload;
+    return this.stream(download, res, req);
+  }
+
+  /**
+   * Paginated reports (account-ledger, daybook, cash-bank-book): JSON returns the `Paginated` (page info on
+   * `meta`); Excel/PDF export the requested page as a `ReportResult` (its reconciling aggregates ride
+   * `totals`). Request a larger `pageSize` (capped at 200) for a fuller export.
+   */
+  private async respondPaged<Row>(
+    reportName: string,
+    paged: Paginated<Row>,
+    q: { format?: ReportFormat; projectId?: string; dateFrom?: string; dateTo?: string; financialYearId?: string },
+    actor: Actor,
+    res: Response,
+    req: Request & { id?: string },
+  ): Promise<Paginated<Row> | StreamableFile> {
+    const fmt = q.format ?? 'json';
+    if (fmt === 'json') return paged;
+
+    const result: ReportResult<Row> = {
+      reportName,
+      parameters: {
+        financialYearId: q.financialYearId ?? null,
+        projectId: q.projectId ?? null,
+        dateFrom: q.dateFrom ?? null,
+        dateTo: q.dateTo ?? null,
+      },
+      rows: paged.items,
+      totals: (paged.extraMeta as Record<string, string> | undefined) ?? null,
+      generatedAt: new Date().toISOString(),
+    };
+    const ctx = { company: await this.companyHeader(actor) };
+    const download = this.exporterFor(fmt).render(result, ctx) as BinaryDownload;
+    return this.stream(download, res, req);
+  }
+
+  private stream(download: BinaryDownload, res: Response, req: Request & { id?: string }): StreamableFile {
+    const requestId = req.id ?? (req.headers['x-request-id'] as string | undefined) ?? '';
+    res.setHeader('Content-Type', download.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${download.filename}"`);
+    res.setHeader('X-Request-Id', requestId);
+    return new StreamableFile(download.stream as Readable);
+  }
+
+  private exporterFor(format: ReportFormat): FileExporter {
+    const exporter = this.exporters.get(format);
+    if (!exporter) {
+      throw new ValidationError(`format '${format}' is not supported`, { field: 'format' });
     }
+    return exporter;
+  }
+
+  /** The company BIN/TIN block for statutory exports (FR-RPT-030); null if the company is unavailable. */
+  private async companyHeader(actor: Actor): Promise<CompanyHeader | null> {
+    const c = await this.company.getById(actor.companyId, actor);
+    if (!c) return null;
+    return { name: c.name, legalName: c.legalName, bin: c.bin, tin: c.tin, address: c.address };
   }
 }
