@@ -15,6 +15,7 @@ import {
   HttpCode,
   NotFoundException,
   Param,
+  ParseEnumPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -47,7 +48,14 @@ import { PostPaymentUseCase } from '../application/post-payment.usecase';
 import { CancelPaymentUseCase } from '../application/cancel-payment.usecase';
 import { RepostPaymentUseCase } from '../application/repost-payment.usecase';
 import { EditPayment, NewPayment } from '../domain/payment-voucher';
-import { PaymentDto, PaymentQueryService, PaymentSummaryDto } from '../application/payment-query.service';
+import {
+  AppliedToPayableDto,
+  OpenPayableRow,
+  PaymentDto,
+  PaymentQueryService,
+  PaymentSummaryDto,
+} from '../application/payment-query.service';
+import { PayableType } from '../domain/allocation';
 
 const PAYMENT_MODES = ['CASH', 'MFS', 'BANK_TRANSFER', 'CHEQUE', 'RTGS'] as const;
 const PAYABLE_TYPES = ['PURCHASE_BILL', 'LABOUR_PAYABLE', 'SALARY'] as const;
@@ -116,6 +124,14 @@ class PaymentQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) pageSize?: number;
 }
 
+class OpenPayablesQueryDto {
+  @IsOptional() @IsUUID() partyId?: string;
+  @IsOptional() @IsIn(PAYABLE_TYPES) payableType?: 'PURCHASE_BILL' | 'LABOUR_PAYABLE' | 'SALARY';
+  @IsOptional() @IsUUID() financialYearId?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) pageSize?: number;
+}
+
 @ApiTags('Payments')
 @Controller('api/payment')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -134,6 +150,23 @@ export class PaymentController {
   @Roles({ module: 'PAY', action: 'READ' })
   list(@Query() q: PaymentQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<PaymentSummaryDto>> {
     return this.query.list(q, actor);
+  }
+
+  // Declared BEFORE @Get(':id') so these static segments are not swallowed by the :id param route.
+  @Get('open-payables')
+  @Roles({ module: 'PAY', action: 'READ' })
+  openPayables(@Query() q: OpenPayablesQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<OpenPayableRow>> {
+    return this.query.openPayables(q, actor);
+  }
+
+  @Get('payables/:payableType/:payableId/applied')
+  @Roles({ module: 'PAY', action: 'READ' })
+  appliedToPayable(
+    @Param('payableType', new ParseEnumPipe(PAYABLE_TYPES)) payableType: PayableType,
+    @Param('payableId', ParseUUIDPipe) payableId: string,
+    @CurrentActor() actor: Actor,
+  ): Promise<AppliedToPayableDto> {
+    return this.query.appliedToPayable(payableType, payableId, actor);
   }
 
   @Get(':id')
