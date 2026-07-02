@@ -55,6 +55,8 @@ import { LedgerReadAdapter } from '../src/reports/infrastructure/ledger.read.ada
 import { InventoryReadAdapter } from '../src/reports/infrastructure/inventory.read.adapter';
 import { RequisitionReadAdapter } from '../src/reports/infrastructure/requisition.read.adapter';
 import { HrReadAdapter } from '../src/reports/infrastructure/hr.read.adapter';
+import { SalesReadAdapter } from '../src/reports/infrastructure/sales.read.adapter';
+import { CostControlReadAdapter } from '../src/reports/infrastructure/cost-control.read.adapter';
 import { ReportQueryService } from '../src/reports/application/report-query.service';
 import { ReportScopeService } from '../src/reports/application/report-scope.service';
 import { CompanyQueryService } from '../src/modules/master-data/company/read/company.query-service';
@@ -246,6 +248,8 @@ describe('RPT export end-to-end (real Postgres ledger → ReportsController → 
       new RequisitionReadAdapter(ds),
       new HrReadAdapter(ds),
       new ReportScopeService(),
+      new SalesReadAdapter(ds),
+      new CostControlReadAdapter(ds),
     );
     const exporters = [new JsonExporter(), new ExcelExporter(), new PdfExporter()];
     controller = new ReportsController(query, new CompanyQueryService(ds), exporters);

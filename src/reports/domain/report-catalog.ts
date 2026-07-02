@@ -189,14 +189,90 @@ export const HR_REPORTS: ReportDescriptor[] = [
 ];
 
 /**
+ * Project reports (RPT #32 · FR-RPT-015…020/-025). Project P&L and labour-cost are LED queries; the IPC
+ * reports render SAL's per-IPC outstanding/retention (never a parallel total); material-consumption and
+ * cost-centre-variance consume CC's canonical budget-vs-actual. All gated on RPT:READ (the reports:project
+ * family — a PM holds RPT:READ ASSIGNED) and project-scoped (F4). `project-pnl` requires a `projectId`.
+ */
+export const PROJECT_REPORTS: ReportDescriptor[] = [
+  {
+    name: 'project-pnl',
+    title: 'Project P&L',
+    source: 'LEDGER',
+    fr: 'FR-RPT-015',
+    parameters: ['financialYearId', 'projectId', 'costCentreId', 'dateFrom', 'dateTo', 'format', 'page', 'pageSize'],
+    formats: ALL_FORMATS,
+    requiredPermission: RPT_READ,
+    projectScoped: true,
+    asOf: false,
+  },
+  {
+    name: 'ipc-billing',
+    title: 'IPC Billed vs Certified vs Received',
+    source: 'SALES_IPC',
+    fr: 'FR-RPT-016',
+    parameters: ['financialYearId', 'projectId', 'dateFrom', 'dateTo', 'format', 'page', 'pageSize'],
+    formats: ALL_FORMATS,
+    requiredPermission: RPT_READ,
+    projectScoped: true,
+    asOf: false,
+  },
+  {
+    name: 'outstanding',
+    title: 'Outstanding per Project & IPC',
+    source: 'SALES_IPC',
+    fr: 'FR-RPT-020',
+    parameters: ['financialYearId', 'projectId', 'asOf', 'format', 'page', 'pageSize'],
+    formats: ALL_FORMATS,
+    requiredPermission: RPT_READ,
+    projectScoped: true,
+    asOf: true,
+  },
+  {
+    name: 'material-consumption-vs-budget',
+    title: 'Material Consumption vs Budget',
+    source: 'COST_CONTROL',
+    fr: 'FR-RPT-018',
+    parameters: ['financialYearId', 'projectId', 'costCentreId', 'dateFrom', 'dateTo', 'format', 'page', 'pageSize'],
+    formats: ALL_FORMATS,
+    requiredPermission: RPT_READ,
+    projectScoped: true,
+    asOf: false,
+  },
+  {
+    name: 'labour-cost',
+    title: 'Labour Cost per Cost Centre',
+    source: 'LEDGER',
+    fr: 'FR-RPT-019',
+    parameters: ['financialYearId', 'projectId', 'costCentreId', 'dateFrom', 'dateTo', 'format', 'page', 'pageSize'],
+    formats: ALL_FORMATS,
+    requiredPermission: RPT_READ,
+    projectScoped: true,
+    asOf: false,
+  },
+  {
+    name: 'cost-centre-variance',
+    title: 'Cost-Centre Variance',
+    source: 'COST_CONTROL',
+    fr: 'FR-RPT-025',
+    parameters: ['financialYearId', 'projectId', 'costCentreId', 'dateFrom', 'dateTo', 'status', 'format', 'page', 'pageSize'],
+    formats: ALL_FORMATS,
+    requiredPermission: RPT_READ,
+    projectScoped: true,
+    asOf: false,
+  },
+];
+
+/**
  * The full report catalog. Phase-1: the six LED financial reports (#29/#30), the inventory + requisition +
- * HR reports (#31); a later RPT brief appends the project (#32) descriptors here.
+ * HR reports (#31), and the project reports (#32).
  */
 export const REPORT_CATALOG: ReportDescriptor[] = [
   ...FINANCIAL_REPORTS,
   ...INVENTORY_REPORTS,
   ...REQUISITION_REPORTS,
   ...HR_REPORTS,
+  ...PROJECT_REPORTS,
 ];
 
 /** Look up a descriptor by its catalog name (FR-RPT-001). */

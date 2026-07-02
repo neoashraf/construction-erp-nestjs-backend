@@ -21,11 +21,15 @@ import { LEDGER_READ_PORT } from '../domain/ports/ledger.read.port';
 import { INVENTORY_READ_PORT } from '../domain/ports/inventory.read.port';
 import { REQUISITION_READ_PORT } from '../domain/ports/requisition.read.port';
 import { HR_READ_PORT } from '../domain/ports/hr.read.port';
+import { SALES_READ_PORT } from '../domain/ports/sales.read.port';
+import { COST_CONTROL_READ_PORT } from '../domain/ports/cost-control.read.port';
 import { FILE_EXPORTER } from '../domain/ports/file-exporter.port';
 import { LedgerReadAdapter } from '../infrastructure/ledger.read.adapter';
 import { InventoryReadAdapter } from '../infrastructure/inventory.read.adapter';
 import { RequisitionReadAdapter } from '../infrastructure/requisition.read.adapter';
 import { HrReadAdapter } from '../infrastructure/hr.read.adapter';
+import { SalesReadAdapter } from '../infrastructure/sales.read.adapter';
+import { CostControlReadAdapter } from '../infrastructure/cost-control.read.adapter';
 import { JsonExporter } from '../infrastructure/exporters/json.exporter';
 import { ExcelExporter } from '../infrastructure/exporters/excel.exporter';
 import { PdfExporter } from '../infrastructure/exporters/pdf.exporter';
@@ -45,6 +49,8 @@ import { ReportsController } from './reports.controller';
     { provide: INVENTORY_READ_PORT, useClass: InventoryReadAdapter },
     { provide: REQUISITION_READ_PORT, useClass: RequisitionReadAdapter },
     { provide: HR_READ_PORT, useClass: HrReadAdapter },
+    { provide: SALES_READ_PORT, useClass: SalesReadAdapter },
+    { provide: COST_CONTROL_READ_PORT, useClass: CostControlReadAdapter },
     // One FileExporter adapter per format, exposed as an array; the controller keys it by `format`
     // and selects the right adapter (FR-RPT-029). Adding CSV later is a fourth adapter here, no more.
     {

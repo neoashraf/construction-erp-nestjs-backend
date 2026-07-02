@@ -10,6 +10,7 @@ import {
   INVENTORY_REPORTS,
   REQUISITION_REPORTS,
   HR_REPORTS,
+  PROJECT_REPORTS,
   findReport,
 } from '../../../src/reports/domain/report-catalog';
 
@@ -104,6 +105,50 @@ describe('ReportCatalog integrity', () => {
     expect(findReport('balance-sheet')?.asOf).toBe(true);
     expect(findReport('profit-and-loss')?.asOf).toBe(false);
     expect(findReport('daybook')?.asOf).toBe(false);
+  });
+
+  // ── RPT #32: project reports (FR-RPT-015…020/-025) ──
+  it('registers the six project reports with the expected names', () => {
+    const names = PROJECT_REPORTS.map((r) => r.name).sort();
+    expect(names).toEqual(
+      [
+        'project-pnl',
+        'ipc-billing',
+        'outstanding',
+        'material-consumption-vs-budget',
+        'labour-cost',
+        'cost-centre-variance',
+      ].sort(),
+    );
+  });
+
+  it('covers every project FR (015..020, 025) with a descriptor', () => {
+    const frs = new Set(PROJECT_REPORTS.map((r) => r.fr));
+    for (const n of [15, 16, 18, 19, 20, 25]) {
+      expect(frs.has(`FR-RPT-0${n}`)).toBe(true);
+    }
+  });
+
+  it('gates every project report on RPT:READ (the reports:project family) and marks it project-scoped', () => {
+    for (const r of PROJECT_REPORTS) {
+      expect(r.requiredPermission).toEqual({ module: 'RPT', action: 'READ' });
+      expect(r.projectScoped).toBe(true);
+      expect(r.formats).toEqual(['json', 'excel', 'pdf']);
+      expect(r.parameters).toContain('financialYearId');
+    }
+  });
+
+  it('sources each project report at its owning read model (LED / SALES_IPC / COST_CONTROL)', () => {
+    expect(findReport('project-pnl')?.source).toBe('LEDGER');
+    expect(findReport('labour-cost')?.source).toBe('LEDGER');
+    expect(findReport('ipc-billing')?.source).toBe('SALES_IPC');
+    expect(findReport('outstanding')?.source).toBe('SALES_IPC');
+    expect(findReport('material-consumption-vs-budget')?.source).toBe('COST_CONTROL');
+    expect(findReport('cost-centre-variance')?.source).toBe('COST_CONTROL');
+  });
+
+  it('the catalog now contains all 19 Phase-1 reports (6 LED + 3 INV + 1 REQ + 3 HR + 6 project)', () => {
+    expect(REPORT_CATALOG).toHaveLength(19);
   });
 
   it('findReport returns undefined for an unknown name', () => {

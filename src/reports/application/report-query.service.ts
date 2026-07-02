@@ -19,7 +19,11 @@ import {
   AccountLedgerRow,
   AttendanceSummaryRow,
   BalanceSheetRow,
+  CostCentreVarianceRow,
+  CostControlVarianceStatus,
   EmployeePaymentRow,
+  IpcBillingRow,
+  LabourCostRow,
   ProjectPnlRow,
   ReportResult,
   RequisitionVsIssueRow,
@@ -32,6 +36,9 @@ import { LedgerReadPort, LedgerScope, LEDGER_READ_PORT } from '../domain/ports/l
 import { InventoryReadPort, INVENTORY_READ_PORT } from '../domain/ports/inventory.read.port';
 import { RequisitionReadPort, REQUISITION_READ_PORT } from '../domain/ports/requisition.read.port';
 import { HrReadPort, HR_READ_PORT } from '../domain/ports/hr.read.port';
+import { SalesReadPort, SALES_READ_PORT } from '../domain/ports/sales.read.port';
+import { CostControlReadPort, COST_CONTROL_READ_PORT } from '../domain/ports/cost-control.read.port';
+import { ageingBucket } from '../domain/ageing';
 import { ReportScopeService } from './report-scope.service';
 
 export interface CommonReportParams {
@@ -115,6 +122,46 @@ export interface EmployeePaymentParams {
   pageSize?: number;
 }
 
+export interface ProjectPnlParams {
+  financialYearId?: string;
+  projectId?: string;
+  costCentreId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface IpcBillingParams {
+  financialYearId?: string;
+  projectId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface OutstandingParams {
+  financialYearId?: string;
+  projectId?: string;
+  asOf?: string;
+}
+
+export interface CostCentreVarianceParams {
+  financialYearId?: string;
+  projectId?: string;
+  costCentreId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  status?: string;
+}
+
+export interface LabourCostParams {
+  financialYearId?: string;
+  projectId?: string;
+  costCentreId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+const ALL_VARIANCE_STATUSES: CostControlVarianceStatus[] = ['OK', 'APPROACHING', 'OVER', 'UNBUDGETED'];
+
 @Injectable()
 export class ReportQueryService {
   constructor(
@@ -123,6 +170,8 @@ export class ReportQueryService {
     @Inject(REQUISITION_READ_PORT) private readonly requisition: RequisitionReadPort,
     @Inject(HR_READ_PORT) private readonly hr: HrReadPort,
     private readonly scope: ReportScopeService,
+    @Inject(SALES_READ_PORT) private readonly sales: SalesReadPort,
+    @Inject(COST_CONTROL_READ_PORT) private readonly costControl: CostControlReadPort,
   ) {}
 
   // ── trial balance (FR-RPT-009) ─────────────────────────────────────────────────────────────────
@@ -317,7 +366,174 @@ export class ReportQueryService {
     return new Paginated(items, page, pageSize, total);
   }
 
+  // ── project P&L (FR-RPT-015) ─────────────────────────────────────────────────────────────────────
+  /**
+   * Per-cost-centre revenue/cost/profit for a single project + a project total row (`costCentreId = null`),
+   * reusing LED's P&L aggregation grouped by cost centre. `profit = revenue − cost` — equal to CC's project
+   * profitability for the same params (FR-RPT-015; CC FR-CC-009). RPT does not recompute the math.
+   */
+  async projectPnl(p: ProjectPnlParams, actor: Actor): Promise<ReportResult<ProjectPnlRow>> {
+    this.assertDateRange(p);
+    const scope = this.buildScope({ ...p, groupBy: 'cost_centre' }, actor);
+    const { rows, totals } = await this.ledger.profitAndLoss(scope);
+    const projectId = p.projectId ?? null;
+    // LED grouped by cost centre carries no project_id column — stamp the requested project on each row.
+    const perCostCentre: ProjectPnlRow[] = rows.map((r) => ({ ...r, projectId }));
+    // Project total row (costCentreId = null) — the reconciling revenue/cost/profit for the project.
+    const totalRow: ProjectPnlRow = {
+      projectId,
+      costCentreId: null,
+      revenue: totals.revenue,
+      cost: totals.cost,
+      profit: totals.profit,
+    };
+    return this.result(
+      'project-pnl',
+      {
+        financialYearId: p.financialYearId ?? null,
+        projectId,
+        costCentreId: p.costCentreId ?? null,
+        dateFrom: p.dateFrom ?? null,
+        dateTo: p.dateTo ?? null,
+      },
+      [...perCostCentre, totalRow],
+      totals,
+    );
+  }
+
+  // ── IPC billing (FR-RPT-016/-017) ────────────────────────────────────────────────────────────────
+  /**
+   * Per-IPC certified/billed/received/outstanding/retention (SAL's figures VERBATIM) + the project
+   * cumulative totals; RPT adds ONLY the ageing bucket (FR-RPT-017) derived from SAL's outstanding + the IPC
+   * due date relative to the report as-of (today). A reversed receipt raises outstanding on the next run.
+   */
+  async ipcBilling(p: IpcBillingParams, actor: Actor): Promise<ReportResult<IpcBillingRow>> {
+    this.assertDateRange(p);
+    const { companyId, projectIds } = this.scope.resolve(actor, p.projectId);
+    const { rows, totals } = await this.sales.ipcBilling({
+      companyId,
+      projectIds,
+      financialYearId: p.financialYearId,
+      dateFrom: p.dateFrom,
+      dateTo: p.dateTo,
+    });
+    const asOf = this.today();
+    const withAgeing: IpcBillingRow[] = rows.map((r) => ({ ...r, ageingBucket: ageingBucket(r.dueDate, asOf) }));
+    return this.result(
+      'ipc-billing',
+      { financialYearId: p.financialYearId ?? null, projectId: p.projectId ?? null, dateFrom: p.dateFrom ?? null, dateTo: p.dateTo ?? null },
+      withAgeing,
+      totals as unknown as Record<string, string>,
+    );
+  }
+
+  // ── outstanding per project & IPC (FR-RPT-020) ────────────────────────────────────────────────────
+  /**
+   * Receivables outstanding per IPC (SAL's per-IPC outstanding VERBATIM) with per-project rolled-up totals,
+   * so a project total = Σ its IPC outstanding and reconciles to SAL. Ageing is relative to `asOf` (or today).
+   */
+  async outstanding(p: OutstandingParams, actor: Actor): Promise<ReportResult<IpcBillingRow>> {
+    const { companyId, projectIds } = this.scope.resolve(actor, p.projectId);
+    const { rows } = await this.sales.ipcBilling({ companyId, projectIds, financialYearId: p.financialYearId });
+    const asOf = p.asOf ?? this.today();
+    const withAgeing: IpcBillingRow[] = rows.map((r) => ({ ...r, ageingBucket: ageingBucket(r.dueDate, asOf) }));
+    // Per-project rolled-up outstanding (project total = Σ its IPC outstanding), plus a grand total.
+    const perProject: Record<string, string> = {};
+    let grand = new Decimal(0);
+    for (const r of withAgeing) {
+      perProject[r.projectId] = new Decimal(perProject[r.projectId] ?? '0').plus(r.outstandingAmount).toFixed(4);
+      grand = grand.plus(r.outstandingAmount);
+    }
+    return this.result(
+      'outstanding',
+      { financialYearId: p.financialYearId ?? null, projectId: p.projectId ?? null, asOf: p.asOf ?? null },
+      withAgeing,
+      { ...perProject, outstanding: grand.toFixed(4) },
+    );
+  }
+
+  // ── material consumption vs budget (FR-RPT-018) ───────────────────────────────────────────────────
+  /** CC's budget-vs-actual per (project, cost centre) rendered VERBATIM — actual = consumed cost (FR-RPT-018). */
+  async materialConsumptionVsBudget(
+    p: LabourCostParams,
+    actor: Actor,
+  ): Promise<ReportResult<CostCentreVarianceRow>> {
+    this.assertDateRange(p);
+    const rows = await this.costControl.budgetVsActual(this.costControlScope(p, actor));
+    return this.result(
+      'material-consumption-vs-budget',
+      { financialYearId: p.financialYearId ?? null, projectId: p.projectId ?? null, costCentreId: p.costCentreId ?? null, dateFrom: p.dateFrom ?? null, dateTo: p.dateTo ?? null },
+      rows,
+      null,
+    );
+  }
+
+  // ── labour cost per cost centre (FR-RPT-019) ──────────────────────────────────────────────────────
+  /** Σ(debit − credit) on labour EXPENSE accounts grouped by cost centre, for a project or across projects. */
+  async labourCost(p: LabourCostParams, actor: Actor): Promise<ReportResult<LabourCostRow>> {
+    this.assertDateRange(p);
+    const scope = this.buildScope(p, actor);
+    const { rows, totals } = await this.ledger.labourCost(scope);
+    return this.result(
+      'labour-cost',
+      { financialYearId: p.financialYearId ?? null, projectId: p.projectId ?? null, costCentreId: p.costCentreId ?? null, dateFrom: p.dateFrom ?? null, dateTo: p.dateTo ?? null },
+      rows,
+      totals,
+    );
+  }
+
+  // ── cost-centre variance (FR-RPT-025) ─────────────────────────────────────────────────────────────
+  /**
+   * CC's budget-vs-actual per (project, cost centre) rendered VERBATIM (actual/variance/utilisation/status,
+   * incl. UNBUDGETED with null budget/variance) — RPT never recomputes variance (FR-RPT-025). An optional
+   * `status` csv filters the rows (validated against the CC status enum).
+   */
+  async costCentreVariance(
+    p: CostCentreVarianceParams,
+    actor: Actor,
+  ): Promise<ReportResult<CostCentreVarianceRow>> {
+    this.assertDateRange(p);
+    const statuses = this.parseVarianceStatuses(p.status);
+    const all = await this.costControl.budgetVsActual(this.costControlScope(p, actor));
+    const rows = statuses ? all.filter((r) => statuses.has(r.status)) : all;
+    return this.result(
+      'cost-centre-variance',
+      { financialYearId: p.financialYearId ?? null, projectId: p.projectId ?? null, costCentreId: p.costCentreId ?? null, dateFrom: p.dateFrom ?? null, dateTo: p.dateTo ?? null, status: p.status ?? null },
+      rows,
+      null,
+    );
+  }
+
   // ── helpers ────────────────────────────────────────────────────────────────────────────────────
+  private today(): string {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  private costControlScope(p: CostCentreVarianceParams, actor: Actor) {
+    const { companyId, projectIds } = this.scope.resolve(actor, p.projectId);
+    return {
+      companyId,
+      projectIds,
+      financialYearId: p.financialYearId,
+      costCentreId: p.costCentreId,
+      dateFrom: p.dateFrom,
+      dateTo: p.dateTo,
+    };
+  }
+
+  private parseVarianceStatuses(csv: string | undefined): Set<CostControlVarianceStatus> | null {
+    if (!csv) return null;
+    const tokens = csv.split(',').map((t) => t.trim()).filter(Boolean);
+    const set = new Set<CostControlVarianceStatus>();
+    for (const t of tokens) {
+      if (!ALL_VARIANCE_STATUSES.includes(t as CostControlVarianceStatus)) {
+        throw new ValidationError(`Unknown status '${t}'`, { allowed: ALL_VARIANCE_STATUSES });
+      }
+      set.add(t as CostControlVarianceStatus);
+    }
+    return set.size > 0 ? set : null;
+  }
+
   private buildScope(p: CommonReportParams, actor: Actor): LedgerScope {
     const { projectIds, companyId } = this.scope.resolve(actor, p.projectId);
     return {

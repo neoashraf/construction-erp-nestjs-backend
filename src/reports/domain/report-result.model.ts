@@ -65,6 +65,67 @@ export interface ProjectPnlRow {
   profit: string;
 }
 
+/**
+ * IPC billing row over SAL's per-IPC outstanding / cumulative billing / retention (FR-RPT-016/-017/-020).
+ * Every money figure is SAL's definition (FR-SAL-015/-016/-019) rendered VERBATIM — RPT never re-totals.
+ * `ageingBucket` is the ONLY field RPT derives, from SAL's `outstandingAmount` + `dueDate` (FR-RPT-017) —
+ * a display classification, not a parallel total.
+ */
+export interface IpcBillingRow {
+  ipcId: string;
+  projectId: string;
+  /** Legal IPC (Mushak) number. */
+  ipcNo: string | null;
+  ipcDate: string;
+  dueDate: string;
+  /** Gross certified (SAL). */
+  certifiedAmount: string;
+  /** Currently-due + retention + advance recovered + VAT (SAL). */
+  billedAmount: string;
+  /** Receipts applied to this IPC (REC). */
+  receivedAmount: string;
+  /** `currentlyDue − received` (SAL per-IPC outstanding, FR-SAL-016). */
+  outstandingAmount: string;
+  /** Retention withheld − released (SAL, FR-SAL-019). */
+  retentionHeld: string;
+  /** Age of `outstandingAmount` from `dueDate` (FR-RPT-017) — RPT-derived display bucket. */
+  ageingBucket: AgeingBucket;
+}
+
+/** Labour-cost row over LED (FR-RPT-019) — Σ(debit − credit) on labour EXPENSE accounts by cost centre. */
+export interface LabourCostRow {
+  projectId: string | null;
+  costCentreId: string | null;
+  /** Σ(debit − credit) on labour EXPENSE accounts ('5110' Labour, '6100' Salary). */
+  labourCost: string;
+}
+
+/**
+ * Cost-centre variance row consuming CC's canonical budget-vs-actual metric (FR-RPT-025). Every figure is
+ * CC's for the same parameters — RPT renders `actualCost`/`variance`/`utilisationPct`/`status` VERBATIM and
+ * never recomputes variance. `budgetedAmount`/`variance`/`utilisationPct` are null when `status=UNBUDGETED`.
+ */
+export interface CostCentreVarianceRow {
+  projectId: string;
+  costCentreId: string;
+  /** CC `budgetedAmount` (MAS `ProjectBudget`); null when UNBUDGETED. */
+  budgetedAmount: string | null;
+  /** CC `actualCost` (FR-CC-006) — RPT does not recompute. */
+  actualCost: string;
+  /** CC `variance` (= budgeted − actual); null when UNBUDGETED. */
+  variance: string | null;
+  /** CC `utilisationPct`; null when UNBUDGETED. */
+  utilisationPct: string | null;
+  /** CC `status` — RPT renders CC's classification, never invents one. */
+  status: CostControlVarianceStatus;
+}
+
+/** CC's budget-vs-actual classification (mirrors CC's `CostControlStatus`) — rendered verbatim by RPT. */
+export type CostControlVarianceStatus = 'OK' | 'APPROACHING' | 'OVER' | 'UNBUDGETED';
+
+/** IPC / receivable ageing bucket (FR-RPT-017) — a presentation classification, not a total. */
+export type AgeingBucket = 'CURRENT' | 'D31_60' | 'D61_90' | 'D90_PLUS';
+
 /** Balance-sheet row grouped by MAS `AccountGroup` over LED (FR-RPT-014). */
 export interface BalanceSheetRow {
   accountGroupId: string | null;

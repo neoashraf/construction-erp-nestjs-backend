@@ -43,7 +43,10 @@ import {
   AccountLedgerRow,
   AttendanceSummaryRow,
   BalanceSheetRow,
+  CostCentreVarianceRow,
   EmployeePaymentRow,
+  IpcBillingRow,
+  LabourCostRow,
   ProjectPnlRow,
   ReportResult,
   RequisitionVsIssueRow,
@@ -64,10 +67,16 @@ import {
   AttendanceSummaryReportQueryDto,
   BalanceSheetReportQueryDto,
   CashBankBookReportQueryDto,
+  CostCentreVarianceReportQueryDto,
   DaybookReportQueryDto,
   EmployeePaymentReportQueryDto,
+  IpcBillingReportQueryDto,
+  LabourCostReportQueryDto,
   LowStockReportQueryDto,
+  MaterialConsumptionReportQueryDto,
+  OutstandingReportQueryDto,
   ProfitAndLossReportQueryDto,
+  ProjectPnlReportQueryDto,
   RequisitionVsIssueReportQueryDto,
   SalaryRegisterReportQueryDto,
   StockTransferReportQueryDto,
@@ -218,6 +227,80 @@ export class ReportsController {
   ): Promise<Paginated<RequisitionVsIssueRow> | StreamableFile> {
     const paged = await this.query.requisitionVsIssue(q, actor);
     return this.respondPaged('requisition-vs-issue', paged, q, actor, res, req);
+  }
+
+  // ── project reports (RPT:READ — the reports:project family; PM scoped to assigned projects) ──────
+
+  @Get('project-pnl')
+  @Roles({ module: 'RPT', action: 'READ' })
+  async projectPnl(
+    @Query() q: ProjectPnlReportQueryDto,
+    @CurrentActor() actor: Actor,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<ReportResult<ProjectPnlRow> | StreamableFile> {
+    const result = await this.query.projectPnl(q, actor);
+    return this.respond(result, q.format, actor, res, req);
+  }
+
+  @Get('ipc-billing')
+  @Roles({ module: 'RPT', action: 'READ' })
+  async ipcBilling(
+    @Query() q: IpcBillingReportQueryDto,
+    @CurrentActor() actor: Actor,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<ReportResult<IpcBillingRow> | StreamableFile> {
+    const result = await this.query.ipcBilling(q, actor);
+    return this.respond(result, q.format, actor, res, req);
+  }
+
+  @Get('outstanding')
+  @Roles({ module: 'RPT', action: 'READ' })
+  async outstanding(
+    @Query() q: OutstandingReportQueryDto,
+    @CurrentActor() actor: Actor,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<ReportResult<IpcBillingRow> | StreamableFile> {
+    const result = await this.query.outstanding(q, actor);
+    return this.respond(result, q.format, actor, res, req);
+  }
+
+  @Get('material-consumption-vs-budget')
+  @Roles({ module: 'RPT', action: 'READ' })
+  async materialConsumptionVsBudget(
+    @Query() q: MaterialConsumptionReportQueryDto,
+    @CurrentActor() actor: Actor,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<ReportResult<CostCentreVarianceRow> | StreamableFile> {
+    const result = await this.query.materialConsumptionVsBudget(q, actor);
+    return this.respond(result, q.format, actor, res, req);
+  }
+
+  @Get('labour-cost')
+  @Roles({ module: 'RPT', action: 'READ' })
+  async labourCost(
+    @Query() q: LabourCostReportQueryDto,
+    @CurrentActor() actor: Actor,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<ReportResult<LabourCostRow> | StreamableFile> {
+    const result = await this.query.labourCost(q, actor);
+    return this.respond(result, q.format, actor, res, req);
+  }
+
+  @Get('cost-centre-variance')
+  @Roles({ module: 'RPT', action: 'READ' })
+  async costCentreVariance(
+    @Query() q: CostCentreVarianceReportQueryDto,
+    @CurrentActor() actor: Actor,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<ReportResult<CostCentreVarianceRow> | StreamableFile> {
+    const result = await this.query.costCentreVariance(q, actor);
+    return this.respond(result, q.format, actor, res, req);
   }
 
   // ── HR reports (HR:READ — restricted to HR/Admin) ───────────────────────────────────────────────
