@@ -65,6 +65,15 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'PUR', action: 'CANCEL', projectScope: 'ALL' },
       { module: 'PAY', action: 'CREATE', projectScope: 'ALL' },
       { module: 'PAY', action: 'POST', projectScope: 'ALL' },
+      // PAY read/update/delete/cancel — docs/srs/13-payments.md §3 Actors: "Accounts Team | Creates, edits,
+      // posts, and (permissioned) cancels/corrects payment vouchers; settles supplier bills, daily-labour
+      // payables, and salary sheets." (payment-voucher-core #27 — the pre-existing seed only granted
+      // PAY:CREATE/POST, so ACCOUNTS_TEAM could not read/edit/delete a draft payment or cancel/repost a
+      // posted one, despite being this module's primary named actor for the full lifecycle.)
+      { module: 'PAY', action: 'READ', projectScope: 'ALL' },
+      { module: 'PAY', action: 'UPDATE', projectScope: 'ALL' },
+      { module: 'PAY', action: 'DELETE', projectScope: 'ALL' },
+      { module: 'PAY', action: 'CANCEL', projectScope: 'ALL' },
       { module: 'REC', action: 'CREATE', projectScope: 'ALL' },
       { module: 'REC', action: 'POST', projectScope: 'ALL' },
       // REC read/update/delete/cancel — docs/srs/11-receipts.md §3 Actors: "Accounts Team | Creates,

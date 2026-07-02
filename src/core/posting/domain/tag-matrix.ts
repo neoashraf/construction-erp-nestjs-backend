@@ -3,11 +3,17 @@
  * `assert(cmd)` rejects any line missing a dimension REQUIRED for its voucher type, and any AR/AP
  * control-account line missing a party (FR-LED-010..012). Optional dimensions are accepted, not required.
  *
- * For JOURNAL / CONTRA / OPENING the requirement is per-line by account type: a P&L line
+ * For JOURNAL / CONTRA / OPENING / PAYMENT the requirement is per-line by account type: a P&L line
  * (INCOME/EXPENSE) needs project+cost_centre+purpose; a balance-sheet line is optional. CONTRA lines are
  * optional. The party rule is keyed on the account being a control account, regardless of voucher type
  * (design §10 item 3). RECEIPT requires cost_centre+purpose; project is supplied by the REC module for
  * IPC-linked receipts (it knows the IPC link) — LED enforces what it can see on the command.
+ *
+ * PAYMENT (payment-voucher-core #27) is per-line by account type, like JOURNAL/OPENING: a payment SETTLES
+ * a payable (Dr LIABILITY control) and pays cash (Cr ASSET) — those balance-sheet lines carry NO dimensions
+ * and (potentially) settle payables spanning many projects; only the payment's own P&L lines — the optional
+ * bank-charge (EXPENSE) and the daily-labour accrued-vs-paid true-up (EXPENSE) — require project+cost_centre
+ * +purpose. The control-account party rule still applies (an AP settlement line is party-tagged).
  *
  * PURCHASE is a per-line SPECIAL CASE (purchase-po-bill-posting, architectural decision 5), mirroring the
  * JOURNAL/OPENING per-line branch: godown is required only on a line that actually moves inventory
@@ -40,7 +46,8 @@ const REQUIRED: Record<VoucherType, DimKey[]> = {
   SALES_IPC: ['projectId', 'costCentreId', 'purposeId'],
   PURCHASE: ['projectId', 'costCentreId', 'purposeId', 'godownId'],
   STOCK_JOURNAL: ['projectId', 'costCentreId', 'purposeId', 'godownId'],
-  PAYMENT: ['projectId', 'costCentreId', 'purposeId'],
+  PAYMENT: [], // per-line by account type (see requiredDims) — only P&L lines require dimensions
+
   RECEIPT: ['costCentreId', 'purposeId'],
   SALARY: ['projectId', 'costCentreId', 'purposeId'],
   DAILY_LABOUR_ACCRUAL: ['projectId', 'costCentreId', 'purposeId'],
@@ -72,7 +79,7 @@ export class OverviewTagMatrix implements TagMatrix {
   }
 
   private requiredDims(voucherType: VoucherType, line: PostingLine): DimKey[] {
-    if (voucherType === 'JOURNAL' || voucherType === 'OPENING') {
+    if (voucherType === 'JOURNAL' || voucherType === 'OPENING' || voucherType === 'PAYMENT') {
       return line.accountType && PNL_TYPES.has(line.accountType)
         ? ['projectId', 'costCentreId', 'purposeId']
         : [];
