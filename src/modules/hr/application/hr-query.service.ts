@@ -22,6 +22,11 @@ import { AttendanceRecordOrmEntity } from '../infrastructure/attendance-record.o
 import { EmployeeAssignmentOrmEntity } from '../infrastructure/employee-assignment.orm-entity';
 import { SalarySheetOrmEntity } from '../infrastructure/salary-sheet.orm-entity';
 import { SalarySheetLineOrmEntity } from '../infrastructure/salary-sheet-line.orm-entity';
+import { LabourPayableOrmEntity } from '../infrastructure/labour-payable.orm-entity';
+import {
+  PAYABLE_SETTLEMENT_PORT,
+  PayableSettlementPort,
+} from '../../payment/domain/ports/payable-settlement.port';
 import { EmployeeListFilter } from '../domain/ports/employee.repository';
 import { AttendanceListFilter } from '../domain/ports/attendance.repository';
 import { SalarySheetListFilter } from '../domain/ports/salary-sheet.repository';
@@ -107,9 +112,20 @@ export interface SalarySheetDto {
   lines?: SalarySheetLineDto[];
 }
 
+/** A payable's settlement summary, computed from PAY's applied projection (NOT a stored rollup). */
+export interface PayableSettlementDto {
+  accruedAmount: string;
+  settledAmount: string;
+  remainingOutstanding: string;
+  status: 'OUTSTANDING' | 'PARTIALLY_SETTLED' | 'SETTLED';
+}
+
 @Injectable()
 export class HrQueryService {
-  constructor(@Inject(DATA_SOURCE) private readonly dataSource: DataSource) {}
+  constructor(
+    @Inject(DATA_SOURCE) private readonly dataSource: DataSource,
+    @Inject(PAYABLE_SETTLEMENT_PORT) private readonly settlement: PayableSettlementPort,
+  ) {}
 
   async listEmployees(filter: EmployeeListFilter, actor: Actor): Promise<Paginated<EmployeeDto>> {
     const { page, pageSize, skip, take } = resolvePaging(filter);
@@ -273,11 +289,63 @@ export class HrQueryService {
     };
   }
 
+  /**
+   * A labour payable's settled/outstanding, read from PAY's applied projection through the exported
+   * `PayableSettlementPort` (FR-HR-011: settled is a query over PAY's postings, never a re-post; HR stores a
+   * `settled_amount` rollup but the authoritative figure is PAY's). Scoped readers must be assigned the
+   * payable's project. Returns null when the payable is not in this company.
+   */
+  async labourPayableSettled(payableId: string, actor: Actor): Promise<PayableSettlementDto | null> {
+    const row = await getManager(this.dataSource)
+      .getRepository(LabourPayableOrmEntity)
+      .findOne({ where: { id: payableId, companyId: actor.companyId } as never });
+    if (!row) return null;
+    this.assertProjectVisible(actor, row.projectId);
+    const accrued = new Decimal(row.accruedAmount);
+    const settled = await this.settlement.appliedTo('LABOUR_PAYABLE', payableId, actor.companyId);
+    return settlementDto(accrued, settled);
+  }
+
+  /**
+   * A salary sheet's settled/outstanding (net of its lines vs PAY's applied payments). Salary has no project
+   * dimension — visible to unscoped (Accounts/Admin) readers only. Returns null when not in this company.
+   */
+  async salarySheetSettled(sheetId: string, actor: Actor): Promise<PayableSettlementDto | null> {
+    if (!actor.isUnscoped) throw new ForbiddenException('Salary payables are visible to Accounts/Admin only');
+    const m = getManager(this.dataSource);
+    const sheet = await m
+      .getRepository(SalarySheetOrmEntity)
+      .findOne({ where: { id: sheetId, companyId: actor.companyId } as never });
+    if (!sheet) return null;
+    const netRows: Array<{ net: string }> = await m.query(
+      `SELECT COALESCE(SUM(net_amount), 0)::text AS net FROM salary_sheet_line WHERE salary_sheet_id = $1`,
+      [sheetId],
+    );
+    const original = new Decimal(netRows[0]?.net ?? '0');
+    const settled = await this.settlement.appliedTo('SALARY', sheetId, actor.companyId);
+    return settlementDto(original, settled);
+  }
+
   private assertProjectVisible(actor: Actor, projectId: string): void {
     if (!actor.isUnscoped && !actor.assignedProjectIds.includes(projectId)) {
       throw new ForbiddenException('Project not assigned to this user');
     }
   }
+}
+
+function settlementDto(original: Decimal, settled: Decimal): PayableSettlementDto {
+  const remaining = original.minus(settled);
+  const status: PayableSettlementDto['status'] = remaining.lessThanOrEqualTo(0)
+    ? 'SETTLED'
+    : settled.greaterThan(0)
+      ? 'PARTIALLY_SETTLED'
+      : 'OUTSTANDING';
+  return {
+    accruedAmount: original.toFixed(4),
+    settledAmount: settled.toFixed(4),
+    remainingOutstanding: remaining.toFixed(4),
+    status,
+  };
 }
 
 function mask(value: string | null): string | null {

@@ -23,9 +23,12 @@ import { PaymentQueryService } from '../application/payment-query.service';
 import { PAYMENT_REPOSITORY } from '../domain/ports/payment.repository';
 import { PAYABLE_LOOKUP_PORT } from '../domain/ports/payable-lookup.port';
 import { PAYMENT_ACCOUNT_MAP_PORT } from '../domain/ports/payment-account-map.port';
+import { PAYABLE_SETTLEMENT_PORT } from '../domain/ports/payable-settlement.port';
 import { TypeOrmPaymentRepository } from '../infrastructure/typeorm-payment.repository';
 import { PayableLookupAdapter } from '../infrastructure/payable-lookup.adapter';
 import { PaymentAccountMapAdapter } from '../infrastructure/payment-account-map.adapter';
+import { PaymentAllocationReadModel } from '../infrastructure/payment-allocation.read-model';
+import { PayableSettlementAdapter } from '../infrastructure/payable-settlement.adapter';
 import { PaymentController } from './payment.controller';
 
 @Module({
@@ -36,6 +39,9 @@ import { PaymentController } from './payment.controller';
     { provide: PAYMENT_REPOSITORY, useClass: TypeOrmPaymentRepository },
     { provide: PAYABLE_LOOKUP_PORT, useClass: PayableLookupAdapter },
     { provide: PAYMENT_ACCOUNT_MAP_PORT, useClass: PaymentAccountMapAdapter },
+    // read model + exported settlement seam (#28) — PUR/HR read PAY's applied projection through this port.
+    PaymentAllocationReadModel,
+    { provide: PAYABLE_SETTLEMENT_PORT, useClass: PayableSettlementAdapter },
     // use cases
     CreatePaymentUseCase,
     UpdatePaymentDraftUseCase,
@@ -46,5 +52,6 @@ import { PaymentController } from './payment.controller';
     // read
     PaymentQueryService,
   ],
+  exports: [PAYABLE_SETTLEMENT_PORT, PaymentAllocationReadModel],
 })
 export class PaymentModule {}

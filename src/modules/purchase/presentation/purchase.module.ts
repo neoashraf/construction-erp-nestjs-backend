@@ -21,6 +21,7 @@ import { AuthModule } from '../../../core/auth/auth.module';
 import { CostControlModule } from '../../../core/cost-control/cost-control.module';
 import { InventoryModule } from '../../inventory/inventory.module';
 import { InventoryServiceAdapter } from '../../inventory/application/inventory.service';
+import { PaymentModule } from '../../payment/presentation/payment.module';
 import { CreatePurchaseOrderUseCase } from '../application/create-purchase-order.usecase';
 import { ApprovePurchaseOrderUseCase } from '../application/approve-purchase-order.usecase';
 import {
@@ -54,7 +55,7 @@ import { PurchaseAccountMapAdapter } from '../infrastructure/purchase-account-ma
 import { PurchaseConfigAdapter } from '../infrastructure/purchase-config.adapter';
 import { PurchaseProjectStatusAdapter } from '../infrastructure/purchase-project-status.adapter';
 import { PurchaseRegisterReadRepo } from '../infrastructure/purchase-register.read.repo';
-import { ZeroBillPaymentReadAdapter } from '../infrastructure/bill-payment.read.adapter';
+import { PaymentBackedBillPaymentAdapter } from '../infrastructure/payment-backed-bill-payment.adapter';
 import {
   PurchaseController,
   PurchaseGrnsController,
@@ -63,16 +64,16 @@ import {
 } from './purchase.controller';
 
 @Module({
-  imports: [PostingModule, InventoryModule, CostControlModule, AuthModule],
+  imports: [PostingModule, InventoryModule, CostControlModule, AuthModule, PaymentModule],
   controllers: [PurchaseController, PurchaseOrdersController, PurchaseGrnsController, PurchaseSuppliersController],
   providers: [
     // ports -> adapters
     { provide: PURCHASE_ORDER_REPOSITORY, useClass: TypeOrmPurchaseOrderRepository },
     { provide: PURCHASE_BILL_REPOSITORY, useClass: TypeOrmPurchaseBillRepository },
     { provide: GRN_REPOSITORY, useClass: TypeOrmGrnRepository },
-    // PAY seam (FR-PUR-020): ZERO until PAY ships — the `payment-bill-allocation` brief (#28) rebinds
-    // this to an adapter over PAY's real per-bill allocations (see bill-payment.read.port.ts).
-    { provide: BILL_PAYMENT_READ_PORT, useClass: ZeroBillPaymentReadAdapter },
+    // PAY seam (FR-PUR-020): reads PAY's real per-bill allocation projection through PAY's exported
+    // `PayableSettlementPort` (#28 rebind — was `ZeroBillPaymentReadAdapter` while PAY had not shipped).
+    { provide: BILL_PAYMENT_READ_PORT, useClass: PaymentBackedBillPaymentAdapter },
     { provide: PURCHASE_ACCOUNT_MAP_PORT, useClass: PurchaseAccountMapAdapter },
     { provide: PURCHASE_CONFIG_PORT, useClass: PurchaseConfigAdapter },
     { provide: PURCHASE_PROJECT_STATUS_PORT, useClass: PurchaseProjectStatusAdapter },

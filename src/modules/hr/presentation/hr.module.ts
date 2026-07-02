@@ -14,6 +14,7 @@
 import { Module } from '@nestjs/common';
 import { PostingModule } from '../../../core/posting/posting.module';
 import { AuthModule } from '../../../core/auth/auth.module';
+import { PaymentModule } from '../../payment/presentation/payment.module';
 import { EmployeeService } from '../application/employee.service';
 import { AttendanceService } from '../application/attendance.service';
 import { SalaryService } from '../application/salary.service';
@@ -40,7 +41,7 @@ import { AttendanceController } from './attendance.controller';
 import { SalaryController } from './salary.controller';
 
 @Module({
-  imports: [PostingModule, AuthModule],
+  imports: [PostingModule, AuthModule, PaymentModule],
   controllers: [EmployeeController, AttendanceController, SalaryController],
   providers: [
     // ports → adapters

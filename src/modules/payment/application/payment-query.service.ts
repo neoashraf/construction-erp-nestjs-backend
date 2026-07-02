@@ -6,7 +6,7 @@
  * unscoped (Accounts/Admin) roles only. The full DTO includes the allocations + derived allocatedAmount /
  * unallocatedAmount. (Open-payables / applied projections are OUT OF SCOPE — #28.)
  */
-import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import Decimal from 'decimal.js';
 import { DATA_SOURCE } from '../../../database/database.module';
@@ -16,6 +16,8 @@ import { Paginated, resolvePaging } from '../../../infrastructure/http/paginatio
 import { PaymentVoucherOrmEntity } from '../infrastructure/payment-voucher.orm-entity';
 import { PaymentAllocationOrmEntity } from '../infrastructure/payment-allocation.orm-entity';
 import { PaymentListFilter } from '../domain/ports/payment.repository';
+import { PayableType } from '../domain/allocation';
+import { PaymentAllocationReadModel, PaymentApplicationRow } from '../infrastructure/payment-allocation.read-model';
 
 export interface PaymentSummaryDto {
   id: string;
@@ -57,9 +59,52 @@ export interface PaymentDto extends PaymentSummaryDto {
   version: number;
 }
 
+export interface OpenPayableRow {
+  payableType: PayableType;
+  payableId: string;
+  reference: string | null;
+  partyId: string | null;
+  originalAmount: string;
+  appliedAmount: string;
+  remainingOutstanding: string;
+  accruedAmount: string | null;
+  payableDate: string | null;
+}
+
+export interface OpenPayablesFilter {
+  partyId?: string;
+  payableType?: PayableType;
+  financialYearId?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface AppliedToPayableDto {
+  payableType: PayableType;
+  payableId: string;
+  originalAmount: string;
+  appliedAmount: string;
+  remainingOutstanding: string;
+  applications: PaymentApplicationRow[];
+}
+
+/** An enumerated payable BEFORE the applied projection is joined on. */
+interface EnumeratedPayable {
+  payableType: PayableType;
+  payableId: string;
+  reference: string | null;
+  partyId: string | null;
+  originalAmount: Decimal;
+  accruedAmount: Decimal | null;
+  payableDate: string | null;
+}
+
 @Injectable()
 export class PaymentQueryService {
-  constructor(@Inject(DATA_SOURCE) private readonly dataSource: DataSource) {}
+  constructor(
+    @Inject(DATA_SOURCE) private readonly dataSource: DataSource,
+    private readonly readModel: PaymentAllocationReadModel,
+  ) {}
 
   async list(filter: PaymentListFilter, actor: Actor): Promise<Paginated<PaymentSummaryDto>> {
     const { page, pageSize, skip, take } = resolvePaging(filter);
@@ -113,6 +158,199 @@ export class PaymentQueryService {
       .getRepository(PaymentAllocationOrmEntity)
       .find({ where: { paymentVoucherId: id } });
     return fullDto(row, allocations);
+  }
+
+  /**
+   * Open payables (design §5.4) — posted, not-fully-settled payables across PUR bills / HR labour / HR
+   * salary, each joined to PAY's applied projection. `remainingOutstanding = originalAmount − appliedAmount`;
+   * only rows with remaining > 0 are returned. PM scoping: PURCHASE_BILL/LABOUR_PAYABLE filtered by assigned
+   * project; SALARY (no project) is Accounts/Admin-visible only (excluded for scoped PMs).
+   */
+  async openPayables(filter: OpenPayablesFilter, actor: Actor): Promise<Paginated<OpenPayableRow>> {
+    const { page, pageSize, skip, take } = resolvePaging(filter);
+    const types: PayableType[] = filter.payableType
+      ? [filter.payableType]
+      : ['PURCHASE_BILL', 'LABOUR_PAYABLE', 'SALARY'];
+
+    const enumerated: EnumeratedPayable[] = [];
+    if (types.includes('PURCHASE_BILL')) enumerated.push(...(await this.enumeratePurchaseBills(filter, actor)));
+    if (types.includes('LABOUR_PAYABLE')) enumerated.push(...(await this.enumerateLabourPayables(filter, actor)));
+    if (types.includes('SALARY')) enumerated.push(...(await this.enumerateSalary(filter, actor)));
+
+    // Join the applied projection (one batch query per type) and keep only rows with remaining > 0.
+    const open: OpenPayableRow[] = [];
+    for (const type of types) {
+      const ofType = enumerated.filter((e) => e.payableType === type);
+      if (ofType.length === 0) continue;
+      const applied = await this.readModel.appliedForPayables(
+        type,
+        ofType.map((e) => e.payableId),
+        actor.companyId,
+      );
+      for (const e of ofType) {
+        const appliedDec = applied.get(e.payableId) ?? new Decimal(0);
+        const remaining = e.originalAmount.minus(appliedDec);
+        if (remaining.lessThanOrEqualTo(0)) continue;
+        open.push({
+          payableType: e.payableType,
+          payableId: e.payableId,
+          reference: e.reference,
+          partyId: e.partyId,
+          originalAmount: e.originalAmount.toFixed(4),
+          appliedAmount: appliedDec.toFixed(4),
+          remainingOutstanding: remaining.toFixed(4),
+          accruedAmount: e.accruedAmount !== null ? e.accruedAmount.toFixed(4) : null,
+          payableDate: e.payableDate,
+        });
+      }
+    }
+
+    open.sort((a, b) => (b.payableDate ?? '').localeCompare(a.payableDate ?? ''));
+    const total = open.length;
+    return new Paginated(open.slice(skip, skip + take), page, pageSize, total);
+  }
+
+  /** Per-payable applied total + settlement trail (design §5.4). 404 if the payable is not in this company. */
+  async appliedToPayable(payableType: PayableType, payableId: string, actor: Actor): Promise<AppliedToPayableDto> {
+    const original = await this.resolveOriginalAmount(payableType, payableId, actor.companyId);
+    if (original === null) {
+      throw new NotFoundException(`Payable ${payableType} ${payableId} not found`);
+    }
+    const applied = await this.readModel.appliedTo(payableType, payableId, actor.companyId);
+    const applications = await this.readModel.applicationsFor(payableType, payableId, actor.companyId);
+    return {
+      payableType,
+      payableId,
+      originalAmount: original.toFixed(4),
+      appliedAmount: applied.toFixed(4),
+      remainingOutstanding: original.minus(applied).toFixed(4),
+      applications,
+    };
+  }
+
+  private async enumeratePurchaseBills(filter: OpenPayablesFilter, actor: Actor): Promise<EnumeratedPayable[]> {
+    const params: unknown[] = [actor.companyId];
+    let sql = `SELECT id, entry_no, supplier_id, net_payable_amount::text AS net, bill_date::text AS bill_date
+                 FROM purchase_bill
+                WHERE company_id = $1 AND deleted_at IS NULL AND status = 'POSTED'`;
+    if (filter.partyId) {
+      params.push(filter.partyId);
+      sql += ` AND supplier_id = $${params.length}`;
+    }
+    if (filter.financialYearId) {
+      params.push(filter.financialYearId);
+      sql += ` AND financial_year_id = $${params.length}`;
+    }
+    if (!actor.isUnscoped) {
+      if (actor.assignedProjectIds.length === 0) return [];
+      params.push(actor.assignedProjectIds);
+      sql += ` AND project_id = ANY($${params.length})`;
+    }
+    const rows: Array<{ id: string; entry_no: string | null; supplier_id: string; net: string; bill_date: string }> =
+      await getManager(this.dataSource).query(sql, params);
+    return rows.map((r) => ({
+      payableType: 'PURCHASE_BILL' as const,
+      payableId: r.id,
+      reference: r.entry_no,
+      partyId: r.supplier_id,
+      originalAmount: new Decimal(r.net),
+      accruedAmount: null,
+      payableDate: r.bill_date,
+    }));
+  }
+
+  private async enumerateLabourPayables(filter: OpenPayablesFilter, actor: Actor): Promise<EnumeratedPayable[]> {
+    // Labour payables carry no party — a partyId filter excludes them entirely.
+    if (filter.partyId) return [];
+    const params: unknown[] = [actor.companyId];
+    let sql = `SELECT id, accrual_date::text AS accrual_date, accrued_amount::text AS accrued
+                 FROM labour_payable
+                WHERE company_id = $1`;
+    if (filter.financialYearId) {
+      params.push(filter.financialYearId);
+      sql += ` AND financial_year_id = $${params.length}`;
+    }
+    if (!actor.isUnscoped) {
+      if (actor.assignedProjectIds.length === 0) return [];
+      params.push(actor.assignedProjectIds);
+      sql += ` AND project_id = ANY($${params.length})`;
+    }
+    const rows: Array<{ id: string; accrual_date: string; accrued: string }> = await getManager(this.dataSource).query(
+      sql,
+      params,
+    );
+    return rows.map((r) => ({
+      payableType: 'LABOUR_PAYABLE' as const,
+      payableId: r.id,
+      reference: r.accrual_date,
+      partyId: null,
+      originalAmount: new Decimal(r.accrued),
+      accruedAmount: new Decimal(r.accrued),
+      payableDate: r.accrual_date,
+    }));
+  }
+
+  private async enumerateSalary(filter: OpenPayablesFilter, actor: Actor): Promise<EnumeratedPayable[]> {
+    // Salary carries no party and no project — excluded for a party filter or a scoped (PM) actor.
+    if (filter.partyId) return [];
+    if (!actor.isUnscoped) return [];
+    const params: unknown[] = [actor.companyId];
+    let sql = `SELECT ss.id, ss.period_label, ss.period_end::text AS period_end,
+                      COALESCE(SUM(sl.net_amount), 0)::text AS net
+                 FROM salary_sheet ss
+                 LEFT JOIN salary_sheet_line sl ON sl.salary_sheet_id = ss.id
+                WHERE ss.company_id = $1 AND ss.status = 'POSTED'`;
+    if (filter.financialYearId) {
+      params.push(filter.financialYearId);
+      sql += ` AND ss.financial_year_id = $${params.length}`;
+    }
+    sql += ` GROUP BY ss.id, ss.period_label, ss.period_end`;
+    const rows: Array<{ id: string; period_label: string; period_end: string; net: string }> = await getManager(
+      this.dataSource,
+    ).query(sql, params);
+    return rows.map((r) => ({
+      payableType: 'SALARY' as const,
+      payableId: r.id,
+      reference: r.period_label,
+      partyId: null,
+      originalAmount: new Decimal(r.net),
+      accruedAmount: null,
+      payableDate: r.period_end,
+    }));
+  }
+
+  /** The owning module's original/full amount for a payable, or null when it does not exist in the company. */
+  private async resolveOriginalAmount(
+    payableType: PayableType,
+    payableId: string,
+    companyId: string,
+  ): Promise<Decimal | null> {
+    const m = getManager(this.dataSource);
+    if (payableType === 'PURCHASE_BILL') {
+      const rows: Array<{ net: string }> = await m.query(
+        `SELECT net_payable_amount::text AS net FROM purchase_bill WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL`,
+        [payableId, companyId],
+      );
+      return rows[0] ? new Decimal(rows[0].net) : null;
+    }
+    if (payableType === 'LABOUR_PAYABLE') {
+      const rows: Array<{ accrued: string }> = await m.query(
+        `SELECT accrued_amount::text AS accrued FROM labour_payable WHERE id = $1 AND company_id = $2`,
+        [payableId, companyId],
+      );
+      return rows[0] ? new Decimal(rows[0].accrued) : null;
+    }
+    // SALARY
+    const sheet: Array<{ id: string }> = await m.query(
+      `SELECT id FROM salary_sheet WHERE id = $1 AND company_id = $2`,
+      [payableId, companyId],
+    );
+    if (!sheet[0]) return null;
+    const netRows: Array<{ net: string }> = await m.query(
+      `SELECT COALESCE(SUM(net_amount), 0)::text AS net FROM salary_sheet_line WHERE salary_sheet_id = $1`,
+      [payableId],
+    );
+    return new Decimal(netRows[0]?.net ?? '0');
   }
 
   private assertProjectVisible(actor: Actor, projectId: string | null): void {
