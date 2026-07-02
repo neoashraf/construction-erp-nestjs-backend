@@ -132,6 +132,14 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'INV', action: 'APPROVE', projectScope: 'ASSIGNED' },
       { module: 'HR', action: 'READ', projectScope: 'ASSIGNED' },
       { module: 'CC', action: 'READ', projectScope: 'ASSIGNED' },
+      // RPT read — docs/srs/15-reporting.md §3 Actors: "Project Manager | Runs project-scoped reports
+      // (project P&L, IPC billed-vs-certified, material consumption vs budget, labour cost, outstanding)
+      // for assigned projects only (AUD F4)." RPT is the read-only reporting layer; the brief's
+      // "reports:financial"/"reports:project" permission maps to RPT:READ, project-scoped to assigned
+      // projects (reporting-financial-statements #29 — PM held zero RPT grant before this brief, so every
+      // /api/reports/* route was unreachable for its own named project-scoped actor; ACCOUNTS_TEAM already
+      // held RPT:READ ALL, and ADMIN gets it via ALL_MODULES).
+      { module: 'RPT', action: 'READ', projectScope: 'ASSIGNED' },
       // REC read — docs/srs/11-receipts.md §3 Actors: "Project Manager | Reads receipts and the resulting
       // per-IPC outstanding for assigned projects (collection visibility); does not post receipts."
       // (receipts-voucher-core #24 — PM held zero REC grant before this brief, so project-scoped receipt
