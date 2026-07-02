@@ -89,6 +89,15 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'RPT', action: 'READ', projectScope: 'ALL' },
       { module: 'MAS', action: 'READ', projectScope: 'ALL' },
       { module: 'CC', action: 'READ', projectScope: 'ALL' },
+      // INV/REQ read — reporting-inventory-hr-reports #31: the RPT inventory reports (stock valuation,
+      // low-stock, transfer summary) gate on INV:READ and the requisition-vs-issue cost-control report
+      // gates on REQ:READ (sub-report gating maps to the OWNING module's READ permission, FR-RPT-008).
+      // ACCOUNTS_TEAM is the unscoped reporting/cost-control role and reconciles stock value to the '1300'
+      // inventory control account, so it needs INV:READ (for stock valuation tie-out) and REQ:READ (for the
+      // requisition-vs-issue variance report); it held neither before this brief. ADMIN is covered by
+      // ALL_MODULES; STORE_KEEPER already holds INV:READ + REQ:READ; PM already holds REQ:READ.
+      { module: 'INV', action: 'READ', projectScope: 'ALL' },
+      { module: 'REQ', action: 'READ', projectScope: 'ALL' },
     ],
   },
   {
