@@ -89,6 +89,11 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'RPT', action: 'READ', projectScope: 'ALL' },
       { module: 'MAS', action: 'READ', projectScope: 'ALL' },
       { module: 'CC', action: 'READ', projectScope: 'ALL' },
+      // DSH read — docs/srs/16-dashboard.md §3 Actors: "Accounts Team | Sees the full financial tile set
+      // across all projects ... Full company scope." The dashboard (DSH #33) gates on DSH:READ (the
+      // controller's @Roles({module:'DSH',action:'READ'})); role→tile filtering is business logic on top.
+      // ACCOUNTS_TEAM is the unscoped full-tile-set role (ADMIN gets DSH via ALL_MODULES).
+      { module: 'DSH', action: 'READ', projectScope: 'ALL' },
       // INV/REQ read — reporting-inventory-hr-reports #31: the RPT inventory reports (stock valuation,
       // low-stock, transfer summary) gate on INV:READ and the requisition-vs-issue cost-control report
       // gates on REQ:READ (sub-report gating maps to the OWNING module's READ permission, FR-RPT-008).
@@ -154,6 +159,10 @@ const ROLE_SEEDS: RoleSeed[] = [
       // (receipts-voucher-core #24 — PM held zero REC grant before this brief, so project-scoped receipt
       // visibility was unreachable for its own named read-only actor.)
       { module: 'REC', action: 'READ', projectScope: 'ASSIGNED' },
+      // DSH read — docs/srs/16-dashboard.md §3 Actors: "Project Manager | Sees assigned-project tiles only
+      // (AUD F4) ... drills into the project-scoped RPT reports." DSH #33 gates on DSH:READ; the PM's
+      // project tiles are auto-filtered to assigned projects server-side (FR-DSH-008).
+      { module: 'DSH', action: 'READ', projectScope: 'ASSIGNED' },
     ],
   },
   {
@@ -166,6 +175,9 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'REQ', action: 'READ', projectScope: 'ASSIGNED' },
       { module: 'HR', action: 'CREATE', projectScope: 'ASSIGNED' },
       { module: 'HR', action: 'READ', projectScope: 'ASSIGNED' },
+      // DSH read — docs/srs/16-dashboard.md §3: "Site Engineer sees the same assigned-project tiles a PM
+      // does but limited to the site they work (project-scoped, AUD F4) — chiefly low-stock and attendance."
+      { module: 'DSH', action: 'READ', projectScope: 'ASSIGNED' },
     ],
   },
   {
@@ -211,6 +223,10 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'PUR', action: 'CREATE', projectScope: 'ASSIGNED' },
       { module: 'PUR', action: 'READ', projectScope: 'ASSIGNED' },
       { module: 'PUR', action: 'POST', projectScope: 'ASSIGNED' },
+      // DSH read — docs/srs/16-dashboard.md §3 Actors: "Store Keeper | Sees the inventory tile (low-stock
+      // alerts) for the godowns / projects they serve, drilling into the RPT low-stock report." DSH #33
+      // gates on DSH:READ; role→tile filtering yields only the low-stock tile for STORE_KEEPER.
+      { module: 'DSH', action: 'READ', projectScope: 'ASSIGNED' },
     ],
   },
   {
@@ -229,6 +245,10 @@ const ROLE_SEEDS: RoleSeed[] = [
       { module: 'HR', action: 'POST', projectScope: 'ASSIGNED' },
       { module: 'HR', action: 'CANCEL', projectScope: 'ASSIGNED' },
       { module: 'PAY', action: 'READ', projectScope: 'ASSIGNED' },
+      // DSH read — docs/srs/16-dashboard.md §3 Actors: "HR Manager | Sees the attendance summary tile,
+      // drilling into the RPT monthly attendance-summary report." DSH #33 gates on DSH:READ; role→tile
+      // filtering yields only the attendance-summary tile for HR_MANAGER.
+      { module: 'DSH', action: 'READ', projectScope: 'ASSIGNED' },
     ],
   },
 ];

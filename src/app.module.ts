@@ -24,6 +24,7 @@ import { ReceiptModule } from './modules/receipt/presentation/receipt.module';
 import { PurchaseModule } from './modules/purchase/presentation/purchase.module';
 import { PaymentModule } from './modules/payment/presentation/payment.module';
 import { ReportsModule } from './reports/presentation/reports.module';
+import { DashboardModule } from './dashboard/presentation/dashboard.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { ReportsModule } from './reports/presentation/reports.module';
     PurchaseModule,
     PaymentModule,
     ReportsModule,
+    DashboardModule,
     // Diagnostic throw-routes for the e2e error-envelope smoke — never in production.
     DiagnosticsModule.register(process.env.NODE_ENV !== 'production'),
   ],
