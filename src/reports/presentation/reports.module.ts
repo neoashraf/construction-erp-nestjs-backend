@@ -59,5 +59,14 @@ import { ReportsController } from './reports.controller';
       inject: [JsonExporter, ExcelExporter, PdfExporter],
     },
   ],
+  // Exported so the dashboard module (DSH #33) can REUSE the SAME read-port definitions RPT consumes —
+  // a DSH tile and the RPT report it drills into read one definition (single source of truth, FR-DSH-004).
+  // Only read-port tokens are exported; the adapters stay encapsulated. This adds no RPT logic change.
+  exports: [
+    COST_CONTROL_READ_PORT,
+    SALES_READ_PORT,
+    INVENTORY_READ_PORT,
+    HR_READ_PORT,
+  ],
 })
 export class ReportsModule {}
