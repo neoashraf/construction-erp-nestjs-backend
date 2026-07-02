@@ -58,6 +58,8 @@ import { LedgerReadAdapter } from '../src/reports/infrastructure/ledger.read.ada
 import { InventoryReadAdapter } from '../src/reports/infrastructure/inventory.read.adapter';
 import { RequisitionReadAdapter } from '../src/reports/infrastructure/requisition.read.adapter';
 import { HrReadAdapter } from '../src/reports/infrastructure/hr.read.adapter';
+import { SalesReadAdapter } from '../src/reports/infrastructure/sales.read.adapter';
+import { CostControlReadAdapter } from '../src/reports/infrastructure/cost-control.read.adapter';
 import { ReportQueryService } from '../src/reports/application/report-query.service';
 import { ReportScopeService } from '../src/reports/application/report-scope.service';
 import { ValidationError } from '../src/common/errors/domain-error';
@@ -309,6 +311,8 @@ describe('RPT inventory / requisition / HR reports (real Postgres, real projecti
       new RequisitionReadAdapter(ds),
       new HrReadAdapter(ds),
       new ReportScopeService(),
+      new SalesReadAdapter(ds),
+      new CostControlReadAdapter(ds),
     );
     rolesGuard = new RolesGuard(new Reflector(), new TypeOrmRoleRepository(ds), new TypeOrmPermissionRepository(ds));
   });

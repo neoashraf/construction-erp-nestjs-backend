@@ -12,6 +12,7 @@
 import {
   AccountLedgerRow,
   BalanceSheetRow,
+  LabourCostRow,
   ProjectPnlRow,
   TrialBalanceRow,
 } from '../report-result.model';
@@ -64,4 +65,9 @@ export interface LedgerReadPort {
   profitAndLoss(scope: LedgerScope): Promise<{ rows: ProjectPnlRow[]; totals: { revenue: string; cost: string; profit: string } }>;
   /** Balance sheet — asset/liability/equity by account group; assets = liabilities + equity (FR-RPT-014). */
   balanceSheet(scope: LedgerScope): Promise<{ rows: BalanceSheetRow[]; totals: { assets: string; liabilities: string; equity: string } }>;
+  /**
+   * Labour cost — Σ(debit − credit) on labour EXPENSE accounts (codes '5110' Labour, '6100' Salary) grouped
+   * by cost centre (± project), for a project or across projects (FR-RPT-019).
+   */
+  labourCost(scope: LedgerScope): Promise<{ rows: LabourCostRow[]; totals: { labourCost: string } }>;
 }

@@ -134,3 +134,44 @@ export class EmployeePaymentReportQueryDto extends ReportPaging {
   @IsOptional() @Matches(ISO) dateFrom?: string;
   @IsOptional() @Matches(ISO) dateTo?: string;
 }
+
+// ── Project reports (FR-RPT-015…020/-025) ────────────────────────────────────────────────────────────
+
+export class ProjectPnlReportQueryDto extends ReportPaging {
+  @IsUUID() financialYearId!: string;
+  @IsOptional() @IsIn(REPORT_FORMATS) format?: (typeof REPORT_FORMATS)[number];
+  /** Required — a project P&L is always for one project (PM must be assigned). */
+  @IsUUID() projectId!: string;
+  @IsOptional() @IsUUID() costCentreId?: string;
+  @IsOptional() @Matches(ISO) dateFrom?: string;
+  @IsOptional() @Matches(ISO) dateTo?: string;
+}
+
+export class IpcBillingReportQueryDto extends CommonReportQueryDto {
+  @IsOptional() @Matches(ISO) dateFrom?: string;
+  @IsOptional() @Matches(ISO) dateTo?: string;
+}
+
+export class OutstandingReportQueryDto extends CommonReportQueryDto {
+  @IsOptional() @Matches(ISO) asOf?: string;
+}
+
+export class MaterialConsumptionReportQueryDto extends CommonReportQueryDto {
+  @IsOptional() @IsUUID() costCentreId?: string;
+  @IsOptional() @Matches(ISO) dateFrom?: string;
+  @IsOptional() @Matches(ISO) dateTo?: string;
+}
+
+export class LabourCostReportQueryDto extends CommonReportQueryDto {
+  @IsOptional() @IsUUID() costCentreId?: string;
+  @IsOptional() @Matches(ISO) dateFrom?: string;
+  @IsOptional() @Matches(ISO) dateTo?: string;
+}
+
+export class CostCentreVarianceReportQueryDto extends CommonReportQueryDto {
+  @IsOptional() @IsUUID() costCentreId?: string;
+  @IsOptional() @Matches(ISO) dateFrom?: string;
+  @IsOptional() @Matches(ISO) dateTo?: string;
+  /** csv of OK,APPROACHING,OVER,UNBUDGETED (validated in the service). */
+  @IsOptional() @IsString() status?: string;
+}

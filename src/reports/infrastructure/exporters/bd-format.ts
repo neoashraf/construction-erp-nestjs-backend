@@ -31,6 +31,16 @@ export const MONEY_KEYS = new Set<string>([
   'advanceRecovery',
   'other',
   'paidAmount',
+  // Project report money columns (RPT #32).
+  'certifiedAmount',
+  'billedAmount',
+  'receivedAmount',
+  'outstandingAmount',
+  'retentionHeld',
+  'budgetedAmount',
+  'actualCost',
+  'variance',
+  'labourCost',
 ]);
 
 /** Row keys that carry an ISO date/timestamp — rendered `DD/MM/YYYY`. */
@@ -42,6 +52,9 @@ export const DATE_KEYS = new Set<string>([
   'dateTo',
   'asOfDate',
   'paymentDate',
+  // Project report date columns (RPT #32).
+  'ipcDate',
+  'dueDate',
 ]);
 
 export const isMoneyKey = (key: string): boolean => MONEY_KEYS.has(key);

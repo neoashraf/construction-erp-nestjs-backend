@@ -9,6 +9,7 @@ import { LedgerReadPort, LedgerScope, PaginatedRows } from '../../../src/reports
 import {
   AccountLedgerRow,
   BalanceSheetRow,
+  LabourCostRow,
   ProjectPnlRow,
   TrialBalanceRow,
 } from '../../../src/reports/domain/report-result.model';
@@ -57,6 +58,13 @@ class FakeLedger implements LedgerReadPort {
     this.lastScope = scope;
     return Promise.resolve({ rows: [], totals: { assets: '0.0000', liabilities: '0.0000', equity: '0.0000' } });
   }
+  labourCost(scope: LedgerScope): Promise<{ rows: LabourCostRow[]; totals: { labourCost: string } }> {
+    this.lastScope = scope;
+    return Promise.resolve({
+      rows: [{ projectId: 'A', costCentreId: 'cc1', labourCost: '1200.0000' }],
+      totals: { labourCost: '1200.0000' },
+    });
+  }
 }
 
 describe('ReportQueryService', () => {
@@ -70,6 +78,8 @@ describe('ReportQueryService', () => {
       {} as never,
       {} as never,
       new ReportScopeService(),
+      {} as never,
+      {} as never,
     );
     return { ledger, svc };
   };

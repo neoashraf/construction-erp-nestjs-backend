@@ -103,7 +103,7 @@ describe('ReportQueryService — inventory / requisition / HR (RPT #31)', () => 
     const inv = new FakeInventory();
     const req = new FakeRequisition();
     const hr = new FakeHr();
-    const svc = new ReportQueryService({} as never, inv, req, hr, new ReportScopeService());
+    const svc = new ReportQueryService({} as never, inv, req, hr, new ReportScopeService(), {} as never, {} as never);
     return { inv, req, hr, svc };
   };
 
