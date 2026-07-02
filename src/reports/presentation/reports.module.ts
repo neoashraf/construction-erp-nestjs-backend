@@ -18,8 +18,14 @@ import { CompanyQueryService } from '../../modules/master-data/company/read/comp
 import { ReportQueryService } from '../application/report-query.service';
 import { ReportScopeService } from '../application/report-scope.service';
 import { LEDGER_READ_PORT } from '../domain/ports/ledger.read.port';
+import { INVENTORY_READ_PORT } from '../domain/ports/inventory.read.port';
+import { REQUISITION_READ_PORT } from '../domain/ports/requisition.read.port';
+import { HR_READ_PORT } from '../domain/ports/hr.read.port';
 import { FILE_EXPORTER } from '../domain/ports/file-exporter.port';
 import { LedgerReadAdapter } from '../infrastructure/ledger.read.adapter';
+import { InventoryReadAdapter } from '../infrastructure/inventory.read.adapter';
+import { RequisitionReadAdapter } from '../infrastructure/requisition.read.adapter';
+import { HrReadAdapter } from '../infrastructure/hr.read.adapter';
 import { JsonExporter } from '../infrastructure/exporters/json.exporter';
 import { ExcelExporter } from '../infrastructure/exporters/excel.exporter';
 import { PdfExporter } from '../infrastructure/exporters/pdf.exporter';
@@ -36,6 +42,9 @@ import { ReportsController } from './reports.controller';
     ExcelExporter,
     PdfExporter,
     { provide: LEDGER_READ_PORT, useClass: LedgerReadAdapter },
+    { provide: INVENTORY_READ_PORT, useClass: InventoryReadAdapter },
+    { provide: REQUISITION_READ_PORT, useClass: RequisitionReadAdapter },
+    { provide: HR_READ_PORT, useClass: HrReadAdapter },
     // One FileExporter adapter per format, exposed as an array; the controller keys it by `format`
     // and selects the right adapter (FR-RPT-029). Adding CSV later is a fourth adapter here, no more.
     {

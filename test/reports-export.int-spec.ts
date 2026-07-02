@@ -52,6 +52,9 @@ import { CreatePayment1700002200000 } from '../src/database/migrations/170000220
 
 import { Actor } from '../src/core/tenancy/tenant-context';
 import { LedgerReadAdapter } from '../src/reports/infrastructure/ledger.read.adapter';
+import { InventoryReadAdapter } from '../src/reports/infrastructure/inventory.read.adapter';
+import { RequisitionReadAdapter } from '../src/reports/infrastructure/requisition.read.adapter';
+import { HrReadAdapter } from '../src/reports/infrastructure/hr.read.adapter';
 import { ReportQueryService } from '../src/reports/application/report-query.service';
 import { ReportScopeService } from '../src/reports/application/report-scope.service';
 import { CompanyQueryService } from '../src/modules/master-data/company/read/company.query-service';
@@ -237,7 +240,13 @@ describe('RPT export end-to-end (real Postgres ledger → ReportsController → 
       { account: ACC.revenue, project: P, credit: '4000' },
     ]);
 
-    const query = new ReportQueryService(new LedgerReadAdapter(ds), new ReportScopeService());
+    const query = new ReportQueryService(
+      new LedgerReadAdapter(ds),
+      new InventoryReadAdapter(ds),
+      new RequisitionReadAdapter(ds),
+      new HrReadAdapter(ds),
+      new ReportScopeService(),
+    );
     const exporters = [new JsonExporter(), new ExcelExporter(), new PdfExporter()];
     controller = new ReportsController(query, new CompanyQueryService(ds), exporters);
   });

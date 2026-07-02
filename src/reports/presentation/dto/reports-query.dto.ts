@@ -65,3 +65,72 @@ export class BalanceSheetReportQueryDto extends CommonReportQueryDto {
   @IsOptional() @IsUUID() periodId?: string;
   @IsOptional() @Matches(ISO) asOf?: string;
 }
+
+// ── Inventory reports (FR-RPT-021…023) — financialYearId optional (stock is a live projection) ──────
+const MONTH = /^\d{4}-\d{2}$/;
+const DECIMAL = /^\d+(\.\d+)?$/;
+
+export class StockValuationReportQueryDto extends ReportPaging {
+  @IsOptional() @IsIn(REPORT_FORMATS) format?: (typeof REPORT_FORMATS)[number];
+  @IsOptional() @IsUUID() financialYearId?: string;
+  @IsOptional() @IsUUID() godownId?: string;
+  @IsOptional() @IsUUID() itemId?: string;
+  @IsOptional() @Matches(ISO) asOf?: string;
+}
+
+export class LowStockReportQueryDto extends ReportPaging {
+  @IsOptional() @IsIn(REPORT_FORMATS) format?: (typeof REPORT_FORMATS)[number];
+  @IsOptional() @IsUUID() financialYearId?: string;
+  @IsOptional() @IsUUID() godownId?: string;
+  @IsOptional() @IsUUID() itemId?: string;
+  @IsOptional() @Matches(ISO) asOf?: string;
+  /** Threshold — required (MAS holds no reorder attribute); a non-negative decimal string. */
+  @IsOptional() @Matches(DECIMAL) reorderLevel?: string;
+}
+
+export class StockTransferReportQueryDto extends ReportPaging {
+  @IsOptional() @IsIn(REPORT_FORMATS) format?: (typeof REPORT_FORMATS)[number];
+  @IsOptional() @IsUUID() financialYearId?: string;
+  @IsOptional() @IsUUID() godownId?: string;
+  @IsOptional() @IsUUID() itemId?: string;
+  @IsOptional() @IsUUID() projectId?: string;
+  @IsOptional() @Matches(ISO) dateFrom?: string;
+  @IsOptional() @Matches(ISO) dateTo?: string;
+}
+
+// ── Requisition & cost-control (FR-RPT-024) ────────────────────────────────────────────────────────
+export class RequisitionVsIssueReportQueryDto extends ReportPaging {
+  @IsOptional() @IsIn(REPORT_FORMATS) format?: (typeof REPORT_FORMATS)[number];
+  @IsOptional() @IsUUID() financialYearId?: string;
+  @IsOptional() @IsUUID() projectId?: string;
+  @IsOptional() @IsUUID() costCentreId?: string;
+  @IsOptional() @IsUUID() requisitionId?: string;
+  @IsOptional() @Matches(ISO) dateFrom?: string;
+  @IsOptional() @Matches(ISO) dateTo?: string;
+}
+
+// ── HR reports (FR-RPT-026…028) ────────────────────────────────────────────────────────────────────
+export class AttendanceSummaryReportQueryDto extends ReportPaging {
+  @IsOptional() @IsIn(REPORT_FORMATS) format?: (typeof REPORT_FORMATS)[number];
+  @Matches(MONTH) month!: string;
+  @IsOptional() @IsUUID() projectId?: string;
+  @IsOptional() @IsUUID() employeeId?: string;
+  @IsOptional() @IsUUID() costCentreId?: string;
+}
+
+export class SalaryRegisterReportQueryDto extends ReportPaging {
+  @IsOptional() @IsIn(REPORT_FORMATS) format?: (typeof REPORT_FORMATS)[number];
+  @IsOptional() @IsUUID() salaryRunId?: string;
+  @IsOptional() @IsUUID() financialYearId?: string;
+  @IsOptional() @Matches(MONTH) month?: string;
+  @IsOptional() @IsUUID() projectId?: string;
+}
+
+export class EmployeePaymentReportQueryDto extends ReportPaging {
+  @IsOptional() @IsIn(REPORT_FORMATS) format?: (typeof REPORT_FORMATS)[number];
+  @IsOptional() @IsUUID() employeeId?: string;
+  @IsOptional() @IsUUID() financialYearId?: string;
+  @IsOptional() @IsUUID() projectId?: string;
+  @IsOptional() @Matches(ISO) dateFrom?: string;
+  @IsOptional() @Matches(ISO) dateTo?: string;
+}

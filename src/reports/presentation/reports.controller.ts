@@ -41,9 +41,15 @@ import { REPORT_CATALOG } from '../domain/report-catalog';
 import { ReportDescriptor, ReportFormat } from '../domain/report-descriptor';
 import {
   AccountLedgerRow,
+  AttendanceSummaryRow,
   BalanceSheetRow,
+  EmployeePaymentRow,
   ProjectPnlRow,
   ReportResult,
+  RequisitionVsIssueRow,
+  SalaryRegisterRow,
+  StockMovementSummaryRow,
+  StockValuationRow,
   TrialBalanceRow,
 } from '../domain/report-result.model';
 import {
@@ -55,10 +61,17 @@ import {
 import { ReportQueryService } from '../application/report-query.service';
 import {
   AccountLedgerReportQueryDto,
+  AttendanceSummaryReportQueryDto,
   BalanceSheetReportQueryDto,
   CashBankBookReportQueryDto,
   DaybookReportQueryDto,
+  EmployeePaymentReportQueryDto,
+  LowStockReportQueryDto,
   ProfitAndLossReportQueryDto,
+  RequisitionVsIssueReportQueryDto,
+  SalaryRegisterReportQueryDto,
+  StockTransferReportQueryDto,
+  StockValuationReportQueryDto,
   TrialBalanceReportQueryDto,
 } from './dto/reports-query.dto';
 
@@ -153,6 +166,96 @@ export class ReportsController {
   ): Promise<ReportResult<BalanceSheetRow> | StreamableFile> {
     const result = await this.query.balanceSheet(q, actor);
     return this.respond(result, q.format, actor, res, req);
+  }
+
+  // ── inventory reports (INV:READ) ────────────────────────────────────────────────────────────────
+
+  @Get('stock-valuation')
+  @Roles({ module: 'INV', action: 'READ' })
+  async stockValuation(
+    @Query() q: StockValuationReportQueryDto,
+    @CurrentActor() actor: Actor,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<ReportResult<StockValuationRow> | StreamableFile> {
+    const result = await this.query.stockValuation(q, actor);
+    return this.respond(result, q.format, actor, res, req);
+  }
+
+  @Get('low-stock')
+  @Roles({ module: 'INV', action: 'READ' })
+  async lowStock(
+    @Query() q: LowStockReportQueryDto,
+    @CurrentActor() actor: Actor,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<ReportResult<StockValuationRow> | StreamableFile> {
+    const result = await this.query.lowStock(q, actor);
+    return this.respond(result, q.format, actor, res, req);
+  }
+
+  @Get('stock-transfer-summary')
+  @Roles({ module: 'INV', action: 'READ' })
+  async stockTransferSummary(
+    @Query() q: StockTransferReportQueryDto,
+    @CurrentActor() actor: Actor,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<Paginated<StockMovementSummaryRow> | StreamableFile> {
+    const paged = await this.query.stockTransferSummary(q, actor);
+    return this.respondPaged('stock-transfer-summary', paged, q, actor, res, req);
+  }
+
+  // ── requisition & cost-control reports (REQ:READ) ───────────────────────────────────────────────
+
+  @Get('requisition-vs-issue')
+  @Roles({ module: 'REQ', action: 'READ' })
+  async requisitionVsIssue(
+    @Query() q: RequisitionVsIssueReportQueryDto,
+    @CurrentActor() actor: Actor,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<Paginated<RequisitionVsIssueRow> | StreamableFile> {
+    const paged = await this.query.requisitionVsIssue(q, actor);
+    return this.respondPaged('requisition-vs-issue', paged, q, actor, res, req);
+  }
+
+  // ── HR reports (HR:READ — restricted to HR/Admin) ───────────────────────────────────────────────
+
+  @Get('attendance-summary')
+  @Roles({ module: 'HR', action: 'READ' })
+  async attendanceSummary(
+    @Query() q: AttendanceSummaryReportQueryDto,
+    @CurrentActor() actor: Actor,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<Paginated<AttendanceSummaryRow> | StreamableFile> {
+    const paged = await this.query.attendanceSummary(q, actor);
+    return this.respondPaged('attendance-summary', paged, q, actor, res, req);
+  }
+
+  @Get('salary-register')
+  @Roles({ module: 'HR', action: 'READ' })
+  async salaryRegister(
+    @Query() q: SalaryRegisterReportQueryDto,
+    @CurrentActor() actor: Actor,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<ReportResult<SalaryRegisterRow> | StreamableFile> {
+    const result = await this.query.salaryRegister(q, actor);
+    return this.respond(result, q.format, actor, res, req);
+  }
+
+  @Get('employee-payment-history')
+  @Roles({ module: 'HR', action: 'READ' })
+  async employeePaymentHistory(
+    @Query() q: EmployeePaymentReportQueryDto,
+    @CurrentActor() actor: Actor,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request & { id?: string },
+  ): Promise<Paginated<EmployeePaymentRow> | StreamableFile> {
+    const paged = await this.query.employeePaymentHistory(q, actor);
+    return this.respondPaged('employee-payment-history', paged, q, actor, res, req);
   }
 
   // ── format dispatch ───────────────────────────────────────────────────────────────────────────

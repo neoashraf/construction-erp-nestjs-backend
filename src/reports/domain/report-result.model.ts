@@ -75,3 +75,94 @@ export interface BalanceSheetRow {
   balance: string;
   projectId: string | null;
 }
+
+/**
+ * Stock-valuation / low-stock row over INV's stock-ledger projection (FR-RPT-021/-022). Every figure is
+ * INV's (`stock_balance` snapshot, or the as-of running balance carried on `stock_movement`) — RPT NEVER
+ * recomputes valuation. `totals.totalValue` reconciles to the inventory control-account balance ('1300',
+ * FR-INV-005). `weightedAverageRate` is null when quantity is 0 (SRS edge 11).
+ */
+export interface StockValuationRow {
+  godownId: string;
+  itemId: string;
+  /** From INV (FR-INV-004). */
+  quantityOnHand: string;
+  /** From INV — reconciles to the inventory control account (FR-INV-005). */
+  totalValue: string;
+  /** From INV; null when quantity is 0. */
+  weightedAverageRate: string | null;
+  /** The re-order threshold (MAS attribute or the `reorderLevel` param — §15); drives low-stock. */
+  reorderLevel: string | null;
+  /** The valuation date; null for a live (current) snapshot. */
+  asOfDate: string | null;
+}
+
+/** Stock-journal transfer/issue summary row over INV's Stock Journal read surface (FR-RPT-023). */
+export interface StockMovementSummaryRow {
+  stockJournalId: string;
+  voucherNo: string | null;
+  voucherDate: string;
+  fromGodownId: string | null;
+  toGodownId: string | null;
+  itemId: string;
+  quantity: string;
+  value: string | null;
+  /** TRANSFER | ISSUE | ADJUSTMENT. */
+  mode: string;
+  approverId: string | null;
+}
+
+/** Requisition-vs-issue row over REQ's requisition/issue read surface (FR-RPT-024). */
+export interface RequisitionVsIssueRow {
+  requisitionId: string;
+  projectId: string | null;
+  costCentreId: string | null;
+  itemId: string;
+  requestedQty: string;
+  issuedQty: string;
+  /** `requestedQty − issuedQty` (the unfulfilled/wastage balance) — computed by RPT from REQ figures. */
+  varianceQty: string;
+}
+
+/** Monthly attendance roll-up row over HR's attendance read surface (FR-RPT-026). */
+export interface AttendanceSummaryRow {
+  projectId: string | null;
+  employeeId: string | null;
+  partyId: string | null;
+  costCentreId: string | null;
+  daysPresent: number;
+  paidLeave: number;
+  unpaidLeave: number;
+  absent: number;
+  /** Σ head count (office rows count as 1; subcontractor/daily-labour rows carry an explicit head count). */
+  headCountTotal: number;
+}
+
+/**
+ * Salary-register row over HR's salary-sheet read surface (FR-RPT-027). Every figure is HR's
+ * `salary_sheet_line`; the register `totals` reconcile to the posted SALARY ledger entry — RPT renders,
+ * never recomputes salary math.
+ */
+export interface SalaryRegisterRow {
+  employeeId: string;
+  projectId: string | null;
+  costCentreId: string | null;
+  gross: string;
+  allowances: string;
+  tds: string;
+  pf: string;
+  advanceRecovery: string;
+  other: string;
+  net: string;
+}
+
+/** Employee payment-history row over PAY's payment_allocation/payment_voucher read surface (FR-RPT-028). */
+export interface EmployeePaymentRow {
+  employeeId: string | null;
+  paymentDate: string;
+  paidAmount: string;
+  /** SALARY | LABOUR_PAYABLE. */
+  payableType: string;
+  /** The settled payable's id (salary sheet run / labour payable) — traceability to the payable. */
+  payableRef: string;
+}

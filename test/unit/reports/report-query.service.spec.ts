@@ -62,7 +62,15 @@ class FakeLedger implements LedgerReadPort {
 describe('ReportQueryService', () => {
   const build = () => {
     const ledger = new FakeLedger();
-    const svc = new ReportQueryService(ledger, new ReportScopeService());
+    // The inventory/requisition/HR ports are exercised by report-query.inventory-hr.service.spec.ts; the
+    // LED-report tests here never touch them, so empty stubs suffice.
+    const svc = new ReportQueryService(
+      ledger,
+      {} as never,
+      {} as never,
+      {} as never,
+      new ReportScopeService(),
+    );
     return { ledger, svc };
   };
 
