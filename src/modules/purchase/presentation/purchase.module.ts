@@ -35,27 +35,44 @@ import {
 import { PostPurchaseBillUseCase } from '../application/post-purchase-bill.usecase';
 import { CancelPurchaseBillUseCase } from '../application/cancel-purchase-bill.usecase';
 import { RepostPurchaseBillUseCase } from '../application/repost-purchase-bill.usecase';
+import { CreateGrnUseCase } from '../application/create-grn.usecase';
+import { PostGrnUseCase } from '../application/post-grn.usecase';
+import { CancelGrnUseCase } from '../application/cancel-grn.usecase';
 import { PurchaseQueryService } from '../application/purchase-query.service';
 import { PURCHASE_ORDER_REPOSITORY } from '../domain/ports/purchase-order.repository';
 import { PURCHASE_BILL_REPOSITORY } from '../domain/ports/purchase-bill.repository';
+import { GRN_REPOSITORY } from '../domain/ports/grn.repository';
+import { BILL_PAYMENT_READ_PORT } from '../domain/ports/bill-payment.read.port';
 import { PURCHASE_ACCOUNT_MAP_PORT } from '../domain/ports/purchase-account-map.port';
 import { PURCHASE_CONFIG_PORT } from '../domain/ports/purchase-config.port';
 import { PURCHASE_PROJECT_STATUS_PORT } from '../domain/ports/purchase-project-status.port';
 import { PURCHASE_INVENTORY_SERVICE } from '../domain/ports/inventory.service.port';
 import { TypeOrmPurchaseOrderRepository } from '../infrastructure/typeorm-purchase-order.repository';
 import { TypeOrmPurchaseBillRepository } from '../infrastructure/typeorm-purchase-bill.repository';
+import { TypeOrmGrnRepository } from '../infrastructure/typeorm-grn.repository';
 import { PurchaseAccountMapAdapter } from '../infrastructure/purchase-account-map.adapter';
 import { PurchaseConfigAdapter } from '../infrastructure/purchase-config.adapter';
 import { PurchaseProjectStatusAdapter } from '../infrastructure/purchase-project-status.adapter';
-import { PurchaseController, PurchaseOrdersController } from './purchase.controller';
+import { PurchaseRegisterReadRepo } from '../infrastructure/purchase-register.read.repo';
+import { ZeroBillPaymentReadAdapter } from '../infrastructure/bill-payment.read.adapter';
+import {
+  PurchaseController,
+  PurchaseGrnsController,
+  PurchaseOrdersController,
+  PurchaseSuppliersController,
+} from './purchase.controller';
 
 @Module({
   imports: [PostingModule, InventoryModule, CostControlModule, AuthModule],
-  controllers: [PurchaseController, PurchaseOrdersController],
+  controllers: [PurchaseController, PurchaseOrdersController, PurchaseGrnsController, PurchaseSuppliersController],
   providers: [
     // ports -> adapters
     { provide: PURCHASE_ORDER_REPOSITORY, useClass: TypeOrmPurchaseOrderRepository },
     { provide: PURCHASE_BILL_REPOSITORY, useClass: TypeOrmPurchaseBillRepository },
+    { provide: GRN_REPOSITORY, useClass: TypeOrmGrnRepository },
+    // PAY seam (FR-PUR-020): ZERO until PAY ships — the `payment-bill-allocation` brief (#28) rebinds
+    // this to an adapter over PAY's real per-bill allocations (see bill-payment.read.port.ts).
+    { provide: BILL_PAYMENT_READ_PORT, useClass: ZeroBillPaymentReadAdapter },
     { provide: PURCHASE_ACCOUNT_MAP_PORT, useClass: PurchaseAccountMapAdapter },
     { provide: PURCHASE_CONFIG_PORT, useClass: PurchaseConfigAdapter },
     { provide: PURCHASE_PROJECT_STATUS_PORT, useClass: PurchaseProjectStatusAdapter },
@@ -75,7 +92,12 @@ import { PurchaseController, PurchaseOrdersController } from './purchase.control
     PostPurchaseBillUseCase,
     CancelPurchaseBillUseCase,
     RepostPurchaseBillUseCase,
+    // GRN use cases (option (a), §10 Q4 — no INV/LED dependency; see post-grn.usecase.ts)
+    CreateGrnUseCase,
+    PostGrnUseCase,
+    CancelGrnUseCase,
     // read
+    PurchaseRegisterReadRepo,
     PurchaseQueryService,
   ],
 })

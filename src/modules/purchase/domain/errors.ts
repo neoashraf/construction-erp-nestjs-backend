@@ -62,6 +62,23 @@ export class InvalidPoTransitionError extends DomainError {
   }
 }
 
+/** An edit/delete/post attempted on a GRN that is not DRAFT (FR-PUR-024). HTTP 409. Reuses the
+ * canonical VOUCHER_POSTED_IMMUTABLE code (API contract 08-purchase, GRN `…/post` errors) — no new code. */
+export class GrnNotDraftError extends DomainError {
+  readonly code = DomainErrorCode.VOUCHER_POSTED_IMMUTABLE;
+  constructor(status: string) {
+    super(`Only a DRAFT GRN is editable/postable; this GRN is ${status}`, { status });
+  }
+}
+
+/** A cancel attempted on a GRN that is not POSTED. HTTP 409. Reuses VOUCHER_NOT_POSTED — no new code. */
+export class GrnNotPostedError extends DomainError {
+  readonly code = DomainErrorCode.VOUCHER_NOT_POSTED;
+  constructor(status: string) {
+    super(`Only a POSTED GRN can be cancelled; this GRN is ${status}`, { status });
+  }
+}
+
 /** One of the four purchase posting accounts could not be resolved in the CoA (FR-PUR-009; SRS §16). HTTP 409. */
 export class PurchaseAccountNotConfiguredError extends DomainError {
   readonly code = DomainErrorCode.PURCHASE_ACCOUNT_NOT_CONFIGURED;

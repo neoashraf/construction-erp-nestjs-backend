@@ -97,8 +97,7 @@ const ROLE_SEEDS: RoleSeed[] = [
       // approves purchase orders for assigned projects; sees the entry-time over-budget warning; reviews
       // committed-vs-actual procurement spend for a project." (purchase-po-bill-posting — the pre-existing
       // seed granted PM only PUR:CREATE/READ, so the PO `…/approve` route was unreachable for its own
-      // named actor. Store Keeper is intentionally granted NOTHING for PUR — GRN, their action, is the
-      // next brief.)
+      // named actor. Store Keeper's PUR grant (GRN) landed with purchase-grn-matching — see STORE_KEEPER.)
       { module: 'PUR', action: 'APPROVE', projectScope: 'ASSIGNED' },
       { module: 'REQ', action: 'CREATE', projectScope: 'ASSIGNED' },
       { module: 'REQ', action: 'READ', projectScope: 'ASSIGNED' },
@@ -174,6 +173,18 @@ const ROLE_SEEDS: RoleSeed[] = [
       // `…/issue` and `…/issues/:issueId/reverse` routes were unreachable for its own named actor).
       { module: 'REQ', action: 'POST', projectScope: 'ASSIGNED' },
       { module: 'REQ', action: 'CANCEL', projectScope: 'ASSIGNED' },
+      // PUR create/read/post (GRN) — docs/srs/08-purchase.md §3 Actors: "Store Keeper | Records the GRN
+      // (goods physically received) against a PO/Bill, capturing received quantities per item and godown;
+      // raises receipt discrepancies." and §7 Flow C: "Store Keeper opens a GRN against the PO/Bill ...
+      // enters the ACTUAL received quantity ... On post, the GRN ... records the line's billed-vs-received
+      // variance and match status." (purchase-grn-matching — #25 deliberately deferred this grant to this
+      // brief; before it, Store Keeper held ZERO PUR grant and the GRN routes were unreachable for their
+      // own named actor. Kept minimal to what the API contract's GRN routes need: POST /api/purchase/grns
+      // -> CREATE, GET .../grns(+/:id) -> READ, POST .../grns/:id/post -> POST. The contract exposes NO
+      // GRN PATCH/DELETE/cancel routes, so NO PUR:UPDATE/DELETE/CANCEL is granted.)
+      { module: 'PUR', action: 'CREATE', projectScope: 'ASSIGNED' },
+      { module: 'PUR', action: 'READ', projectScope: 'ASSIGNED' },
+      { module: 'PUR', action: 'POST', projectScope: 'ASSIGNED' },
     ],
   },
   {
