@@ -22,6 +22,7 @@ import { HrModule } from './modules/hr/presentation/hr.module';
 import { RequisitionModule } from './modules/requisition/presentation/requisition.module';
 import { ReceiptModule } from './modules/receipt/presentation/receipt.module';
 import { PurchaseModule } from './modules/purchase/presentation/purchase.module';
+import { PaymentModule } from './modules/payment/presentation/payment.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { PurchaseModule } from './modules/purchase/presentation/purchase.module'
     RequisitionModule,
     ReceiptModule,
     PurchaseModule,
+    PaymentModule,
     // Diagnostic throw-routes for the e2e error-envelope smoke — never in production.
     DiagnosticsModule.register(process.env.NODE_ENV !== 'production'),
   ],
