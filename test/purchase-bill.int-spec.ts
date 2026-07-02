@@ -40,6 +40,8 @@ import { PurchaseOrderOrmEntity } from '../src/modules/purchase/infrastructure/p
 import { PurchaseOrderLineOrmEntity } from '../src/modules/purchase/infrastructure/purchase-order-line.orm-entity';
 import { PurchaseBillOrmEntity } from '../src/modules/purchase/infrastructure/purchase-bill.orm-entity';
 import { PurchaseBillLineOrmEntity } from '../src/modules/purchase/infrastructure/purchase-bill-line.orm-entity';
+import { GrnOrmEntity } from '../src/modules/purchase/infrastructure/grn.orm-entity';
+import { GrnLineOrmEntity } from '../src/modules/purchase/infrastructure/grn-line.orm-entity';
 
 import { InitialBaseline1700000000000 } from '../src/database/migrations/1700000000000-InitialBaseline';
 import { CreateCompanyFinancialYear1700000100000 } from '../src/database/migrations/1700000100000-CreateCompanyFinancialYear';
@@ -53,6 +55,7 @@ import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700
 import { CreateStockMovementAndBalance1700001000000 } from '../src/database/migrations/1700001000000-CreateStockMovementAndBalance';
 import { CreateStockJournal1700001500000 } from '../src/database/migrations/1700001500000-CreateStockJournal';
 import { CreatePurchasePoBill1700002000000 } from '../src/database/migrations/1700002000000-CreatePurchasePoBill';
+import { CreatePurchaseGrn1700002100000 } from '../src/database/migrations/1700002100000-CreatePurchaseGrn';
 
 import { TypeOrmJournalEntryRepository } from '../src/core/posting/infrastructure/typeorm-journal-entry.repository';
 import { TypeOrmNumberingService } from '../src/core/numbering/infrastructure/typeorm-numbering.service';
@@ -81,6 +84,8 @@ import { TypeOrmCostControlReadRepository } from '../src/core/cost-control/infra
 import { TypeOrmPurchaseOrderRepository } from '../src/modules/purchase/infrastructure/typeorm-purchase-order.repository';
 import { TypeOrmPurchaseBillRepository } from '../src/modules/purchase/infrastructure/typeorm-purchase-bill.repository';
 import { PurchaseAccountMapAdapter } from '../src/modules/purchase/infrastructure/purchase-account-map.adapter';
+import { PurchaseRegisterReadRepo } from '../src/modules/purchase/infrastructure/purchase-register.read.repo';
+import { ZeroBillPaymentReadAdapter } from '../src/modules/purchase/infrastructure/bill-payment.read.adapter';
 import { PurchaseConfigAdapter } from '../src/modules/purchase/infrastructure/purchase-config.adapter';
 import { PurchaseProjectStatusAdapter } from '../src/modules/purchase/infrastructure/purchase-project-status.adapter';
 import { CreatePurchaseOrderUseCase } from '../src/modules/purchase/application/create-purchase-order.usecase';
@@ -189,6 +194,8 @@ describe('PUR Purchase Order + Bill (real Postgres + real INV/LED/NUM/PER/CC)', 
         PurchaseOrderLineOrmEntity,
         PurchaseBillOrmEntity,
         PurchaseBillLineOrmEntity,
+        GrnOrmEntity,
+        GrnLineOrmEntity,
         RoleOrmEntity,
         PermissionOrmEntity,
       ],
@@ -205,6 +212,7 @@ describe('PUR Purchase Order + Bill (real Postgres + real INV/LED/NUM/PER/CC)', 
         CreateStockMovementAndBalance1700001000000,
         CreateStockJournal1700001500000,
         CreatePurchasePoBill1700002000000,
+        CreatePurchaseGrn1700002100000,
       ],
     });
     await ds.initialize();
@@ -312,7 +320,9 @@ describe('PUR Purchase Order + Bill (real Postgres + real INV/LED/NUM/PER/CC)', 
     postBill = new PostPurchaseBillUseCase(billRepo, poRepo, accountMap, projectStatus, inventoryService, budgetCheck, posting, audit as never, uow, clock);
     cancelBill = new CancelPurchaseBillUseCase(billRepo, inventoryService, posting, audit as never, uow);
     repostBill = new RepostPurchaseBillUseCase(billRepo, accountMap, config, inventoryService, posting, audit as never, uow, clock, ids);
-    query = new PurchaseQueryService(ds);
+    // purchase-grn-matching: the query service now reads paid/outstanding through the PAY seam
+    // (Phase-1 ZeroBillPaymentReadAdapter -> 0 applied) and match/register SQL via PurchaseRegisterReadRepo.
+    query = new PurchaseQueryService(ds, new ZeroBillPaymentReadAdapter(), new PurchaseRegisterReadRepo(ds));
 
     const roleRepo = new TypeOrmRoleRepository(ds);
     const permRepo = new TypeOrmPermissionRepository(ds);
