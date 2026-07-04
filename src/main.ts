@@ -43,7 +43,11 @@ async function bootstrap(): Promise<void> {
     .setTitle('Zakir Enterprise — Construction ERP API')
     .setDescription('Project-centric construction ERP — accounting, projects, HR on one ledger.')
     .setVersion('0.1.0')
-    .addBearerAuth()
+    // JWT bearer — the Authorize dialog takes the raw access token from POST /api/auth/login.
+    .addBearerAuth(
+      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', description: 'Paste the accessToken from POST /api/auth/login' },
+      'access-token',
+    )
     .addTag('Health', 'Liveness / readiness probes')
     .addTag('Org', 'Companies and financial years')
     .addTag('Numbering', 'Voucher numbering series configuration')
@@ -56,7 +60,13 @@ async function bootstrap(): Promise<void> {
     .addTag('Items', 'Material / service items and UoM conversions')
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/v1/docs', app, document);
+  // Apply the JWT scheme as a GLOBAL security requirement so every operation shows the lock icon
+  // and sends the token (public routes like /api/auth/login simply ignore it). One line here avoids
+  // decorating every controller with @ApiBearerAuth().
+  document.security = [{ 'access-token': [] }];
+  SwaggerModule.setup('api/v1/docs', app, document, {
+    swaggerOptions: { persistAuthorization: true },
+  });
 
   const { port } = getAppConfig(app.get(ConfigService));
   await app.listen(port);
