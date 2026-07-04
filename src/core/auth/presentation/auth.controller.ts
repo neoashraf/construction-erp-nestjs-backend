@@ -6,13 +6,14 @@
  * optional companyId body field. The guard seam in @CurrentActor / the JWT strategy handles
  * multi-company once auth is wired. For the contract endpoint shape see api-contracts/05.
  */
-import { Body, Controller, Headers, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Post, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { IsEmail, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 import { AuthService } from '../application/auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentActor } from './current-actor.decorator';
 import { Actor } from '../../tenancy/tenant-context';
+import { SessionQueryService } from '../read/session.query-service';
 
 class LoginDto {
   @IsEmail()
@@ -46,7 +47,21 @@ class ChangePasswordDto {
 @ApiTags('Auth')
 @Controller('api/auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly session: SessionQueryService,
+  ) {}
+
+  /**
+   * GET /api/auth/me — FR-AUD-031/032/033. Authenticated (any role); returns the caller's OWN live
+   * session projection. Allow-listed on the forced-change gate so a must_change_password user can still
+   * discover the flag and route to change-password.
+   */
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  me(@CurrentActor() actor: Actor) {
+    return this.session.me(actor);
+  }
 
   /** POST /api/auth/login — FR-AUD-001/008/009. Public, no JWT required. */
   @Post('login')

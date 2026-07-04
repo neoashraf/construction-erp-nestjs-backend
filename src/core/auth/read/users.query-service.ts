@@ -33,7 +33,7 @@ export class UsersQueryService {
     const [userRows, projRows] = await Promise.all([
       this.ds.query(
         `SELECT id, email, name, role, financial_year_id AS "financialYearId", is_active AS "isActive",
-                last_login_at AS "lastLoginAt", phone, version
+                last_login_at AS "lastLoginAt", must_change_password AS "mustChangePassword", phone, version
          FROM "user" WHERE id = $1 AND company_id = $2`,
         [id, companyId],
       ),
