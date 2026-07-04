@@ -10,7 +10,7 @@ import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../../core/auth/presentation/roles.guard';
-import { Roles } from '../../../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../../../core/auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../../infrastructure/http/pagination';
 import { MasterListQueryDto, VersionBodyDto } from '../../shared/dto';
 import { ACCOUNT_TYPES } from '../domain/account-type';
@@ -42,19 +42,19 @@ export class AccountGroupController {
   ) {}
 
   @Get()
-  @Roles({ module: 'MAS', action: 'READ' })
+  @RequirePermission('master_data.chart_of_accounts', 'READ')
   list(@Query() q: AccountGroupQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<AccountGroupDto>> {
     return this.query.list({ page: q.page, pageSize: q.pageSize, type: q.type, parentGroupId: q.parentGroupId }, actor);
   }
 
   @Post()
-  @Roles({ module: 'MAS', action: 'CREATE' })
+  @RequirePermission('master_data.chart_of_accounts', 'CREATE')
   create_(@Body() body: CreateAccountGroupDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.create.execute(body, actor);
   }
 
   @Patch(':id')
-  @Roles({ module: 'MAS', action: 'UPDATE' })
+  @RequirePermission('master_data.chart_of_accounts', 'UPDATE')
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateAccountGroupDto,

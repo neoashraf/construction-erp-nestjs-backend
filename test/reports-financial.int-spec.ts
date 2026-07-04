@@ -39,6 +39,7 @@ import { CreateMasterDataDimensions1700000500000 } from '../src/database/migrati
 import { CreateMasterDataAccountsPartiesItems1700000600000 } from '../src/database/migrations/1700000600000-CreateMasterDataAccountsPartiesItems';
 import { CreateUser1700000700000 } from '../src/database/migrations/1700000700000-CreateUser';
 import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700000800000-CreateRbacAndAudit';
+import { RbacV2ResourcePermissions1700002300000 } from '../src/database/migrations/1700002300000-RbacV2ResourcePermissions';
 import { AddExportActionToAuditLog1700000900000 } from '../src/database/migrations/1700000900000-AddExportActionToAuditLog';
 import { CreateStockMovementAndBalance1700001000000 } from '../src/database/migrations/1700001000000-CreateStockMovementAndBalance';
 import { CreateContraJournal1700001100000 } from '../src/database/migrations/1700001100000-CreateContraJournal';
@@ -72,7 +73,7 @@ import { TypeOrmRoleRepository } from '../src/core/auth/infrastructure/typeorm-r
 import { TypeOrmPermissionRepository } from '../src/core/auth/infrastructure/typeorm-permission.repository';
 import { RolesGuard } from '../src/core/auth/presentation/roles.guard';
 import { JwtAuthGuard } from '../src/core/auth/presentation/jwt-auth.guard';
-import { PermissionRequirement } from '../src/core/auth/presentation/roles.decorator';
+import { PermissionRequirement } from '../src/core/auth/presentation/require-permission.decorator';
 
 jest.setTimeout(180_000);
 
@@ -102,7 +103,7 @@ const ACC = {
 };
 
 const admin: Actor = {
-  userId: USER, companyId: CO, financialYearId: FY1, role: 'ACCOUNTS_TEAM',
+  userId: USER, companyId: CO, financialYearId: FY1, role: 'ACCOUNTS_MANAGER',
   isUnscoped: true, assignedProjectIds: [], approvalLimit: null,
 };
 const pmP: Actor = {
@@ -181,6 +182,7 @@ describe('RPT financial statements (real Postgres, real LED ledger + typed CoA)'
         CreateMasterDataAccountsPartiesItems1700000600000,
         CreateUser1700000700000,
         CreateRbacAndAudit1700000800000,
+        RbacV2ResourcePermissions1700002300000,
         AddExportActionToAuditLog1700000900000,
         CreateStockMovementAndBalance1700001000000,
         CreateContraJournal1700001100000,
@@ -389,7 +391,7 @@ describe('RPT financial statements (real Postgres, real LED ledger + typed CoA)'
     const ACCOUNTS_ROLE = '00000000-0000-0000-0000-0000000e3b10';
     const PM_ROLE = '00000000-0000-0000-0000-0000000e3b11';
     const SK_ROLE = '00000000-0000-0000-0000-0000000e3b12';
-    const accountsActor: Actor = { ...admin, role: 'ACCOUNTS_TEAM' };
+    const accountsActor: Actor = { ...admin, role: 'ACCOUNTS_MANAGER' };
     const pmActor: Actor = { ...pmP };
     const skActor: Actor = { ...admin, userId: 'sk-user', role: 'STORE_KEEPER', isUnscoped: false, assignedProjectIds: [] };
 
@@ -403,16 +405,16 @@ describe('RPT financial statements (real Postgres, real LED ledger + typed CoA)'
     }
 
     beforeAll(async () => {
-      await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'ACCOUNTS_TEAM',true,1) ON CONFLICT DO NOTHING`, [ACCOUNTS_ROLE, CO]);
+      await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'ACCOUNTS_MANAGER',true,1) ON CONFLICT DO NOTHING`, [ACCOUNTS_ROLE, CO]);
       await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'PROJECT_MANAGER',false,1) ON CONFLICT DO NOTHING`, [PM_ROLE, CO]);
       await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'STORE_KEEPER',false,1) ON CONFLICT DO NOTHING`, [SK_ROLE, CO]);
-      // ACCOUNTS_TEAM + PROJECT_MANAGER hold RPT:READ (per seed-roles-permissions.ts); STORE_KEEPER holds none.
+      // ACCOUNTS_MANAGER + PROJECT_MANAGER hold RPT:READ (per seed-roles-permissions.ts); STORE_KEEPER holds none.
       await ds.query(
-        `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(),$1,$2,'RPT','READ','ALL',1)`,
+        `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(),$1,$2,'reports','READ','ALL',1)`,
         [ACCOUNTS_ROLE, CO],
       );
       await ds.query(
-        `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(),$1,$2,'RPT','READ','ASSIGNED',1)`,
+        `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(),$1,$2,'reports','READ','ASSIGNED',1)`,
         [PM_ROLE, CO],
       );
     });
@@ -421,23 +423,23 @@ describe('RPT financial statements (real Postgres, real LED ledger + typed CoA)'
       expect(() => jwtAuthGuard.handleRequest(null, false, null)).toThrow(UnauthorizedException);
     });
 
-    it('success: ACCOUNTS_TEAM holds RPT:READ → guard resolves true', async () => {
-      const ctx = mockContext(accountsActor, [{ module: 'RPT', action: 'READ' }]);
+    it('success: ACCOUNTS_MANAGER holds RPT:READ → guard resolves true', async () => {
+      const ctx = mockContext(accountsActor, [{ resource: 'reports', action: 'READ' }]);
       await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
     });
 
     it('success: PROJECT_MANAGER holds RPT:READ → guard resolves true', async () => {
-      const ctx = mockContext(pmActor, [{ module: 'RPT', action: 'READ' }]);
+      const ctx = mockContext(pmActor, [{ resource: 'reports', action: 'READ' }]);
       await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
     });
 
     it('403: STORE_KEEPER (no RPT grant) is FORBIDDEN on RPT:READ', async () => {
-      const ctx = mockContext(skActor, [{ module: 'RPT', action: 'READ' }]);
+      const ctx = mockContext(skActor, [{ resource: 'reports', action: 'READ' }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('403: RolesGuard rejects when request.user is absent even if @Roles() is present', async () => {
-      const ctx = mockContext(undefined, [{ module: 'RPT', action: 'READ' }]);
+      const ctx = mockContext(undefined, [{ resource: 'reports', action: 'READ' }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
   });

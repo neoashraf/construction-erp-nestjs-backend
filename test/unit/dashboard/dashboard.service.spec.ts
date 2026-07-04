@@ -19,7 +19,7 @@ const base: Actor = {
   isUnscoped: true, assignedProjectIds: [], approvalLimit: null,
 };
 const admin = base;
-const accounts: Actor = { ...base, role: 'ACCOUNTS_TEAM' };
+const accounts: Actor = { ...base, role: 'ACCOUNTS_MANAGER' };
 const hr: Actor = { ...base, role: 'HR_MANAGER', isUnscoped: false };
 const store: Actor = { ...base, role: 'STORE_KEEPER', isUnscoped: false, assignedProjectIds: ['P'] };
 const pmAB: Actor = { ...base, role: 'PROJECT_MANAGER', isUnscoped: false, assignedProjectIds: ['A', 'B'] };

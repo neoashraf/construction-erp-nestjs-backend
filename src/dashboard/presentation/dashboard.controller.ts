@@ -3,7 +3,7 @@
  * POST/PUT/PATCH/DELETE of any kind here (FR-DSH-003): both routes are `GET`s that compose the caller's
  * role-scoped KPI tiles by summarising the RPT reports / module read models and return each tile with its
  * KPI value(s) and a `drillTo`. Guards mirror RPT/LED: `@UseGuards(JwtAuthGuard, RolesGuard)` at class
- * level + `@Roles({ module:'DSH', action:'READ' })` on every route (the DSH:READ gate). Role→tile
+ * level + `@RequirePermission('dashboard', 'READ')` on every route (the DSH:READ gate). Role→tile
  * filtering (which tiles the caller sees) is business logic in DashboardService on top of that gate
  * (FR-DSH-007/-010). The actor is resolved via `@CurrentActor`; company is implicit from the JWT.
  *
@@ -17,7 +17,7 @@ import { Actor } from '../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/presentation/roles.guard';
-import { Roles } from '../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../core/auth/presentation/require-permission.decorator';
 import { DashboardService } from '../application/dashboard.service';
 import { DashboardParams } from '../application/dashboard-scope.service';
 import { Tile } from '../domain/tile.model';
@@ -31,7 +31,7 @@ export class DashboardController {
 
   /** The caller's full role-scoped tile set (FR-DSH-001/-005/-007/-010). */
   @Get()
-  @Roles({ module: 'DSH', action: 'READ' })
+  @RequirePermission('dashboard', 'READ')
   async getDashboard(
     @Query() q: DashboardQueryDto,
     @CurrentActor() actor: Actor,
@@ -41,7 +41,7 @@ export class DashboardController {
 
   /** A single tile re-read live (FR-DSH-005); unknown key → 404, role may not see it → 403 (FR-DSH-010). */
   @Get('tiles/:key')
-  @Roles({ module: 'DSH', action: 'READ' })
+  @RequirePermission('dashboard', 'READ')
   async tile(
     @Param('key') key: string,
     @Query() q: DashboardQueryDto,

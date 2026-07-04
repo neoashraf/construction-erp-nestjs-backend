@@ -10,6 +10,7 @@ function baseUser(overrides?: Partial<{ isActive: boolean; failedLoginAttempts: 
     passwordHash: 'h', name: 'N', role: 'ADMIN',
     isActive: overrides?.isActive ?? true,
     lastLoginAt: null, phone: null,
+    mustChangePassword: false,
     failedLoginAttempts: overrides?.failedLoginAttempts ?? 0,
     lockedUntil: overrides?.lockedUntil ?? null,
     version: 1,

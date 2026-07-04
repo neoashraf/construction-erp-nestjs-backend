@@ -51,7 +51,7 @@ import { Actor } from '../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
-import { Roles } from '../../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../../core/auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { CreatePurchaseBillUseCase } from '../application/create-purchase-bill.usecase';
 import {
@@ -256,27 +256,27 @@ export class PurchaseController {
   ) {}
 
   @Get()
-  @Roles({ module: 'PUR', action: 'READ' })
+  @RequirePermission('purchase.bills', 'READ')
   list(@Query() q: BillQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<PurchaseBillSummaryDto>> {
     return this.query.listBills(q, actor);
   }
 
   @Get(':id')
-  @Roles({ module: 'PUR', action: 'READ' })
+  @RequirePermission('purchase.bills', 'READ')
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<PurchaseBillDto> {
     return this.require(id, actor);
   }
 
   @Post()
   @HttpCode(201)
-  @Roles({ module: 'PUR', action: 'CREATE' })
+  @RequirePermission('purchase.bills', 'CREATE')
   async create_(@Body() body: CreateBillDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     const res = await this.create.execute(body, actor);
     return { id: res.id };
   }
 
   @Patch(':id')
-  @Roles({ module: 'PUR', action: 'UPDATE' })
+  @RequirePermission('purchase.bills', 'UPDATE')
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateBillDto,
@@ -289,14 +289,14 @@ export class PurchaseController {
 
   @Delete(':id')
   @HttpCode(204)
-  @Roles({ module: 'PUR', action: 'DELETE' })
+  @RequirePermission('purchase.bills', 'DELETE')
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<void> {
     return this.del.execute(id, actor);
   }
 
   @Post(':id/post')
   @HttpCode(200)
-  @Roles({ module: 'PUR', action: 'POST' })
+  @RequirePermission('purchase.bills', 'POST')
   async post(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() _body: VersionDto,
@@ -315,7 +315,7 @@ export class PurchaseController {
 
   @Post(':id/cancel')
   @HttpCode(200)
-  @Roles({ module: 'PUR', action: 'CANCEL' })
+  @RequirePermission('purchase.bills', 'CANCEL')
   async cancel(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: CancelBillDto,
@@ -327,7 +327,7 @@ export class PurchaseController {
 
   @Post(':id/repost')
   @HttpCode(200)
-  @Roles({ module: 'PUR', action: 'CANCEL' })
+  @RequirePermission('purchase.bills', 'CANCEL')
   async repost(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: RepostBillDto,
@@ -373,13 +373,13 @@ export class PurchaseOrdersController {
   ) {}
 
   @Get()
-  @Roles({ module: 'PUR', action: 'READ' })
+  @RequirePermission('purchase.orders', 'READ')
   list(@Query() q: OrderQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<PurchaseOrderSummaryDto>> {
     return this.query.listOrders(q, actor);
   }
 
   @Get(':id')
-  @Roles({ module: 'PUR', action: 'READ' })
+  @RequirePermission('purchase.orders', 'READ')
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<PurchaseOrderDto> {
     return this.require(id, actor);
   }
@@ -387,14 +387,14 @@ export class PurchaseOrdersController {
   /** The PO→Bill→GRN three-way match — per line ordered/billed/received/open/matchStatus, all computed
    *  over the voucher records, never stored (FR-PUR-017, FR-PUR-018; AC8). */
   @Get(':id/match')
-  @Roles({ module: 'PUR', action: 'READ' })
+  @RequirePermission('purchase.orders', 'READ')
   match(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<PoMatchDto> {
     return this.query.poMatch(id, actor);
   }
 
   @Post()
   @HttpCode(201)
-  @Roles({ module: 'PUR', action: 'CREATE' })
+  @RequirePermission('purchase.orders', 'CREATE')
   async create_(@Body() body: CreateOrderDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     const res = await this.create.execute(
       { ...body, poRefNo: body.poRefNo ?? null, expectedDeliveryDate: body.expectedDeliveryDate ?? null },
@@ -404,7 +404,7 @@ export class PurchaseOrdersController {
   }
 
   @Patch(':id')
-  @Roles({ module: 'PUR', action: 'UPDATE' })
+  @RequirePermission('purchase.orders', 'UPDATE')
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateOrderDto,
@@ -417,7 +417,7 @@ export class PurchaseOrdersController {
 
   @Post(':id/approve')
   @HttpCode(200)
-  @Roles({ module: 'PUR', action: 'APPROVE' })
+  @RequirePermission('purchase.orders', 'APPROVE')
   async approve(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() _body: VersionDto,
@@ -430,7 +430,7 @@ export class PurchaseOrdersController {
 
   @Post(':id/cancel')
   @HttpCode(200)
-  @Roles({ module: 'PUR', action: 'CANCEL' })
+  @RequirePermission('purchase.orders', 'CANCEL')
   async cancel(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: CancelOrderDto,
@@ -467,13 +467,13 @@ export class PurchaseGrnsController {
   ) {}
 
   @Get()
-  @Roles({ module: 'PUR', action: 'READ' })
+  @RequirePermission('purchase.grn', 'READ')
   list(@Query() q: GrnQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<GrnSummaryDto>> {
     return this.query.listGrns(q, actor);
   }
 
   @Get(':id')
-  @Roles({ module: 'PUR', action: 'READ' })
+  @RequirePermission('purchase.grn', 'READ')
   async get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<GrnDto> {
     const dto = await this.query.getGrn(id, actor);
     if (!dto) throw new NotFoundException(`GRN ${id} not found`);
@@ -482,7 +482,7 @@ export class PurchaseGrnsController {
 
   @Post()
   @HttpCode(201)
-  @Roles({ module: 'PUR', action: 'CREATE' })
+  @RequirePermission('purchase.grn', 'CREATE')
   async create_(@Body() body: CreateGrnDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     const res = await this.create.execute(body, actor);
     return { id: res.id };
@@ -490,7 +490,7 @@ export class PurchaseGrnsController {
 
   @Post(':id/post')
   @HttpCode(200)
-  @Roles({ module: 'PUR', action: 'POST' })
+  @RequirePermission('purchase.grn', 'POST')
   async post(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() _body: VersionDto,
@@ -511,7 +511,7 @@ export class PurchaseSuppliersController {
   constructor(private readonly query: PurchaseQueryService) {}
 
   @Get(':supplierId/register')
-  @Roles({ module: 'PUR', action: 'READ' })
+  @RequirePermission('purchase.bills', 'READ')
   register(
     @Param('supplierId', ParseUUIDPipe) supplierId: string,
     @Query() q: RegisterQueryDto,

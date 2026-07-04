@@ -41,6 +41,7 @@ import { CreateMasterDataDimensions1700000500000 } from '../src/database/migrati
 import { CreateMasterDataAccountsPartiesItems1700000600000 } from '../src/database/migrations/1700000600000-CreateMasterDataAccountsPartiesItems';
 import { CreateUser1700000700000 } from '../src/database/migrations/1700000700000-CreateUser';
 import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700000800000-CreateRbacAndAudit';
+import { RbacV2ResourcePermissions1700002300000 } from '../src/database/migrations/1700002300000-RbacV2ResourcePermissions';
 import { AddExportActionToAuditLog1700000900000 } from '../src/database/migrations/1700000900000-AddExportActionToAuditLog';
 import { CreateStockMovementAndBalance1700001000000 } from '../src/database/migrations/1700001000000-CreateStockMovementAndBalance';
 import { CreateContraJournal1700001100000 } from '../src/database/migrations/1700001100000-CreateContraJournal';
@@ -121,7 +122,7 @@ const ACC = {
 };
 
 const accounts: Actor = {
-  userId: USER, companyId: CO, financialYearId: FY1, role: 'ACCOUNTS_TEAM',
+  userId: USER, companyId: CO, financialYearId: FY1, role: 'ACCOUNTS_MANAGER',
   isUnscoped: true, assignedProjectIds: [], approvalLimit: null,
 };
 const pmP: Actor = {
@@ -202,6 +203,7 @@ describe('DSH dashboard (real Postgres, real LED/SAL/CC/INV/HR + reused RPT read
         InitialBaseline1700000000000, CreateCompanyFinancialYear1700000100000, CreateNumberingSeries1700000200000,
         CreateAccountingPeriod1700000300000, CreateLedger1700000400000, CreateMasterDataDimensions1700000500000,
         CreateMasterDataAccountsPartiesItems1700000600000, CreateUser1700000700000, CreateRbacAndAudit1700000800000,
+        RbacV2ResourcePermissions1700002300000,
         AddExportActionToAuditLog1700000900000, CreateStockMovementAndBalance1700001000000, CreateContraJournal1700001100000,
         CreateSalesInvoice1700001200000, CreateHrEmployeeAttendance1700001300000, CreateRequisition1700001400000,
         CreateStockJournal1700001500000, CreateReceipt1700001600000, CreateRetentionRelease1700001700000,

@@ -40,7 +40,7 @@ import { Actor } from '../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
-import { Roles } from '../../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../../core/auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { CreateReceiptUseCase } from '../application/create-receipt.usecase';
 import { DeleteReceiptUseCase, UpdateReceiptDraftUseCase } from '../application/update-receipt-draft.usecase';
@@ -136,13 +136,13 @@ export class ReceiptController {
   ) {}
 
   @Get()
-  @Roles({ module: 'REC', action: 'READ' })
+  @RequirePermission('receipts', 'READ')
   list(@Query() q: ReceiptQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<ReceiptSummaryDto>> {
     return this.query.list(q, actor);
   }
 
   @Get('ipc/:ipcId')
-  @Roles({ module: 'REC', action: 'READ' })
+  @RequirePermission('receipts', 'READ')
   receiptsAppliedToIpc(
     @Param('ipcId', ParseUUIDPipe) ipcId: string,
     @CurrentActor() actor: Actor,
@@ -151,20 +151,20 @@ export class ReceiptController {
   }
 
   @Get(':id')
-  @Roles({ module: 'REC', action: 'READ' })
+  @RequirePermission('receipts', 'READ')
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<ReceiptDto> {
     return this.require(id, actor);
   }
 
   @Post()
   @HttpCode(201)
-  @Roles({ module: 'REC', action: 'CREATE' })
+  @RequirePermission('receipts', 'CREATE')
   create_(@Body() body: CreateReceiptDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.create.execute(body, actor);
   }
 
   @Patch(':id')
-  @Roles({ module: 'REC', action: 'UPDATE' })
+  @RequirePermission('receipts', 'UPDATE')
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateReceiptDto,
@@ -177,14 +177,14 @@ export class ReceiptController {
 
   @Delete(':id')
   @HttpCode(204)
-  @Roles({ module: 'REC', action: 'DELETE' })
+  @RequirePermission('receipts', 'DELETE')
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<void> {
     return this.del.execute(id, actor);
   }
 
   @Post(':id/post')
   @HttpCode(200)
-  @Roles({ module: 'REC', action: 'POST' })
+  @RequirePermission('receipts', 'POST')
   async post(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() _body: PostReceiptDto,
@@ -197,7 +197,7 @@ export class ReceiptController {
 
   @Post(':id/cancel')
   @HttpCode(200)
-  @Roles({ module: 'REC', action: 'CANCEL' })
+  @RequirePermission('receipts', 'CANCEL')
   async cancel(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: CancelReceiptDto,
@@ -209,7 +209,7 @@ export class ReceiptController {
 
   @Post(':id/repost')
   @HttpCode(200)
-  @Roles({ module: 'REC', action: 'CANCEL' })
+  @RequirePermission('receipts', 'CANCEL')
   async repost(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: RepostReceiptDto,

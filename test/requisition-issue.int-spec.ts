@@ -49,6 +49,7 @@ import { CreateMasterDataDimensions1700000500000 } from '../src/database/migrati
 import { CreateMasterDataAccountsPartiesItems1700000600000 } from '../src/database/migrations/1700000600000-CreateMasterDataAccountsPartiesItems';
 import { CreateUser1700000700000 } from '../src/database/migrations/1700000700000-CreateUser';
 import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700000800000-CreateRbacAndAudit';
+import { RbacV2ResourcePermissions1700002300000 } from '../src/database/migrations/1700002300000-RbacV2ResourcePermissions';
 import { CreateStockMovementAndBalance1700001000000 } from '../src/database/migrations/1700001000000-CreateStockMovementAndBalance';
 import { CreateRequisition1700001400000 } from '../src/database/migrations/1700001400000-CreateRequisition';
 import { CreateStockJournal1700001500000 } from '../src/database/migrations/1700001500000-CreateStockJournal';
@@ -99,7 +100,7 @@ import { TypeOrmRoleRepository } from '../src/core/auth/infrastructure/typeorm-r
 import { TypeOrmPermissionRepository } from '../src/core/auth/infrastructure/typeorm-permission.repository';
 import { RolesGuard } from '../src/core/auth/presentation/roles.guard';
 import { JwtAuthGuard } from '../src/core/auth/presentation/jwt-auth.guard';
-import { PermissionRequirement } from '../src/core/auth/presentation/roles.decorator';
+import { PermissionRequirement } from '../src/core/auth/presentation/require-permission.decorator';
 
 jest.setTimeout(180_000);
 
@@ -196,6 +197,7 @@ describe('REQ requisition ISSUE (real Postgres + real INV InventoryServiceAdapte
         CreateMasterDataAccountsPartiesItems1700000600000,
         CreateUser1700000700000,
         CreateRbacAndAudit1700000800000,
+        RbacV2ResourcePermissions1700002300000,
         CreateStockMovementAndBalance1700001000000,
         CreateRequisition1700001400000,
         CreateStockJournal1700001500000,
@@ -647,7 +649,7 @@ describe('REQ requisition ISSUE (real Postgres + real INV InventoryServiceAdapte
       // STORE_KEEPER: REQ:POST + REQ:CANCEL (this brief's grant) + the pre-existing REQ:READ.
       for (const action of ['READ', 'POST', 'CANCEL']) {
         await ds.query(
-          `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'REQ', $3, 'ASSIGNED', 1)`,
+          `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'requisitions.list', $3, 'ASSIGNED', 1)`,
           [STORE_KEEPER_ROLE, CO, action],
         );
       }
@@ -655,7 +657,7 @@ describe('REQ requisition ISSUE (real Postgres + real INV InventoryServiceAdapte
       // is Store Keeper's job specifically, per SRS §3 Actors).
       for (const action of ['READ', 'CREATE', 'UPDATE', 'DELETE', 'APPROVE', 'REJECT']) {
         await ds.query(
-          `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'REQ', $3, 'ASSIGNED', 1)`,
+          `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'requisitions.list', $3, 'ASSIGNED', 1)`,
           [PM_ROLE, CO, action],
         );
       }
@@ -672,7 +674,7 @@ describe('REQ requisition ISSUE (real Postgres + real INV InventoryServiceAdapte
       ['POST /:id/issues/:issueId/reverse', 'CANCEL'],
       ['GET /:id/issues', 'READ'],
     ] as const)('403: a role with zero REQ grant is FORBIDDEN on %s -> REQ:%s', async (_route, action) => {
-      const ctx = mockContext(noGrantActor, [{ module: 'REQ', action }]);
+      const ctx = mockContext(noGrantActor, [{ resource: 'requisitions.list', action }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
@@ -681,27 +683,27 @@ describe('REQ requisition ISSUE (real Postgres + real INV InventoryServiceAdapte
       ['POST /:id/issues/:issueId/reverse', 'CANCEL'],
       ['GET /:id/issues', 'READ'],
     ] as const)('success: STORE_KEEPER holds REQ:%s -> guard resolves true (%s)', async (_route, action) => {
-      const ctx = mockContext(storeKeeperActor, [{ module: 'REQ', action }]);
+      const ctx = mockContext(storeKeeperActor, [{ resource: 'requisitions.list', action }]);
       await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
     });
 
     it('403: PROJECT_MANAGER lacks REQ:POST (issuing is Store Keeper-specific)', async () => {
-      const ctx = mockContext(pmGuardActor, [{ module: 'REQ', action: 'POST' }]);
+      const ctx = mockContext(pmGuardActor, [{ resource: 'requisitions.list', action: 'POST' }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('403: PROJECT_MANAGER lacks REQ:CANCEL (reversal not granted to PM by this brief)', async () => {
-      const ctx = mockContext(pmGuardActor, [{ module: 'REQ', action: 'CANCEL' }]);
+      const ctx = mockContext(pmGuardActor, [{ resource: 'requisitions.list', action: 'CANCEL' }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('success: PROJECT_MANAGER holds REQ:READ -> guard resolves true (GET /:id/issues)', async () => {
-      const ctx = mockContext(pmGuardActor, [{ module: 'REQ', action: 'READ' }]);
+      const ctx = mockContext(pmGuardActor, [{ resource: 'requisitions.list', action: 'READ' }]);
       await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
     });
 
     it('403: RolesGuard rejects when request.user is absent even if @Roles() is present (defence-in-depth)', async () => {
-      const ctx = mockContext(undefined, [{ module: 'REQ', action: 'POST' }]);
+      const ctx = mockContext(undefined, [{ resource: 'requisitions.list', action: 'POST' }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
   });

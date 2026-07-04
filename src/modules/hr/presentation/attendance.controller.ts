@@ -41,7 +41,7 @@ import { Actor } from '../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
-import { Roles } from '../../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../../core/auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import {
   AttendanceService,
@@ -142,7 +142,7 @@ export class AttendanceController {
   ) {}
 
   @Get()
-  @Roles({ module: 'HR', action: 'READ' })
+  @RequirePermission('hr.attendance', 'READ')
   list(
     @Query() q: AttendanceQueryDto,
     @CurrentActor() actor: Actor,
@@ -152,7 +152,7 @@ export class AttendanceController {
 
   @Post('office')
   @HttpCode(201)
-  @Roles({ module: 'HR', action: 'CREATE' })
+  @RequirePermission('hr.attendance', 'CREATE')
   captureOffice(
     @Body() body: OfficeCaptureDto,
     @CurrentActor() actor: Actor,
@@ -162,7 +162,7 @@ export class AttendanceController {
 
   @Post('office/import')
   @HttpCode(200)
-  @Roles({ module: 'HR', action: 'CREATE' })
+  @RequirePermission('hr.attendance', 'CREATE')
   importBiometric(
     @Body() body: BiometricImportDto,
     @CurrentActor() actor: Actor,
@@ -177,7 +177,7 @@ export class AttendanceController {
 
   @Post('subcontractor')
   @HttpCode(201)
-  @Roles({ module: 'HR', action: 'CREATE' })
+  @RequirePermission('hr.attendance', 'CREATE')
   captureSubcontractor(
     @Body() body: SubcontractorCaptureDto,
     @CurrentActor() actor: Actor,
@@ -187,7 +187,7 @@ export class AttendanceController {
 
   @Post('daily-labour')
   @HttpCode(201)
-  @Roles({ module: 'HR', action: 'CREATE' })
+  @RequirePermission('hr.attendance', 'CREATE')
   captureDailyLabour(
     @Body() body: DailyLabourCaptureDto,
     @CurrentActor() actor: Actor,
@@ -196,7 +196,7 @@ export class AttendanceController {
   }
 
   @Patch('daily-labour/:id')
-  @Roles({ module: 'HR', action: 'UPDATE' })
+  @RequirePermission('hr.attendance', 'UPDATE')
   async editDailyLabour(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: EditDailyLabourDto,
@@ -209,7 +209,7 @@ export class AttendanceController {
 
   @Post('daily-labour/:id/confirm')
   @HttpCode(200)
-  @Roles({ module: 'HR', action: 'POST' })
+  @RequirePermission('hr.attendance', 'POST')
   confirm(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ConfirmDto,
@@ -220,7 +220,7 @@ export class AttendanceController {
 
   @Post('daily-labour/:id/reverse')
   @HttpCode(200)
-  @Roles({ module: 'HR', action: 'CANCEL' })
+  @RequirePermission('hr.attendance', 'CANCEL')
   reverse(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ReverseDto,

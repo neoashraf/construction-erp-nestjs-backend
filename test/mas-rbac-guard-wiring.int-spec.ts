@@ -1,7 +1,7 @@
 /**
  * mas-rbac-guard-wiring (#34) — HTTP-level guard smoke test (skill §13), real Postgres + real
  * RolesGuard. Proves every Master Data controller listed in the brief's §3 route table now actually
- * enforces `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles({module:'MAS', action})`:
+ * enforces `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles({module:'master_data.projects', action})`:
  *
  *   - no/invalid token -> 401 (JwtAuthGuard; proven once here — identical for every controller since
  *     they share the same guard, per `per-fy-lock-error.int-spec.ts`'s precedent of testing the guard
@@ -9,7 +9,7 @@
  *   - a role lacking `MAS` permission -> 403 (RolesGuard.canActivate throws ForbiddenException) for
  *     EVERY route -> action pair in the brief's table, across all 11 controllers.
  *   - a role WITH the seeded MAS permission -> success (guard resolves true), for both ADMIN (full MAS
- *     grant) and ACCOUNTS_TEAM (MAS:READ only, per seed-roles-permissions.ts) — mirrors AC "Seeded roles
+ *     grant) and ACCOUNTS_MANAGER (MAS:READ only, per seed-roles-permissions.ts) — mirrors AC "Seeded roles
  *     still work end-to-end".
  *
  * This mirrors `per-fy-lock-error.int-spec.ts`'s `mockContext()` pattern: RolesGuard is exercised
@@ -33,12 +33,13 @@ import { CreateMasterDataDimensions1700000500000 } from '../src/database/migrati
 import { CreateMasterDataAccountsPartiesItems1700000600000 } from '../src/database/migrations/1700000600000-CreateMasterDataAccountsPartiesItems';
 import { CreateUser1700000700000 } from '../src/database/migrations/1700000700000-CreateUser';
 import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700000800000-CreateRbacAndAudit';
+import { RbacV2ResourcePermissions1700002300000 } from '../src/database/migrations/1700002300000-RbacV2ResourcePermissions';
 import { TypeOrmRoleRepository } from '../src/core/auth/infrastructure/typeorm-role.repository';
 import { TypeOrmPermissionRepository } from '../src/core/auth/infrastructure/typeorm-permission.repository';
 import { RolesGuard } from '../src/core/auth/presentation/roles.guard';
 import { JwtAuthGuard } from '../src/core/auth/presentation/jwt-auth.guard';
 import { Actor } from '../src/core/tenancy/tenant-context';
-import { PermissionRequirement } from '../src/core/auth/presentation/roles.decorator';
+import { PermissionRequirement } from '../src/core/auth/presentation/require-permission.decorator';
 
 jest.setTimeout(180_000);
 
@@ -54,7 +55,7 @@ const adminActor: Actor = {
 };
 const accountsActor: Actor = {
   userId: ACCOUNTS_USER, companyId: CO, financialYearId: '',
-  role: 'ACCOUNTS_TEAM', isUnscoped: true, assignedProjectIds: [], approvalLimit: null,
+  role: 'ACCOUNTS_MANAGER', isUnscoped: true, assignedProjectIds: [], approvalLimit: null,
 };
 const pmActor: Actor = {
   userId: PM_USER, companyId: CO, financialYearId: '',
@@ -173,6 +174,7 @@ describe('mas-rbac-guard-wiring (#34) — real RolesGuard against every MAS cont
         CreateMasterDataAccountsPartiesItems1700000600000,
         CreateUser1700000700000,
         CreateRbacAndAudit1700000800000,
+        RbacV2ResourcePermissions1700002300000,
       ],
     });
     await dataSource.initialize();
@@ -184,7 +186,7 @@ describe('mas-rbac-guard-wiring (#34) — real RolesGuard against every MAS cont
     );
 
     // Seed roles mirroring seed-roles-permissions.ts exactly (ADMIN: every module x action incl. MAS;
-    // ACCOUNTS_TEAM: MAS:READ only; PROJECT_MANAGER: MAS:READ + MAS:UPDATE, ASSIGNED scope;
+    // ACCOUNTS_MANAGER: MAS:READ only; PROJECT_MANAGER: MAS:READ + MAS:UPDATE, ASSIGNED scope;
     // HR_MANAGER: no MAS grant at all).
     const adminRoleId = '00000000-0000-0000-0000-0000000bd0a1';
     const accountsRoleId = '00000000-0000-0000-0000-0000000bd0a2';
@@ -192,31 +194,31 @@ describe('mas-rbac-guard-wiring (#34) — real RolesGuard against every MAS cont
     const hrRoleId = '00000000-0000-0000-0000-0000000bd0a4';
 
     await dataSource.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'ADMIN',true,1)`, [adminRoleId, CO]);
-    await dataSource.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'ACCOUNTS_TEAM',true,1)`, [accountsRoleId, CO]);
+    await dataSource.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'ACCOUNTS_MANAGER',true,1)`, [accountsRoleId, CO]);
     await dataSource.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'PROJECT_MANAGER',false,1)`, [pmRoleId, CO]);
     await dataSource.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'HR_MANAGER',false,1)`, [hrRoleId, CO]);
 
     for (const action of ['CREATE', 'READ', 'UPDATE', 'DELETE', 'POST', 'CANCEL', 'APPROVE', 'REJECT']) {
       await dataSource.query(
-        `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'MAS', $3, 'ALL', 1)`,
+        `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'master_data.projects', $3, 'ALL', 1)`,
         [adminRoleId, CO, action],
       );
     }
     await dataSource.query(
-      `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'MAS', 'READ', 'ALL', 1)`,
+      `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'master_data.projects', 'READ', 'ALL', 1)`,
       [accountsRoleId, CO],
     );
     await dataSource.query(
-      `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'MAS', 'READ', 'ASSIGNED', 1)`,
+      `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'master_data.projects', 'READ', 'ASSIGNED', 1)`,
       [pmRoleId, CO],
     );
     await dataSource.query(
-      `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'MAS', 'UPDATE', 'ASSIGNED', 1)`,
+      `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'master_data.projects', 'UPDATE', 'ASSIGNED', 1)`,
       [pmRoleId, CO],
     );
     // HR_MANAGER gets an unrelated module only — proves the guard checks the SPECIFIC (module, action).
     await dataSource.query(
-      `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'HR', 'READ', 'ASSIGNED', 1)`,
+      `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'hr.employees', 'READ', 'ASSIGNED', 1)`,
       [hrRoleId, CO],
     );
 
@@ -249,53 +251,53 @@ describe('mas-rbac-guard-wiring (#34) — real RolesGuard against every MAS cont
   // ── 403: every route -> action pair, for a role that clearly lacks MAS ──
   describe.each(ROUTE_ACTION_TABLE)('RolesGuard — 403 for a role lacking MAS:$action ($controller $route)', ({ action }) => {
     it(`HR_MANAGER (no MAS grant) is FORBIDDEN for {MAS,${action}}`, async () => {
-      const ctx = mockContext(hrActor, [{ module: 'MAS', action }]);
+      const ctx = mockContext(hrActor, [{ resource: 'master_data.projects', action }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
 
   it('RolesGuard rejects when request.user is absent even if @Roles() is present (defence-in-depth)', async () => {
-    const ctx = mockContext(undefined, [{ module: 'MAS', action: 'READ' }]);
+    const ctx = mockContext(undefined, [{ resource: 'master_data.projects', action: 'READ' }]);
     await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   // ── success: ADMIN (full MAS grant) passes every route -> action pair ──
   describe.each(ROUTE_ACTION_TABLE)('RolesGuard — success for ADMIN ($controller $route -> MAS:$action)', ({ action }) => {
     it(`ADMIN holds {MAS,${action}} -> guard resolves true`, async () => {
-      const ctx = mockContext(adminActor, [{ module: 'MAS', action }]);
+      const ctx = mockContext(adminActor, [{ resource: 'master_data.projects', action }]);
       await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
     });
   });
 
-  // ── success: ACCOUNTS_TEAM (MAS:READ only, per seed) passes every READ route ──
+  // ── success: ACCOUNTS_MANAGER (MAS:READ only, per seed) passes every READ route ──
   describe.each(ROUTE_ACTION_TABLE.filter(r => r.action === 'READ'))(
-    'RolesGuard — success for ACCOUNTS_TEAM ($controller $route, READ-only seed)',
+    'RolesGuard — success for ACCOUNTS_MANAGER ($controller $route, READ-only seed)',
     ({ action }) => {
-      it(`ACCOUNTS_TEAM holds {MAS,READ} -> guard resolves true`, async () => {
-        const ctx = mockContext(accountsActor, [{ module: 'MAS', action }]);
+      it(`ACCOUNTS_MANAGER holds {MAS,READ} -> guard resolves true`, async () => {
+        const ctx = mockContext(accountsActor, [{ resource: 'master_data.projects', action }]);
         await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
       });
     },
   );
 
-  it('ACCOUNTS_TEAM (MAS:READ only) is FORBIDDEN on a MAS:CREATE route (no over-grant)', async () => {
-    const ctx = mockContext(accountsActor, [{ module: 'MAS', action: 'CREATE' }]);
+  it('ACCOUNTS_MANAGER (MAS:READ only) is FORBIDDEN on a MAS:CREATE route (no over-grant)', async () => {
+    const ctx = mockContext(accountsActor, [{ resource: 'master_data.projects', action: 'CREATE' }]);
     await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   // ── success: PROJECT_MANAGER (MAS:READ + MAS:UPDATE, ASSIGNED scope) ──
   it('PROJECT_MANAGER holds {MAS,READ} -> guard resolves true (project.controller.ts GET /)', async () => {
-    const ctx = mockContext(pmActor, [{ module: 'MAS', action: 'READ' }]);
+    const ctx = mockContext(pmActor, [{ resource: 'master_data.projects', action: 'READ' }]);
     await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
   });
 
   it('PROJECT_MANAGER holds {MAS,UPDATE} -> guard resolves true (project.controller.ts PATCH /:id)', async () => {
-    const ctx = mockContext(pmActor, [{ module: 'MAS', action: 'UPDATE' }]);
+    const ctx = mockContext(pmActor, [{ resource: 'master_data.projects', action: 'UPDATE' }]);
     await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
   });
 
   it('PROJECT_MANAGER is FORBIDDEN on a MAS:DELETE route (project-budget delete, item uom-conversion delete)', async () => {
-    const ctx = mockContext(pmActor, [{ module: 'MAS', action: 'DELETE' }]);
+    const ctx = mockContext(pmActor, [{ resource: 'master_data.projects', action: 'DELETE' }]);
     await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

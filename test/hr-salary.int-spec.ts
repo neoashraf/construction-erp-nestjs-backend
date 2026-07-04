@@ -45,6 +45,7 @@ import { CreateMasterDataDimensions1700000500000 } from '../src/database/migrati
 import { CreateMasterDataAccountsPartiesItems1700000600000 } from '../src/database/migrations/1700000600000-CreateMasterDataAccountsPartiesItems';
 import { CreateUser1700000700000 } from '../src/database/migrations/1700000700000-CreateUser';
 import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700000800000-CreateRbacAndAudit';
+import { RbacV2ResourcePermissions1700002300000 } from '../src/database/migrations/1700002300000-RbacV2ResourcePermissions';
 import { CreateHrEmployeeAttendance1700001300000 } from '../src/database/migrations/1700001300000-CreateHrEmployeeAttendance';
 import { CreateHrSalary1700001800000 } from '../src/database/migrations/1700001800000-CreateHrSalary';
 
@@ -82,7 +83,7 @@ import { TypeOrmRoleRepository } from '../src/core/auth/infrastructure/typeorm-r
 import { TypeOrmPermissionRepository } from '../src/core/auth/infrastructure/typeorm-permission.repository';
 import { RolesGuard } from '../src/core/auth/presentation/roles.guard';
 import { JwtAuthGuard } from '../src/core/auth/presentation/jwt-auth.guard';
-import { PermissionRequirement } from '../src/core/auth/presentation/roles.decorator';
+import { PermissionRequirement } from '../src/core/auth/presentation/require-permission.decorator';
 
 jest.setTimeout(180_000);
 
@@ -163,6 +164,7 @@ describe('HR salary sheet & SALARY posting (real Postgres + real PostingService)
         CreateMasterDataAccountsPartiesItems1700000600000,
         CreateUser1700000700000,
         CreateRbacAndAudit1700000800000,
+        RbacV2ResourcePermissions1700002300000,
         CreateHrEmployeeAttendance1700001300000,
         CreateHrSalary1700001800000,
       ],
@@ -589,13 +591,13 @@ describe('HR salary sheet & SALARY posting (real Postgres + real PostingService)
       // for salary-sheet actions since they share the same module code 'HR').
       for (const action of ['CREATE', 'READ', 'UPDATE', 'POST', 'CANCEL']) {
         await ds.query(
-          `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'HR', $3, 'ASSIGNED', 1)`,
+          `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'hr.salary_sheets', $3, 'ASSIGNED', 1)`,
           [HR_MANAGER_ROLE, CO, action],
         );
       }
       // PROJECT_MANAGER: HR:READ only (project-scoped) — read-only visibility, no salary authoring.
       await ds.query(
-        `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'HR', 'READ', 'ASSIGNED', 1)`,
+        `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'hr.salary_sheets', 'READ', 'ASSIGNED', 1)`,
         [PM_ROLE, CO],
       );
       // STORE_KEEPER holds zero HR grant — the "clearly lacks it" role for 403s.
@@ -616,7 +618,7 @@ describe('HR salary sheet & SALARY posting (real Postgres + real PostingService)
       ['POST /:id/reverse', 'CANCEL'],
       ['GET /:id/payslips', 'READ'],
     ] as const)('403: STORE_KEEPER (no HR grant) is FORBIDDEN on %s -> HR:%s', async (_route, action) => {
-      const ctx = mockContext(noGrantActor, [{ module: 'HR', action }]);
+      const ctx = mockContext(noGrantActor, [{ resource: 'hr.salary_sheets', action }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
@@ -630,22 +632,22 @@ describe('HR salary sheet & SALARY posting (real Postgres + real PostingService)
       ['POST /:id/reverse', 'CANCEL'],
       ['GET /:id/payslips', 'READ'],
     ] as const)('success: HR_MANAGER holds HR:%s -> guard resolves true (%s)', async (_route, action) => {
-      const ctx = mockContext(hrManagerActor, [{ module: 'HR', action }]);
+      const ctx = mockContext(hrManagerActor, [{ resource: 'hr.salary_sheets', action }]);
       await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
     });
 
     it('success: PROJECT_MANAGER holds HR:READ -> guard resolves true', async () => {
-      const ctx = mockContext(pmActor, [{ module: 'HR', action: 'READ' }]);
+      const ctx = mockContext(pmActor, [{ resource: 'hr.salary_sheets', action: 'READ' }]);
       await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
     });
 
     it('403: PROJECT_MANAGER lacks HR:CREATE (PM does not generate salary sheets)', async () => {
-      const ctx = mockContext(pmActor, [{ module: 'HR', action: 'CREATE' }]);
+      const ctx = mockContext(pmActor, [{ resource: 'hr.salary_sheets', action: 'CREATE' }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('403: RolesGuard rejects when request.user is absent even if @Roles() is present (defence-in-depth)', async () => {
-      const ctx = mockContext(undefined, [{ module: 'HR', action: 'READ' }]);
+      const ctx = mockContext(undefined, [{ resource: 'hr.salary_sheets', action: 'READ' }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
   });

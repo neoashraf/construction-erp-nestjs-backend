@@ -40,7 +40,7 @@ import { Actor } from '../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
-import { Roles } from '../../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../../core/auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { CreatePaymentUseCase, CreatePaymentResult } from '../application/create-payment.usecase';
 import { DeletePaymentUseCase, UpdatePaymentDraftUseCase } from '../application/update-payment-draft.usecase';
@@ -147,20 +147,20 @@ export class PaymentController {
   ) {}
 
   @Get()
-  @Roles({ module: 'PAY', action: 'READ' })
+  @RequirePermission('payments.list', 'READ')
   list(@Query() q: PaymentQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<PaymentSummaryDto>> {
     return this.query.list(q, actor);
   }
 
   // Declared BEFORE @Get(':id') so these static segments are not swallowed by the :id param route.
   @Get('open-payables')
-  @Roles({ module: 'PAY', action: 'READ' })
+  @RequirePermission('payments.open_payables', 'READ')
   openPayables(@Query() q: OpenPayablesQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<OpenPayableRow>> {
     return this.query.openPayables(q, actor);
   }
 
   @Get('payables/:payableType/:payableId/applied')
-  @Roles({ module: 'PAY', action: 'READ' })
+  @RequirePermission('payments.open_payables', 'READ')
   appliedToPayable(
     @Param('payableType', new ParseEnumPipe(PAYABLE_TYPES)) payableType: PayableType,
     @Param('payableId', ParseUUIDPipe) payableId: string,
@@ -170,20 +170,20 @@ export class PaymentController {
   }
 
   @Get(':id')
-  @Roles({ module: 'PAY', action: 'READ' })
+  @RequirePermission('payments.list', 'READ')
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<PaymentDto> {
     return this.require(id, actor);
   }
 
   @Post()
   @HttpCode(201)
-  @Roles({ module: 'PAY', action: 'CREATE' })
+  @RequirePermission('payments.list', 'CREATE')
   create_(@Body() body: CreatePaymentDto, @CurrentActor() actor: Actor): Promise<CreatePaymentResult> {
     return this.create.execute(body as NewPayment, actor);
   }
 
   @Patch(':id')
-  @Roles({ module: 'PAY', action: 'UPDATE' })
+  @RequirePermission('payments.list', 'UPDATE')
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdatePaymentDto,
@@ -196,14 +196,14 @@ export class PaymentController {
 
   @Delete(':id')
   @HttpCode(204)
-  @Roles({ module: 'PAY', action: 'DELETE' })
+  @RequirePermission('payments.list', 'DELETE')
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<void> {
     return this.del.execute(id, actor);
   }
 
   @Post(':id/post')
   @HttpCode(200)
-  @Roles({ module: 'PAY', action: 'POST' })
+  @RequirePermission('payments.list', 'POST')
   async post(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() _body: PostPaymentDto,
@@ -216,7 +216,7 @@ export class PaymentController {
 
   @Post(':id/cancel')
   @HttpCode(200)
-  @Roles({ module: 'PAY', action: 'CANCEL' })
+  @RequirePermission('payments.list', 'CANCEL')
   async cancel(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: CancelPaymentDto,
@@ -228,7 +228,7 @@ export class PaymentController {
 
   @Post(':id/repost')
   @HttpCode(200)
-  @Roles({ module: 'PAY', action: 'CANCEL' })
+  @RequirePermission('payments.list', 'CANCEL')
   async repost(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: RepostPaymentDto,

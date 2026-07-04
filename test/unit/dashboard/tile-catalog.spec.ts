@@ -65,7 +65,7 @@ describe('TileCatalog integrity', () => {
     expect(rolesOf('attendance-summary')).not.toContain('STORE_KEEPER');
     // Financial tiles → Accounts + Admin.
     for (const key of ['project-cash-flow', 'top-receivables-payables', 'over-budget', 'pending-ipcs']) {
-      expect(rolesOf(key)).toEqual(expect.arrayContaining(['ACCOUNTS_TEAM', 'ADMIN']));
+      expect(rolesOf(key)).toEqual(expect.arrayContaining(['ACCOUNTS_MANAGER', 'ADMIN']));
     }
     // Admin sees every tile.
     for (const tile of TILE_CATALOG) expect(tile.roles).toContain('ADMIN');

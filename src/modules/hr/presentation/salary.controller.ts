@@ -39,7 +39,7 @@ import { Actor } from '../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
-import { Roles } from '../../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../../core/auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { GenerateSalaryInput, PostSalaryResult, ReverseSalaryResult, SalaryService } from '../application/salary.service';
 import { Payslip, PayslipService } from '../application/payslip.service';
@@ -105,13 +105,13 @@ export class SalaryController {
 
   @Post('generate')
   @HttpCode(201)
-  @Roles({ module: 'HR', action: 'CREATE' })
+  @RequirePermission('hr.salary_sheets', 'CREATE')
   generate(@Body() body: GenerateSalaryDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.service.generate(body as unknown as GenerateSalaryInput, actor);
   }
 
   @Get()
-  @Roles({ module: 'HR', action: 'READ' })
+  @RequirePermission('hr.salary_sheets', 'READ')
   list(
     @Query() q: SalarySheetQueryDto,
     @CurrentActor() actor: Actor,
@@ -120,7 +120,7 @@ export class SalaryController {
   }
 
   @Get(':id')
-  @Roles({ module: 'HR', action: 'READ' })
+  @RequirePermission('hr.salary_sheets', 'READ')
   async get(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('includeLines') includeLines: string | undefined,
@@ -130,7 +130,7 @@ export class SalaryController {
   }
 
   @Patch(':id/lines/:lineId')
-  @Roles({ module: 'HR', action: 'UPDATE' })
+  @RequirePermission('hr.salary_sheets', 'UPDATE')
   async editLine(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('lineId', ParseUUIDPipe) lineId: string,
@@ -143,7 +143,7 @@ export class SalaryController {
   }
 
   @Patch(':id/components')
-  @Roles({ module: 'HR', action: 'UPDATE' })
+  @RequirePermission('hr.salary_sheets', 'UPDATE')
   async applyComponents(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: BulkComponentsDto,
@@ -156,7 +156,7 @@ export class SalaryController {
 
   @Post(':id/post')
   @HttpCode(200)
-  @Roles({ module: 'HR', action: 'POST' })
+  @RequirePermission('hr.salary_sheets', 'POST')
   post(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: PostSalaryDto,
@@ -167,7 +167,7 @@ export class SalaryController {
 
   @Post(':id/reverse')
   @HttpCode(200)
-  @Roles({ module: 'HR', action: 'CANCEL' })
+  @RequirePermission('hr.salary_sheets', 'CANCEL')
   reverse(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ReverseSalaryDto,
@@ -177,7 +177,7 @@ export class SalaryController {
   }
 
   @Get(':id/payslips')
-  @Roles({ module: 'HR', action: 'READ' })
+  @RequirePermission('hr.salary_sheets', 'READ')
   payslipsFor(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('employeeId') employeeId: string | undefined,

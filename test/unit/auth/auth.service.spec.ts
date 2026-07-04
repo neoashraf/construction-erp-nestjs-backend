@@ -25,6 +25,7 @@ function makeUser(overrides?: Partial<{
     name: 'Test User',
     role: 'ADMIN',
     isActive: overrides?.isActive ?? true,
+    mustChangePassword: false,
     lastLoginAt: null,
     phone: null,
     failedLoginAttempts: overrides?.failedLoginAttempts ?? 0,

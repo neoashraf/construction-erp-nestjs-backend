@@ -38,7 +38,7 @@ import { Actor } from '../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
-import { Roles } from '../../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../../core/auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { STOCK_JOURNAL_MODES } from '../domain/stock-journal-mode';
 import { CreateStockJournalUseCase } from '../application/create-stock-journal.usecase';
@@ -122,7 +122,7 @@ export class StockJournalController {
   ) {}
 
   @Get()
-  @Roles({ module: 'INV', action: 'READ' })
+  @RequirePermission('inventory.stock_journals', 'READ')
   list(
     @Query() q: StockJournalQueryDto,
     @CurrentActor() actor: Actor,
@@ -131,20 +131,20 @@ export class StockJournalController {
   }
 
   @Get(':id')
-  @Roles({ module: 'INV', action: 'READ' })
+  @RequirePermission('inventory.stock_journals', 'READ')
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<StockJournalDto> {
     return this.require(id, actor);
   }
 
   @Post()
   @HttpCode(201)
-  @Roles({ module: 'INV', action: 'CREATE' })
+  @RequirePermission('inventory.stock_journals', 'CREATE')
   create_(@Body() body: CreateStockJournalDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.create.execute(body as never, actor);
   }
 
   @Patch(':id')
-  @Roles({ module: 'INV', action: 'UPDATE' })
+  @RequirePermission('inventory.stock_journals', 'UPDATE')
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateStockJournalDto,
@@ -156,14 +156,14 @@ export class StockJournalController {
 
   @Delete(':id')
   @HttpCode(204)
-  @Roles({ module: 'INV', action: 'DELETE' })
+  @RequirePermission('inventory.stock_journals', 'DELETE')
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<void> {
     return this.del.execute(id, actor);
   }
 
   @Post(':id/approve')
   @HttpCode(200)
-  @Roles({ module: 'INV', action: 'APPROVE' })
+  @RequirePermission('inventory.stock_journals', 'APPROVE')
   async approve(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() _body: VersionDto,
@@ -176,7 +176,7 @@ export class StockJournalController {
 
   @Post(':id/post')
   @HttpCode(200)
-  @Roles({ module: 'INV', action: 'POST' })
+  @RequirePermission('inventory.stock_journals', 'POST')
   async post_(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: PostStockJournalDto,
@@ -192,7 +192,7 @@ export class StockJournalController {
 
   @Post(':id/reverse')
   @HttpCode(200)
-  @Roles({ module: 'INV', action: 'CANCEL' })
+  @RequirePermission('inventory.stock_journals', 'CANCEL')
   async reverse(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ReasonDto,

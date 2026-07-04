@@ -20,7 +20,7 @@ import { Actor } from '../../tenancy/tenant-context';
 import { CurrentActor } from '../../auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../auth/presentation/roles.guard';
-import { Roles } from '../../auth/presentation/roles.decorator';
+import { RequirePermission } from '../../auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import {
   LedgerEntryDetailDto,
@@ -42,7 +42,7 @@ export class LedgerController {
   constructor(private readonly query: LedgerQueryService) {}
 
   @Get('entries')
-  @Roles({ module: 'LED', action: 'READ' })
+  @RequirePermission('ledger.journal_entries', 'READ')
   entries(
     @Query() q: EntriesQueryDto,
     @CurrentActor() actor: Actor,
@@ -51,7 +51,7 @@ export class LedgerController {
   }
 
   @Get('entries/:id')
-  @Roles({ module: 'LED', action: 'READ' })
+  @RequirePermission('ledger.journal_entries', 'READ')
   async entryById(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
@@ -62,13 +62,13 @@ export class LedgerController {
   }
 
   @Get('lines')
-  @Roles({ module: 'LED', action: 'READ' })
+  @RequirePermission('ledger.journal_entries', 'READ')
   lines(@Query() q: LinesQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<LedgerLineDto>> {
     return this.query.lines(q, actor);
   }
 
   @Get('trial-balance')
-  @Roles({ module: 'LED', action: 'READ' })
+  @RequirePermission('ledger.trial_balance', 'READ')
   trialBalance(
     @Query() q: TrialBalanceQueryDto,
     @CurrentActor() actor: Actor,

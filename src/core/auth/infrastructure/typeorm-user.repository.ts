@@ -6,7 +6,6 @@ import { getManager } from '../../../infrastructure/unit-of-work/transaction-con
 import { User } from '../domain/user';
 import { UserRepository } from '../domain/ports/user.repository.port';
 import { UserOrmEntity } from './user.orm-entity';
-import { assertRoleName } from '../domain/role';
 
 @Injectable()
 export class TypeOrmUserRepository implements UserRepository {
@@ -40,6 +39,7 @@ export class TypeOrmUserRepository implements UserRepository {
         name: p.name,
         role: p.role,
         isActive: p.isActive,
+        mustChangePassword: p.mustChangePassword,
         lastLoginAt: p.lastLoginAt,
         phone: p.phone,
         failedLoginAttempts: p.failedLoginAttempts,
@@ -55,6 +55,7 @@ export class TypeOrmUserRepository implements UserRepository {
         name: p.name,
         role: p.role,
         isActive: p.isActive,
+        mustChangePassword: p.mustChangePassword,
         lastLoginAt: p.lastLoginAt,
         phone: p.phone,
         failedLoginAttempts: p.failedLoginAttempts,
@@ -71,8 +72,9 @@ function toDomain(r: UserOrmEntity): User {
     email: r.email,
     passwordHash: r.passwordHash,
     name: r.name,
-    role: assertRoleName(r.role),
+    role: r.role,
     isActive: r.isActive,
+    mustChangePassword: r.mustChangePassword,
     lastLoginAt: r.lastLoginAt,
     phone: r.phone,
     failedLoginAttempts: r.failedLoginAttempts,
