@@ -29,7 +29,7 @@
  *   - a role lacking the module's permission -> 403 (RolesGuard.canActivate throws ForbiddenException)
  *     for EVERY route -> action pair in the brief's table, across all 8 controllers.
  *   - a role WITH the seeded permission -> success (guard resolves true): ADMIN (every route, all five
- *     modules) + ACCOUNTS_TEAM (GEN full lifecycle + SAL full lifecycle, per the brief's genuine-gap seed
+ *     modules) + ACCOUNTS_MANAGER (GEN full lifecycle + SAL full lifecycle, per the brief's genuine-gap seed
  *     additions) + STORE_KEEPER (INV CREATE/READ/UPDATE/POST/CANCEL) + PROJECT_MANAGER (INV:APPROVE,
  *     REQ full workflow) + HR_MANAGER (HR CREATE/READ/UPDATE/POST/CANCEL).
  *
@@ -49,12 +49,13 @@ import { CreateMasterDataDimensions1700000500000 } from '../src/database/migrati
 import { CreateMasterDataAccountsPartiesItems1700000600000 } from '../src/database/migrations/1700000600000-CreateMasterDataAccountsPartiesItems';
 import { CreateUser1700000700000 } from '../src/database/migrations/1700000700000-CreateUser';
 import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700000800000-CreateRbacAndAudit';
+import { RbacV2ResourcePermissions1700002300000 } from '../src/database/migrations/1700002300000-RbacV2ResourcePermissions';
 import { TypeOrmRoleRepository } from '../src/core/auth/infrastructure/typeorm-role.repository';
 import { TypeOrmPermissionRepository } from '../src/core/auth/infrastructure/typeorm-permission.repository';
 import { RolesGuard } from '../src/core/auth/presentation/roles.guard';
 import { JwtAuthGuard } from '../src/core/auth/presentation/jwt-auth.guard';
 import { Actor } from '../src/core/tenancy/tenant-context';
-import { PermissionRequirement } from '../src/core/auth/presentation/roles.decorator';
+import { PermissionRequirement } from '../src/core/auth/presentation/require-permission.decorator';
 
 jest.setTimeout(180_000);
 
@@ -72,7 +73,7 @@ const adminActor: Actor = {
 };
 const accountsActor: Actor = {
   userId: ACCOUNTS_USER, companyId: CO, financialYearId: '',
-  role: 'ACCOUNTS_TEAM', isUnscoped: true, assignedProjectIds: [], approvalLimit: null,
+  role: 'ACCOUNTS_MANAGER', isUnscoped: true, assignedProjectIds: [], approvalLimit: null,
 };
 const pmActor: Actor = {
   userId: PM_USER, companyId: CO, financialYearId: '',
@@ -99,75 +100,75 @@ const siteEngineerActor: Actor = {
 type Action = 'READ' | 'CREATE' | 'UPDATE' | 'DELETE' | 'POST' | 'CANCEL' | 'APPROVE' | 'REJECT';
 
 /** The exact controller -> route -> action table from the brief's §3, one entry per @Roles() call added. */
-const ROUTE_ACTION_TABLE: { controller: string; module: 'GEN' | 'INV' | 'HR' | 'REQ' | 'SAL'; route: string; action: Action }[] = [
+const ROUTE_ACTION_TABLE: { controller: string; resource: string; route: string; action: Action }[] = [
   // contra.controller.ts
-  { controller: 'ContraController', module: 'GEN', route: 'GET /', action: 'READ' },
-  { controller: 'ContraController', module: 'GEN', route: 'GET /:id', action: 'READ' },
-  { controller: 'ContraController', module: 'GEN', route: 'POST /', action: 'CREATE' },
-  { controller: 'ContraController', module: 'GEN', route: 'PATCH /:id', action: 'UPDATE' },
-  { controller: 'ContraController', module: 'GEN', route: 'DELETE /:id', action: 'DELETE' },
-  { controller: 'ContraController', module: 'GEN', route: 'POST /:id/post', action: 'POST' },
-  { controller: 'ContraController', module: 'GEN', route: 'POST /:id/reverse', action: 'CANCEL' },
+  { controller: 'ContraController', resource: 'contra_journal.vouchers', route: 'GET /', action: 'READ' },
+  { controller: 'ContraController', resource: 'contra_journal.vouchers', route: 'GET /:id', action: 'READ' },
+  { controller: 'ContraController', resource: 'contra_journal.vouchers', route: 'POST /', action: 'CREATE' },
+  { controller: 'ContraController', resource: 'contra_journal.vouchers', route: 'PATCH /:id', action: 'UPDATE' },
+  { controller: 'ContraController', resource: 'contra_journal.vouchers', route: 'DELETE /:id', action: 'DELETE' },
+  { controller: 'ContraController', resource: 'contra_journal.vouchers', route: 'POST /:id/post', action: 'POST' },
+  { controller: 'ContraController', resource: 'contra_journal.vouchers', route: 'POST /:id/reverse', action: 'CANCEL' },
   // journal.controller.ts
-  { controller: 'JournalController', module: 'GEN', route: 'GET /', action: 'READ' },
-  { controller: 'JournalController', module: 'GEN', route: 'GET /:id', action: 'READ' },
-  { controller: 'JournalController', module: 'GEN', route: 'POST /opening', action: 'POST' },
-  { controller: 'JournalController', module: 'GEN', route: 'POST /', action: 'CREATE' },
-  { controller: 'JournalController', module: 'GEN', route: 'PATCH /:id', action: 'UPDATE' },
-  { controller: 'JournalController', module: 'GEN', route: 'DELETE /:id', action: 'DELETE' },
-  { controller: 'JournalController', module: 'GEN', route: 'POST /:id/post', action: 'POST' },
-  { controller: 'JournalController', module: 'GEN', route: 'POST /:id/reverse', action: 'CANCEL' },
+  { controller: 'JournalController', resource: 'contra_journal.vouchers', route: 'GET /', action: 'READ' },
+  { controller: 'JournalController', resource: 'contra_journal.vouchers', route: 'GET /:id', action: 'READ' },
+  { controller: 'JournalController', resource: 'contra_journal.vouchers', route: 'POST /opening', action: 'POST' },
+  { controller: 'JournalController', resource: 'contra_journal.vouchers', route: 'POST /', action: 'CREATE' },
+  { controller: 'JournalController', resource: 'contra_journal.vouchers', route: 'PATCH /:id', action: 'UPDATE' },
+  { controller: 'JournalController', resource: 'contra_journal.vouchers', route: 'DELETE /:id', action: 'DELETE' },
+  { controller: 'JournalController', resource: 'contra_journal.vouchers', route: 'POST /:id/post', action: 'POST' },
+  { controller: 'JournalController', resource: 'contra_journal.vouchers', route: 'POST /:id/reverse', action: 'CANCEL' },
   // stock-journal.controller.ts
-  { controller: 'StockJournalController', module: 'INV', route: 'GET /', action: 'READ' },
-  { controller: 'StockJournalController', module: 'INV', route: 'GET /:id', action: 'READ' },
-  { controller: 'StockJournalController', module: 'INV', route: 'POST /', action: 'CREATE' },
-  { controller: 'StockJournalController', module: 'INV', route: 'PATCH /:id', action: 'UPDATE' },
-  { controller: 'StockJournalController', module: 'INV', route: 'DELETE /:id', action: 'DELETE' },
-  { controller: 'StockJournalController', module: 'INV', route: 'POST /:id/approve', action: 'APPROVE' },
-  { controller: 'StockJournalController', module: 'INV', route: 'POST /:id/post', action: 'POST' },
-  { controller: 'StockJournalController', module: 'INV', route: 'POST /:id/reverse', action: 'CANCEL' },
+  { controller: 'StockJournalController', resource: 'inventory.stock_journals', route: 'GET /', action: 'READ' },
+  { controller: 'StockJournalController', resource: 'inventory.stock_journals', route: 'GET /:id', action: 'READ' },
+  { controller: 'StockJournalController', resource: 'inventory.stock_journals', route: 'POST /', action: 'CREATE' },
+  { controller: 'StockJournalController', resource: 'inventory.stock_journals', route: 'PATCH /:id', action: 'UPDATE' },
+  { controller: 'StockJournalController', resource: 'inventory.stock_journals', route: 'DELETE /:id', action: 'DELETE' },
+  { controller: 'StockJournalController', resource: 'inventory.stock_journals', route: 'POST /:id/approve', action: 'APPROVE' },
+  { controller: 'StockJournalController', resource: 'inventory.stock_journals', route: 'POST /:id/post', action: 'POST' },
+  { controller: 'StockJournalController', resource: 'inventory.stock_journals', route: 'POST /:id/reverse', action: 'CANCEL' },
   // stock-ledger.controller.ts
-  { controller: 'StockLedgerController', module: 'INV', route: 'GET /stock-ledger', action: 'READ' },
-  { controller: 'StockLedgerController', module: 'INV', route: 'GET /stock-ledger/movements', action: 'READ' },
+  { controller: 'StockLedgerController', resource: 'inventory.stock_journals', route: 'GET /stock-ledger', action: 'READ' },
+  { controller: 'StockLedgerController', resource: 'inventory.stock_journals', route: 'GET /stock-ledger/movements', action: 'READ' },
   // attendance.controller.ts
-  { controller: 'AttendanceController', module: 'HR', route: 'GET /', action: 'READ' },
-  { controller: 'AttendanceController', module: 'HR', route: 'POST /office', action: 'CREATE' },
-  { controller: 'AttendanceController', module: 'HR', route: 'POST /office/import', action: 'CREATE' },
-  { controller: 'AttendanceController', module: 'HR', route: 'POST /subcontractor', action: 'CREATE' },
-  { controller: 'AttendanceController', module: 'HR', route: 'POST /daily-labour', action: 'CREATE' },
-  { controller: 'AttendanceController', module: 'HR', route: 'PATCH /daily-labour/:id', action: 'UPDATE' },
-  { controller: 'AttendanceController', module: 'HR', route: 'POST /daily-labour/:id/confirm', action: 'POST' },
-  { controller: 'AttendanceController', module: 'HR', route: 'POST /daily-labour/:id/reverse', action: 'CANCEL' },
+  { controller: 'AttendanceController', resource: 'hr.attendance', route: 'GET /', action: 'READ' },
+  { controller: 'AttendanceController', resource: 'hr.attendance', route: 'POST /office', action: 'CREATE' },
+  { controller: 'AttendanceController', resource: 'hr.attendance', route: 'POST /office/import', action: 'CREATE' },
+  { controller: 'AttendanceController', resource: 'hr.attendance', route: 'POST /subcontractor', action: 'CREATE' },
+  { controller: 'AttendanceController', resource: 'hr.attendance', route: 'POST /daily-labour', action: 'CREATE' },
+  { controller: 'AttendanceController', resource: 'hr.attendance', route: 'PATCH /daily-labour/:id', action: 'UPDATE' },
+  { controller: 'AttendanceController', resource: 'hr.attendance', route: 'POST /daily-labour/:id/confirm', action: 'POST' },
+  { controller: 'AttendanceController', resource: 'hr.attendance', route: 'POST /daily-labour/:id/reverse', action: 'CANCEL' },
   // employee.controller.ts
-  { controller: 'EmployeeController', module: 'HR', route: 'GET /', action: 'READ' },
-  { controller: 'EmployeeController', module: 'HR', route: 'GET /:id', action: 'READ' },
-  { controller: 'EmployeeController', module: 'HR', route: 'GET /:id/assignments', action: 'READ' },
-  { controller: 'EmployeeController', module: 'HR', route: 'POST /', action: 'CREATE' },
-  { controller: 'EmployeeController', module: 'HR', route: 'PATCH /:id', action: 'UPDATE' },
-  { controller: 'EmployeeController', module: 'HR', route: 'POST /:id/reassign', action: 'UPDATE' },
-  { controller: 'EmployeeController', module: 'HR', route: 'POST /:id/deactivate', action: 'UPDATE' },
-  { controller: 'EmployeeController', module: 'HR', route: 'POST /:id/reactivate', action: 'UPDATE' },
+  { controller: 'EmployeeController', resource: 'hr.attendance', route: 'GET /', action: 'READ' },
+  { controller: 'EmployeeController', resource: 'hr.attendance', route: 'GET /:id', action: 'READ' },
+  { controller: 'EmployeeController', resource: 'hr.attendance', route: 'GET /:id/assignments', action: 'READ' },
+  { controller: 'EmployeeController', resource: 'hr.attendance', route: 'POST /', action: 'CREATE' },
+  { controller: 'EmployeeController', resource: 'hr.attendance', route: 'PATCH /:id', action: 'UPDATE' },
+  { controller: 'EmployeeController', resource: 'hr.attendance', route: 'POST /:id/reassign', action: 'UPDATE' },
+  { controller: 'EmployeeController', resource: 'hr.attendance', route: 'POST /:id/deactivate', action: 'UPDATE' },
+  { controller: 'EmployeeController', resource: 'hr.attendance', route: 'POST /:id/reactivate', action: 'UPDATE' },
   // requisition.controller.ts
-  { controller: 'RequisitionController', module: 'REQ', route: 'GET /', action: 'READ' },
-  { controller: 'RequisitionController', module: 'REQ', route: 'GET /:id', action: 'READ' },
-  { controller: 'RequisitionController', module: 'REQ', route: 'GET /:id/approvals', action: 'READ' },
-  { controller: 'RequisitionController', module: 'REQ', route: 'GET /:id/outstanding', action: 'READ' },
-  { controller: 'RequisitionController', module: 'REQ', route: 'POST /', action: 'CREATE' },
-  { controller: 'RequisitionController', module: 'REQ', route: 'PATCH /:id', action: 'UPDATE' },
-  { controller: 'RequisitionController', module: 'REQ', route: 'DELETE /:id', action: 'DELETE' },
-  { controller: 'RequisitionController', module: 'REQ', route: 'POST /:id/submit', action: 'UPDATE' },
-  { controller: 'RequisitionController', module: 'REQ', route: 'POST /:id/close', action: 'UPDATE' },
-  { controller: 'RequisitionController', module: 'REQ', route: 'POST /:id/approve', action: 'APPROVE' },
-  { controller: 'RequisitionController', module: 'REQ', route: 'POST /:id/reject', action: 'REJECT' },
+  { controller: 'RequisitionController', resource: 'requisitions.list', route: 'GET /', action: 'READ' },
+  { controller: 'RequisitionController', resource: 'requisitions.list', route: 'GET /:id', action: 'READ' },
+  { controller: 'RequisitionController', resource: 'requisitions.list', route: 'GET /:id/approvals', action: 'READ' },
+  { controller: 'RequisitionController', resource: 'requisitions.list', route: 'GET /:id/outstanding', action: 'READ' },
+  { controller: 'RequisitionController', resource: 'requisitions.list', route: 'POST /', action: 'CREATE' },
+  { controller: 'RequisitionController', resource: 'requisitions.list', route: 'PATCH /:id', action: 'UPDATE' },
+  { controller: 'RequisitionController', resource: 'requisitions.list', route: 'DELETE /:id', action: 'DELETE' },
+  { controller: 'RequisitionController', resource: 'requisitions.list', route: 'POST /:id/submit', action: 'UPDATE' },
+  { controller: 'RequisitionController', resource: 'requisitions.list', route: 'POST /:id/close', action: 'UPDATE' },
+  { controller: 'RequisitionController', resource: 'requisitions.list', route: 'POST /:id/approve', action: 'APPROVE' },
+  { controller: 'RequisitionController', resource: 'requisitions.list', route: 'POST /:id/reject', action: 'REJECT' },
   // sales.controller.ts
-  { controller: 'SalesController', module: 'SAL', route: 'GET /ipc', action: 'READ' },
-  { controller: 'SalesController', module: 'SAL', route: 'GET /ipc/:id', action: 'READ' },
-  { controller: 'SalesController', module: 'SAL', route: 'POST /ipc', action: 'CREATE' },
-  { controller: 'SalesController', module: 'SAL', route: 'PATCH /ipc/:id', action: 'UPDATE' },
-  { controller: 'SalesController', module: 'SAL', route: 'DELETE /ipc/:id', action: 'DELETE' },
-  { controller: 'SalesController', module: 'SAL', route: 'POST /ipc/:id/post', action: 'POST' },
-  { controller: 'SalesController', module: 'SAL', route: 'POST /ipc/:id/repost', action: 'POST' },
-  { controller: 'SalesController', module: 'SAL', route: 'POST /ipc/:id/cancel', action: 'CANCEL' },
+  { controller: 'SalesController', resource: 'sales.ipcs', route: 'GET /ipc', action: 'READ' },
+  { controller: 'SalesController', resource: 'sales.ipcs', route: 'GET /ipc/:id', action: 'READ' },
+  { controller: 'SalesController', resource: 'sales.ipcs', route: 'POST /ipc', action: 'CREATE' },
+  { controller: 'SalesController', resource: 'sales.ipcs', route: 'PATCH /ipc/:id', action: 'UPDATE' },
+  { controller: 'SalesController', resource: 'sales.ipcs', route: 'DELETE /ipc/:id', action: 'DELETE' },
+  { controller: 'SalesController', resource: 'sales.ipcs', route: 'POST /ipc/:id/post', action: 'POST' },
+  { controller: 'SalesController', resource: 'sales.ipcs', route: 'POST /ipc/:id/repost', action: 'POST' },
+  { controller: 'SalesController', resource: 'sales.ipcs', route: 'POST /ipc/:id/cancel', action: 'CANCEL' },
 ];
 
 describe('tier2-rbac-guard-wiring (#36) — real RolesGuard against every GEN/INV/HR/REQ/SAL controller route (real Postgres)', () => {
@@ -205,6 +206,7 @@ describe('tier2-rbac-guard-wiring (#36) — real RolesGuard against every GEN/IN
         CreateMasterDataAccountsPartiesItems1700000600000,
         CreateUser1700000700000,
         CreateRbacAndAudit1700000800000,
+        RbacV2ResourcePermissions1700002300000,
       ],
     });
     await dataSource.initialize();
@@ -216,7 +218,7 @@ describe('tier2-rbac-guard-wiring (#36) — real RolesGuard against every GEN/IN
     );
 
     // Seed roles mirroring seed-roles-permissions.ts exactly (post tier2-rbac-guard-wiring's additive
-    // grants): ADMIN blanket; ACCOUNTS_TEAM GEN full lifecycle + SAL full lifecycle (the brief's genuine
+    // grants): ADMIN blanket; ACCOUNTS_MANAGER GEN full lifecycle + SAL full lifecycle (the brief's genuine
     // gaps); STORE_KEEPER INV CREATE/READ/UPDATE/POST/CANCEL; PROJECT_MANAGER REQ full workflow +
     // INV:APPROVE; HR_MANAGER HR CREATE/READ/UPDATE/POST/CANCEL; SITE_ENGINEER holds none of GEN/INV/SAL
     // and no APPROVE/POST/CANCEL/REJECT anywhere — the "clearly lacks it" role.
@@ -228,68 +230,67 @@ describe('tier2-rbac-guard-wiring (#36) — real RolesGuard against every GEN/IN
     const siteEngineerRoleId = '00000000-0000-0000-0000-0000000e2b06';
 
     await dataSource.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'ADMIN',true,1)`, [adminRoleId, CO]);
-    await dataSource.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'ACCOUNTS_TEAM',true,1)`, [accountsRoleId, CO]);
+    await dataSource.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'ACCOUNTS_MANAGER',true,1)`, [accountsRoleId, CO]);
     await dataSource.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'PROJECT_MANAGER',false,1)`, [pmRoleId, CO]);
     await dataSource.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'STORE_KEEPER',false,1)`, [storeKeeperRoleId, CO]);
     await dataSource.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'HR_MANAGER',false,1)`, [hrRoleId, CO]);
     await dataSource.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'SITE_ENGINEER',false,1)`, [siteEngineerRoleId, CO]);
 
-    const ALL_MODULES = ['AUD', 'NUM', 'PER', 'LED', 'MAS', 'SAL', 'PUR', 'REQ', 'INV', 'REC', 'HR', 'PAY', 'GEN', 'RPT', 'DSH', 'CC'];
     const ALL_ACTIONS = ['CREATE', 'READ', 'UPDATE', 'DELETE', 'POST', 'CANCEL', 'APPROVE', 'REJECT'];
 
     // ADMIN: blanket grant across every module.
-    for (const module of ALL_MODULES) {
+    for (const resource of ['contra_journal.vouchers', 'inventory.stock_journals', 'hr.attendance', 'requisitions.list', 'sales.ipcs']) {
       for (const action of ALL_ACTIONS) {
         await dataSource.query(
-          `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, $3, $4, 'ALL', 1)`,
-          [adminRoleId, CO, module, action],
+          `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, $3, $4, 'ALL', 1)`,
+          [adminRoleId, CO, resource, action],
         );
       }
     }
-    // ACCOUNTS_TEAM: GEN full lifecycle + SAL full lifecycle — per seed-roles-permissions.ts.
+    // ACCOUNTS_MANAGER: GEN full lifecycle + SAL full lifecycle — per seed-roles-permissions.ts.
     for (const action of ['CREATE', 'READ', 'UPDATE', 'DELETE', 'POST', 'CANCEL']) {
       await dataSource.query(
-        `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'GEN', $3, 'ALL', 1)`,
+        `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'contra_journal.vouchers', $3, 'ALL', 1)`,
         [accountsRoleId, CO, action],
       );
       await dataSource.query(
-        `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'SAL', $3, 'ALL', 1)`,
+        `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'sales.ipcs', $3, 'ALL', 1)`,
         [accountsRoleId, CO, action],
       );
     }
     // STORE_KEEPER: INV CREATE/READ/UPDATE/POST/CANCEL — per seed-roles-permissions.ts.
     for (const action of ['CREATE', 'READ', 'UPDATE', 'POST', 'CANCEL']) {
       await dataSource.query(
-        `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'INV', $3, 'ASSIGNED', 1)`,
+        `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'inventory.stock_journals', $3, 'ASSIGNED', 1)`,
         [storeKeeperRoleId, CO, action],
       );
     }
     // PROJECT_MANAGER: REQ full workflow + INV:APPROVE only — per seed-roles-permissions.ts.
     for (const action of ['CREATE', 'READ', 'UPDATE', 'DELETE', 'APPROVE', 'REJECT']) {
       await dataSource.query(
-        `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'REQ', $3, 'ASSIGNED', 1)`,
+        `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'requisitions.list', $3, 'ASSIGNED', 1)`,
         [pmRoleId, CO, action],
       );
     }
     await dataSource.query(
-      `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'INV', 'APPROVE', 'ASSIGNED', 1)`,
+      `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'inventory.stock_journals', 'APPROVE', 'ASSIGNED', 1)`,
       [pmRoleId, CO],
     );
     // HR_MANAGER: HR CREATE/READ/UPDATE/POST/CANCEL — per seed-roles-permissions.ts.
     for (const action of ['CREATE', 'READ', 'UPDATE', 'POST', 'CANCEL']) {
       await dataSource.query(
-        `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'HR', $3, 'ASSIGNED', 1)`,
+        `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'hr.attendance', $3, 'ASSIGNED', 1)`,
         [hrRoleId, CO, action],
       );
     }
     // SITE_ENGINEER: REQ CREATE/READ + HR CREATE/READ only — no GEN/INV/SAL, no APPROVE/POST/CANCEL/REJECT.
     for (const action of ['CREATE', 'READ']) {
       await dataSource.query(
-        `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'REQ', $3, 'ASSIGNED', 1)`,
+        `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'requisitions.list', $3, 'ASSIGNED', 1)`,
         [siteEngineerRoleId, CO, action],
       );
       await dataSource.query(
-        `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'HR', $3, 'ASSIGNED', 1)`,
+        `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'hr.attendance', $3, 'ASSIGNED', 1)`,
         [siteEngineerRoleId, CO, action],
       );
     }
@@ -325,46 +326,46 @@ describe('tier2-rbac-guard-wiring (#36) — real RolesGuard against every GEN/IN
   // modules. STORE_KEEPER holds zero HR permission in the seed -> the "lacks it" role for HR (HR_MANAGER
   // itself legitimately holds every HR action this brief's table needs, so it can't serve as the "lacks
   // it" subject there).
-  describe.each(ROUTE_ACTION_TABLE)('RolesGuard — 403 for a role lacking $module:$action ($controller $route)', ({ module, action }) => {
-    const lacksItActor = module === 'HR' ? storeKeeperActor : hrActor;
-    const lacksItName = module === 'HR' ? 'STORE_KEEPER' : 'HR_MANAGER';
-    it(`${lacksItName} (no ${module}:${action} grant) is FORBIDDEN`, async () => {
-      const ctx = mockContext(lacksItActor, [{ module, action }]);
+  describe.each(ROUTE_ACTION_TABLE)('RolesGuard — 403 for a role lacking $resource:$action ($controller $route)', ({ resource, action }) => {
+    const lacksItActor = resource === 'hr.attendance' ? storeKeeperActor : hrActor;
+    const lacksItName = resource === 'hr.attendance' ? 'STORE_KEEPER' : 'HR_MANAGER';
+    it(`${lacksItName} (no ${resource}:${action} grant) is FORBIDDEN`, async () => {
+      const ctx = mockContext(lacksItActor, [{ resource, action }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
 
   it('SITE_ENGINEER is FORBIDDEN on HR:POST (daily-labour confirm belongs to HR_MANAGER, not Site Engineer)', async () => {
-    const ctx = mockContext(siteEngineerActor, [{ module: 'HR', action: 'POST' }]);
+    const ctx = mockContext(siteEngineerActor, [{ resource: 'hr.attendance', action: 'POST' }]);
     await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('RolesGuard rejects when request.user is absent even if @Roles() is present (defence-in-depth)', async () => {
-    const ctx = mockContext(undefined, [{ module: 'GEN', action: 'READ' }]);
+    const ctx = mockContext(undefined, [{ resource: 'contra_journal.vouchers', action: 'READ' }]);
     await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   // ── success: ADMIN (full grant across every module) passes every route -> action pair ──
-  describe.each(ROUTE_ACTION_TABLE)('RolesGuard — success for ADMIN ($controller $route -> $module:$action)', ({ module, action }) => {
-    it(`ADMIN holds {${module},${action}} -> guard resolves true`, async () => {
-      const ctx = mockContext(adminActor, [{ module, action }]);
+  describe.each(ROUTE_ACTION_TABLE)('RolesGuard — success for ADMIN ($controller $route -> $resource:$action)', ({ resource, action }) => {
+    it(`ADMIN holds {${resource},${action}} -> guard resolves true`, async () => {
+      const ctx = mockContext(adminActor, [{ resource, action }]);
       await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
     });
   });
 
-  // ── success: ACCOUNTS_TEAM passes the full GEN + SAL lifecycle (per seed) ──
-  describe.each(ROUTE_ACTION_TABLE.filter(r => r.module === 'GEN' || r.module === 'SAL'))(
-    'RolesGuard — success for ACCOUNTS_TEAM ($controller $route, $module:$action seed)',
-    ({ module, action }) => {
-      it(`ACCOUNTS_TEAM holds {${module},${action}} -> guard resolves true`, async () => {
-        const ctx = mockContext(accountsActor, [{ module, action }]);
+  // ── success: ACCOUNTS_MANAGER passes the full GEN + SAL lifecycle (per seed) ──
+  describe.each(ROUTE_ACTION_TABLE.filter(r => r.resource === 'contra_journal.vouchers' || r.resource === 'sales.ipcs'))(
+    'RolesGuard — success for ACCOUNTS_MANAGER ($controller $route, $resource:$action seed)',
+    ({ resource, action }) => {
+      it(`ACCOUNTS_MANAGER holds {${resource},${action}} -> guard resolves true`, async () => {
+        const ctx = mockContext(accountsActor, [{ resource, action }]);
         await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
       });
     },
   );
 
-  it('ACCOUNTS_TEAM (no INV grant) is FORBIDDEN on an INV:READ route (no over-grant)', async () => {
-    const ctx = mockContext(accountsActor, [{ module: 'INV', action: 'READ' }]);
+  it('ACCOUNTS_MANAGER (no INV grant) is FORBIDDEN on an INV:READ route (no over-grant)', async () => {
+    const ctx = mockContext(accountsActor, [{ resource: 'inventory.stock_journals', action: 'READ' }]);
     await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
@@ -373,40 +374,40 @@ describe('tier2-rbac-guard-wiring (#36) — real RolesGuard against every GEN/IN
     'RolesGuard — success for STORE_KEEPER (INV:%s seed)',
     (action) => {
       it(`STORE_KEEPER holds {INV,${action}} -> guard resolves true`, async () => {
-        const ctx = mockContext(storeKeeperActor, [{ module: 'INV', action }]);
+        const ctx = mockContext(storeKeeperActor, [{ resource: 'inventory.stock_journals', action }]);
         await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
       });
     },
   );
 
   it('STORE_KEEPER is FORBIDDEN on INV:APPROVE (that grant belongs to PROJECT_MANAGER, not Store Keeper)', async () => {
-    const ctx = mockContext(storeKeeperActor, [{ module: 'INV', action: 'APPROVE' }]);
+    const ctx = mockContext(storeKeeperActor, [{ resource: 'inventory.stock_journals', action: 'APPROVE' }]);
     await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   // ── success: PROJECT_MANAGER passes REQ full workflow + INV:APPROVE (per seed) ──
-  describe.each(ROUTE_ACTION_TABLE.filter(r => r.module === 'REQ'))(
-    'RolesGuard — success for PROJECT_MANAGER ($controller $route, $module:$action seed)',
-    ({ module, action }) => {
-      it(`PROJECT_MANAGER holds {${module},${action}} -> guard resolves true`, async () => {
-        const ctx = mockContext(pmActor, [{ module, action }]);
+  describe.each(ROUTE_ACTION_TABLE.filter(r => r.resource === 'requisitions.list'))(
+    'RolesGuard — success for PROJECT_MANAGER ($controller $route, $resource:$action seed)',
+    ({ resource, action }) => {
+      it(`PROJECT_MANAGER holds {${resource},${action}} -> guard resolves true`, async () => {
+        const ctx = mockContext(pmActor, [{ resource, action }]);
         await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
       });
     },
   );
 
   it('PROJECT_MANAGER holds {INV,APPROVE} -> guard resolves true (stock-journal.controller.ts POST /:id/approve)', async () => {
-    const ctx = mockContext(pmActor, [{ module: 'INV', action: 'APPROVE' }]);
+    const ctx = mockContext(pmActor, [{ resource: 'inventory.stock_journals', action: 'APPROVE' }]);
     await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
   });
 
   it('PROJECT_MANAGER is FORBIDDEN on INV:POST (that grant belongs to Store Keeper, not PM)', async () => {
-    const ctx = mockContext(pmActor, [{ module: 'INV', action: 'POST' }]);
+    const ctx = mockContext(pmActor, [{ resource: 'inventory.stock_journals', action: 'POST' }]);
     await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('PROJECT_MANAGER is FORBIDDEN on GEN:CREATE (PM does not raise contra/journal vouchers)', async () => {
-    const ctx = mockContext(pmActor, [{ module: 'GEN', action: 'CREATE' }]);
+    const ctx = mockContext(pmActor, [{ resource: 'contra_journal.vouchers', action: 'CREATE' }]);
     await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
@@ -415,14 +416,14 @@ describe('tier2-rbac-guard-wiring (#36) — real RolesGuard against every GEN/IN
     'RolesGuard — success for HR_MANAGER (HR:%s seed)',
     (action) => {
       it(`HR_MANAGER holds {HR,${action}} -> guard resolves true`, async () => {
-        const ctx = mockContext(hrActor, [{ module: 'HR', action }]);
+        const ctx = mockContext(hrActor, [{ resource: 'hr.attendance', action }]);
         await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
       });
     },
   );
 
   it('HR_MANAGER is FORBIDDEN on a SAL:READ route (no SAL grant seeded for HR_MANAGER)', async () => {
-    const ctx = mockContext(hrActor, [{ module: 'SAL', action: 'READ' }]);
+    const ctx = mockContext(hrActor, [{ resource: 'sales.ipcs', action: 'READ' }]);
     await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

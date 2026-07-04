@@ -44,7 +44,7 @@ import { Actor } from '../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
-import { Roles } from '../../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../../core/auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { PRIORITIES } from '../domain/requisition-status';
 import { CreateRequisitionUseCase } from '../application/create-requisition.usecase';
@@ -155,7 +155,7 @@ export class RequisitionController {
   ) {}
 
   @Get()
-  @Roles({ module: 'REQ', action: 'READ' })
+  @RequirePermission('requisitions.list', 'READ')
   list(
     @Query() q: RequisitionQueryDto,
     @CurrentActor() actor: Actor,
@@ -164,13 +164,13 @@ export class RequisitionController {
   }
 
   @Get(':id')
-  @Roles({ module: 'REQ', action: 'READ' })
+  @RequirePermission('requisitions.list', 'READ')
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<RequisitionDto> {
     return this.require(id, actor);
   }
 
   @Get(':id/approvals')
-  @Roles({ module: 'REQ', action: 'READ' })
+  @RequirePermission('requisitions.approvals', 'READ')
   async approvals(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
@@ -181,7 +181,7 @@ export class RequisitionController {
   }
 
   @Get(':id/outstanding')
-  @Roles({ module: 'REQ', action: 'READ' })
+  @RequirePermission('requisitions.list', 'READ')
   async outstanding(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
@@ -192,7 +192,7 @@ export class RequisitionController {
   }
 
   @Get(':id/issues')
-  @Roles({ module: 'REQ', action: 'READ' })
+  @RequirePermission('requisitions.issues', 'READ')
   async issues(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
@@ -204,7 +204,7 @@ export class RequisitionController {
 
   @Post()
   @HttpCode(201)
-  @Roles({ module: 'REQ', action: 'CREATE' })
+  @RequirePermission('requisitions.list', 'CREATE')
   create_(@Body() body: CreateRequisitionDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.create
       .execute(body as never, actor)
@@ -212,7 +212,7 @@ export class RequisitionController {
   }
 
   @Patch(':id')
-  @Roles({ module: 'REQ', action: 'UPDATE' })
+  @RequirePermission('requisitions.list', 'UPDATE')
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateRequisitionDto,
@@ -226,14 +226,14 @@ export class RequisitionController {
 
   @Delete(':id')
   @HttpCode(204)
-  @Roles({ module: 'REQ', action: 'DELETE' })
+  @RequirePermission('requisitions.list', 'DELETE')
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<void> {
     return this.del.execute(id, actor);
   }
 
   @Post(':id/submit')
   @HttpCode(200)
-  @Roles({ module: 'REQ', action: 'UPDATE' })
+  @RequirePermission('requisitions.list', 'UPDATE')
   async submit(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() _body: VersionDto,
@@ -246,7 +246,7 @@ export class RequisitionController {
 
   @Post(':id/approve')
   @HttpCode(200)
-  @Roles({ module: 'REQ', action: 'APPROVE' })
+  @RequirePermission('requisitions.approvals', 'APPROVE')
   async approve(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ApproveDto,
@@ -258,7 +258,7 @@ export class RequisitionController {
 
   @Post(':id/reject')
   @HttpCode(200)
-  @Roles({ module: 'REQ', action: 'REJECT' })
+  @RequirePermission('requisitions.approvals', 'REJECT')
   async reject(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ReasonDto,
@@ -270,7 +270,7 @@ export class RequisitionController {
 
   @Post(':id/close')
   @HttpCode(200)
-  @Roles({ module: 'REQ', action: 'UPDATE' })
+  @RequirePermission('requisitions.list', 'UPDATE')
   async close(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ReasonDto,
@@ -282,7 +282,7 @@ export class RequisitionController {
 
   @Post(':id/issue')
   @HttpCode(200)
-  @Roles({ module: 'REQ', action: 'POST' })
+  @RequirePermission('requisitions.issues', 'UPDATE')
   issue(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: IssueDto,
@@ -302,7 +302,7 @@ export class RequisitionController {
 
   @Post(':id/issues/:issueId/reverse')
   @HttpCode(200)
-  @Roles({ module: 'REQ', action: 'CANCEL' })
+  @RequirePermission('requisitions.issues', 'UPDATE')
   async reverseIssue(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('issueId', ParseUUIDPipe) issueId: string,

@@ -66,6 +66,11 @@ describe('Auth — JWT login/refresh/logout/change-password (real Postgres)', ()
     await dataSource.initialize();
     await dataSource.runMigrations();
 
+    // RbacV2 adds user.must_change_password on the shipped user table; this minimal-subset test
+    // (no role/permission/project) applies just that column so UserOrmEntity round-trips (mirrors
+    // 1700002300000-RbacV2ResourcePermissions' user change).
+    await dataSource.query(`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "must_change_password" boolean NOT NULL DEFAULT true`);
+
     // Seed a company + financial year (user table requires FK)
     companyId = crypto.randomUUID();
     financialYearId = crypto.randomUUID();

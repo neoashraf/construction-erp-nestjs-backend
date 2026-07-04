@@ -37,6 +37,7 @@ import { CreateMasterDataDimensions1700000500000 } from '../src/database/migrati
 import { CreateMasterDataAccountsPartiesItems1700000600000 } from '../src/database/migrations/1700000600000-CreateMasterDataAccountsPartiesItems';
 import { CreateUser1700000700000 } from '../src/database/migrations/1700000700000-CreateUser';
 import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700000800000-CreateRbacAndAudit';
+import { RbacV2ResourcePermissions1700002300000 } from '../src/database/migrations/1700002300000-RbacV2ResourcePermissions';
 import { AddExportActionToAuditLog1700000900000 } from '../src/database/migrations/1700000900000-AddExportActionToAuditLog';
 import { CreateStockMovementAndBalance1700001000000 } from '../src/database/migrations/1700001000000-CreateStockMovementAndBalance';
 import { CreateContraJournal1700001100000 } from '../src/database/migrations/1700001100000-CreateContraJournal';
@@ -98,7 +99,7 @@ const ACC = {
 };
 
 const admin: Actor = {
-  userId: USER, companyId: CO, financialYearId: FY1, role: 'ACCOUNTS_TEAM',
+  userId: USER, companyId: CO, financialYearId: FY1, role: 'ACCOUNTS_MANAGER',
   isUnscoped: true, assignedProjectIds: [], approvalLimit: null,
 };
 const pmP: Actor = {
@@ -198,6 +199,7 @@ describe('RPT project reports (real Postgres, real LED/SAL/CC/REC)', () => {
         CreateMasterDataAccountsPartiesItems1700000600000,
         CreateUser1700000700000,
         CreateRbacAndAudit1700000800000,
+        RbacV2ResourcePermissions1700002300000,
         AddExportActionToAuditLog1700000900000,
         CreateStockMovementAndBalance1700001000000,
         CreateContraJournal1700001100000,

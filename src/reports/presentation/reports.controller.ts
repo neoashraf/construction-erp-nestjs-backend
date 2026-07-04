@@ -4,7 +4,7 @@
  * canonical query over LED and returns the rows. Company is implicit from the JWT; a project-scoped user
  * (PM) is filtered server-side to assigned projects (F4) and `403`'d on an explicit unassigned `projectId`
  * (in ReportScopeService). Guards mirror LED/PUR: `@UseGuards(JwtAuthGuard, RolesGuard)` at class level +
- * `@Roles({ module:'RPT', action:'READ' })` on every route (FR-RPT-008; the brief's "reports:financial"
+ * `@RequirePermission('reports', 'READ')` on every route (FR-RPT-008; the brief's "reports:financial"
  * permission maps to RPT:READ). The actor is resolved via `@CurrentActor`.
  *
  * Export is a FORMAT parameter, not an endpoint (FR-RPT-029): `format=json` (default) returns the report
@@ -34,7 +34,7 @@ import { Actor } from '../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../core/auth/presentation/roles.guard';
-import { Roles } from '../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../core/auth/presentation/require-permission.decorator';
 import { Paginated } from '../../infrastructure/http/pagination';
 import { CompanyQueryService } from '../../modules/master-data/company/read/company.query-service';
 import { REPORT_CATALOG } from '../domain/report-catalog';
@@ -100,13 +100,13 @@ export class ReportsController {
 
   /** The report catalog (FR-RPT-001) — the authoritative list of runnable reports. */
   @Get()
-  @Roles({ module: 'RPT', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   catalog(): ReportDescriptor[] {
     return REPORT_CATALOG;
   }
 
   @Get('trial-balance')
-  @Roles({ module: 'RPT', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async trialBalance(
     @Query() q: TrialBalanceReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -118,7 +118,7 @@ export class ReportsController {
   }
 
   @Get('account-ledger')
-  @Roles({ module: 'RPT', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async accountLedger(
     @Query() q: AccountLedgerReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -130,7 +130,7 @@ export class ReportsController {
   }
 
   @Get('daybook')
-  @Roles({ module: 'RPT', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async daybook(
     @Query() q: DaybookReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -142,7 +142,7 @@ export class ReportsController {
   }
 
   @Get('cash-bank-book')
-  @Roles({ module: 'RPT', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async cashBankBook(
     @Query() q: CashBankBookReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -154,7 +154,7 @@ export class ReportsController {
   }
 
   @Get('profit-and-loss')
-  @Roles({ module: 'RPT', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async profitAndLoss(
     @Query() q: ProfitAndLossReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -166,7 +166,7 @@ export class ReportsController {
   }
 
   @Get('balance-sheet')
-  @Roles({ module: 'RPT', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async balanceSheet(
     @Query() q: BalanceSheetReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -180,7 +180,7 @@ export class ReportsController {
   // ── inventory reports (INV:READ) ────────────────────────────────────────────────────────────────
 
   @Get('stock-valuation')
-  @Roles({ module: 'INV', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async stockValuation(
     @Query() q: StockValuationReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -192,7 +192,7 @@ export class ReportsController {
   }
 
   @Get('low-stock')
-  @Roles({ module: 'INV', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async lowStock(
     @Query() q: LowStockReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -204,7 +204,7 @@ export class ReportsController {
   }
 
   @Get('stock-transfer-summary')
-  @Roles({ module: 'INV', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async stockTransferSummary(
     @Query() q: StockTransferReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -218,7 +218,7 @@ export class ReportsController {
   // ── requisition & cost-control reports (REQ:READ) ───────────────────────────────────────────────
 
   @Get('requisition-vs-issue')
-  @Roles({ module: 'REQ', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async requisitionVsIssue(
     @Query() q: RequisitionVsIssueReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -232,7 +232,7 @@ export class ReportsController {
   // ── project reports (RPT:READ — the reports:project family; PM scoped to assigned projects) ──────
 
   @Get('project-pnl')
-  @Roles({ module: 'RPT', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async projectPnl(
     @Query() q: ProjectPnlReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -244,7 +244,7 @@ export class ReportsController {
   }
 
   @Get('ipc-billing')
-  @Roles({ module: 'RPT', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async ipcBilling(
     @Query() q: IpcBillingReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -256,7 +256,7 @@ export class ReportsController {
   }
 
   @Get('outstanding')
-  @Roles({ module: 'RPT', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async outstanding(
     @Query() q: OutstandingReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -268,7 +268,7 @@ export class ReportsController {
   }
 
   @Get('material-consumption-vs-budget')
-  @Roles({ module: 'RPT', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async materialConsumptionVsBudget(
     @Query() q: MaterialConsumptionReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -280,7 +280,7 @@ export class ReportsController {
   }
 
   @Get('labour-cost')
-  @Roles({ module: 'RPT', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async labourCost(
     @Query() q: LabourCostReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -292,7 +292,7 @@ export class ReportsController {
   }
 
   @Get('cost-centre-variance')
-  @Roles({ module: 'RPT', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async costCentreVariance(
     @Query() q: CostCentreVarianceReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -306,7 +306,7 @@ export class ReportsController {
   // ── HR reports (HR:READ — restricted to HR/Admin) ───────────────────────────────────────────────
 
   @Get('attendance-summary')
-  @Roles({ module: 'HR', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async attendanceSummary(
     @Query() q: AttendanceSummaryReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -318,7 +318,7 @@ export class ReportsController {
   }
 
   @Get('salary-register')
-  @Roles({ module: 'HR', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async salaryRegister(
     @Query() q: SalaryRegisterReportQueryDto,
     @CurrentActor() actor: Actor,
@@ -330,7 +330,7 @@ export class ReportsController {
   }
 
   @Get('employee-payment-history')
-  @Roles({ module: 'HR', action: 'READ' })
+  @RequirePermission('reports', 'READ')
   async employeePaymentHistory(
     @Query() q: EmployeePaymentReportQueryDto,
     @CurrentActor() actor: Actor,

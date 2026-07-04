@@ -7,13 +7,13 @@
  *
  * Role visibility (overview §2 / SRS §5): Accounts/Admin → the full financial set; PM/Site Engineer →
  * the project set; Store Keeper → low-stock; HR Manager → attendance-summary. Roles use the platform's
- * canonical role names (see seed-roles-permissions.ts): ADMIN, ACCOUNTS_TEAM, PROJECT_MANAGER,
+ * canonical role names (see seed-roles-permissions.ts): ADMIN, ACCOUNTS_MANAGER, PROJECT_MANAGER,
  * SITE_ENGINEER, STORE_KEEPER, HR_MANAGER.
  */
 import { TileDescriptor } from './tile-descriptor';
 
 const ADMIN = 'ADMIN';
-const ACCOUNTS = 'ACCOUNTS_TEAM';
+const ACCOUNTS = 'ACCOUNTS_MANAGER';
 const PM = 'PROJECT_MANAGER';
 const SITE = 'SITE_ENGINEER';
 const STORE = 'STORE_KEEPER';

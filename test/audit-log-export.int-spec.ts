@@ -24,6 +24,7 @@ import { CreateMasterDataDimensions1700000500000 } from '../src/database/migrati
 import { CreateMasterDataAccountsPartiesItems1700000600000 } from '../src/database/migrations/1700000600000-CreateMasterDataAccountsPartiesItems';
 import { CreateUser1700000700000 } from '../src/database/migrations/1700000700000-CreateUser';
 import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700000800000-CreateRbacAndAudit';
+import { RbacV2ResourcePermissions1700002300000 } from '../src/database/migrations/1700002300000-RbacV2ResourcePermissions';
 import { AddExportActionToAuditLog1700000900000 } from '../src/database/migrations/1700000900000-AddExportActionToAuditLog';
 import { TypeOrmAuditLogRepository } from '../src/core/audit/infrastructure/typeorm-audit-log.repository';
 import { RealAuditService } from '../src/core/audit/application/real-audit.service';
@@ -73,6 +74,7 @@ describe('Audit-log export — Testcontainers integration (FR-AUD-028)', () => {
         CreateMasterDataAccountsPartiesItems1700000600000,
         CreateUser1700000700000,
         CreateRbacAndAudit1700000800000,
+        RbacV2ResourcePermissions1700002300000,
         AddExportActionToAuditLog1700000900000,
       ],
       migrationsRun: false,

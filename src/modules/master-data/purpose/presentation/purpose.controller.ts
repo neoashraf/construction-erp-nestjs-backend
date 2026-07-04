@@ -11,7 +11,7 @@ import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../../core/auth/presentation/roles.guard';
-import { Roles } from '../../../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../../../core/auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../../infrastructure/http/pagination';
 import { MasterListQueryDto, VersionBodyDto, parseActive } from '../../shared/dto';
 import { InlineCreatePurposeUseCase, RenamePurposeUseCase, SetPurposeActiveUseCase } from '../application/purpose.use-cases';
@@ -36,14 +36,14 @@ export class PurposeController {
   ) {}
 
   @Get()
-  @Roles({ module: 'MAS', action: 'READ' })
+  @RequirePermission('master_data.purposes', 'READ')
   list(@Param('projectId', ParseUUIDPipe) projectId: string, @Query() q: MasterListQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<PurposeDto>> {
     return this.query.listByProject(projectId, { page: q.page, pageSize: q.pageSize, isActive: parseActive(q.isActive), q: q.q }, actor);
   }
 
   // Idempotent inline-create: 201 on insert, 200 when an existing purpose is returned (edge §12.5).
   @Post()
-  @Roles({ module: 'MAS', action: 'CREATE' })
+  @RequirePermission('master_data.purposes', 'CREATE')
   async create(
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Body() body: PurposeNameDto,
@@ -56,7 +56,7 @@ export class PurposeController {
   }
 
   @Patch(':id')
-  @Roles({ module: 'MAS', action: 'UPDATE' })
+  @RequirePermission('master_data.purposes', 'UPDATE')
   async patch(@Param('projectId', ParseUUIDPipe) _p: string, @Param('id', ParseUUIDPipe) id: string, @Body() body: RenamePurposeDto, @CurrentActor() actor: Actor): Promise<PurposeDto> {
     await this.rename.execute(id, body.name, body.version, actor);
     return this.require(id, actor);
@@ -64,7 +64,7 @@ export class PurposeController {
 
   @Post(':id/deactivate')
   @HttpCode(200)
-  @Roles({ module: 'MAS', action: 'UPDATE' })
+  @RequirePermission('master_data.purposes', 'UPDATE')
   async deactivate(@Param('projectId', ParseUUIDPipe) _p: string, @Param('id', ParseUUIDPipe) id: string, @Body() body: VersionBodyDto, @CurrentActor() actor: Actor): Promise<PurposeDto> {
     await this.setActive.execute(id, body.version, false, actor);
     return this.require(id, actor);
@@ -72,7 +72,7 @@ export class PurposeController {
 
   @Post(':id/reactivate')
   @HttpCode(200)
-  @Roles({ module: 'MAS', action: 'UPDATE' })
+  @RequirePermission('master_data.purposes', 'UPDATE')
   async reactivate(@Param('projectId', ParseUUIDPipe) _p: string, @Param('id', ParseUUIDPipe) id: string, @Body() body: VersionBodyDto, @CurrentActor() actor: Actor): Promise<PurposeDto> {
     await this.setActive.execute(id, body.version, true, actor);
     return this.require(id, actor);

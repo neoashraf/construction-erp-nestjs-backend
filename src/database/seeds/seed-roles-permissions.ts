@@ -1,261 +1,137 @@
 /**
- * Idempotent seed — six platform roles + default permission sets + is_unscoped flags.
- * Run after migration 1700000800000. Re-running must not duplicate.
- * FR-AUD-011, design §8 seeds.
+ * Idempotent seed — six BUILT-IN roles (is_system=true) + resource-level default permission sets +
+ * is_unscoped flags (AUD RBAC v2 — FR-AUD-011/034/035). Run after the RbacV2 migration.
  *
- * Usage: import and call seedRolesPermissions(dataSource) from a NestJS lifecycle hook or CLI.
+ * Grants are RESOURCE (screen/feature) level per docs/design/screens/00-app-shell/nav-tree-by-role.md §1.
+ * Seed-if-absent: re-running never duplicates and never clobbers Admin-edited grants on existing roles.
+ *
+ * Usage: import and call seedRolesPermissions(dataSource, companyId).
  */
 import { DataSource } from 'typeorm';
+import { RESOURCE_CATALOG, RESOURCE_DEFS, ResourceDef } from '../../core/auth/domain/resource-catalog';
 
+type Scope = 'ALL' | 'ASSIGNED';
+type Grant = { resource: string; actions: readonly string[] };
 type RoleSeed = {
   name: string;
   isUnscoped: boolean;
   approvalLimit: string | null;
-  permissions: { module: string; action: string; projectScope: string }[];
+  scope: Scope;
+  grants: Grant[];
 };
 
-const ALL_MODULES = ['AUD', 'NUM', 'PER', 'LED', 'MAS', 'SAL', 'PUR', 'REQ', 'INV', 'REC', 'HR', 'PAY', 'GEN', 'RPT', 'DSH', 'CC'];
-const ADMIN_PERMS = ALL_MODULES.flatMap(m =>
-  ['CREATE', 'READ', 'UPDATE', 'DELETE', 'POST', 'CANCEL', 'APPROVE', 'REJECT'].map(a => ({ module: m, action: a, projectScope: 'ALL' })),
-);
+/** All applicable actions of a resource (full control). */
+function all(resource: string): Grant {
+  const def = RESOURCE_DEFS.get(resource) as ResourceDef;
+  return { resource, actions: def.actions };
+}
+/** READ-only grant. */
+function read(resource: string): Grant {
+  return { resource, actions: ['READ'] };
+}
+/** Explicit action subset. */
+function grant(resource: string, ...actions: string[]): Grant {
+  return { resource, actions };
+}
+
+// ADMIN holds every resource with all its actions (superuser).
+const ADMIN_GRANTS: Grant[] = RESOURCE_CATALOG.flatMap(m => m.resources.map(r => all(r.resource)));
 
 const ROLE_SEEDS: RoleSeed[] = [
   {
     name: 'ADMIN',
     isUnscoped: true,
     approvalLimit: null,
-    permissions: ADMIN_PERMS,
+    scope: 'ALL',
+    grants: ADMIN_GRANTS,
   },
   {
-    name: 'ACCOUNTS_TEAM',
+    // Accounts Manager — full financial lifecycle, unscoped (org-wide).
+    name: 'ACCOUNTS_MANAGER',
     isUnscoped: true,
     approvalLimit: null,
-    permissions: [
-      { module: 'LED', action: 'READ', projectScope: 'ALL' },
-      { module: 'LED', action: 'CREATE', projectScope: 'ALL' },
-      { module: 'LED', action: 'POST', projectScope: 'ALL' },
-      // GEN (contra & journal vouchers) — docs/srs/14-contra-journal.md §3 Actors: "Accounts Team |
-      // Creates, posts, and reverses contra and journal vouchers ... the primary user of this module."
-      // (tier2-rbac-guard-wiring #36 — no GEN grant existed for any role before this brief.)
-      { module: 'GEN', action: 'CREATE', projectScope: 'ALL' },
-      { module: 'GEN', action: 'READ', projectScope: 'ALL' },
-      { module: 'GEN', action: 'UPDATE', projectScope: 'ALL' },
-      { module: 'GEN', action: 'DELETE', projectScope: 'ALL' },
-      { module: 'GEN', action: 'POST', projectScope: 'ALL' },
-      { module: 'GEN', action: 'CANCEL', projectScope: 'ALL' },
-      { module: 'SAL', action: 'READ', projectScope: 'ALL' },
-      // SAL write/post/cancel — docs/srs/10-sales-ipc.md §3 Actors: "Accounts Team | Creates, edits,
-      // posts, prints, and (permissioned) cancels/corrects IPCs ..." (tier2-rbac-guard-wiring #36 — the
-      // pre-existing seed only granted SAL:READ, so ACCOUNTS_TEAM could not create/post/cancel an IPC).
-      { module: 'SAL', action: 'CREATE', projectScope: 'ALL' },
-      { module: 'SAL', action: 'UPDATE', projectScope: 'ALL' },
-      { module: 'SAL', action: 'DELETE', projectScope: 'ALL' },
-      { module: 'SAL', action: 'POST', projectScope: 'ALL' },
-      { module: 'SAL', action: 'CANCEL', projectScope: 'ALL' },
-      { module: 'PUR', action: 'READ', projectScope: 'ALL' },
-      // PUR write/post/cancel — docs/srs/08-purchase.md §3 Actors: "Accounts Team | Creates, edits, posts,
-      // and (permissioned) cancels/corrects purchase bills; configures supplier-bill tax; reviews per-bill
-      // outstanding and supplier payables." (purchase-po-bill-posting — the pre-existing seed only granted
-      // PUR:READ, so ACCOUNTS_TEAM could not create/update/delete/post/cancel a purchase bill, despite
-      // being this module's primary named actor for the full bill lifecycle.)
-      { module: 'PUR', action: 'CREATE', projectScope: 'ALL' },
-      { module: 'PUR', action: 'UPDATE', projectScope: 'ALL' },
-      { module: 'PUR', action: 'DELETE', projectScope: 'ALL' },
-      { module: 'PUR', action: 'POST', projectScope: 'ALL' },
-      { module: 'PUR', action: 'CANCEL', projectScope: 'ALL' },
-      { module: 'PAY', action: 'CREATE', projectScope: 'ALL' },
-      { module: 'PAY', action: 'POST', projectScope: 'ALL' },
-      // PAY read/update/delete/cancel — docs/srs/13-payments.md §3 Actors: "Accounts Team | Creates, edits,
-      // posts, and (permissioned) cancels/corrects payment vouchers; settles supplier bills, daily-labour
-      // payables, and salary sheets." (payment-voucher-core #27 — the pre-existing seed only granted
-      // PAY:CREATE/POST, so ACCOUNTS_TEAM could not read/edit/delete a draft payment or cancel/repost a
-      // posted one, despite being this module's primary named actor for the full lifecycle.)
-      { module: 'PAY', action: 'READ', projectScope: 'ALL' },
-      { module: 'PAY', action: 'UPDATE', projectScope: 'ALL' },
-      { module: 'PAY', action: 'DELETE', projectScope: 'ALL' },
-      { module: 'PAY', action: 'CANCEL', projectScope: 'ALL' },
-      { module: 'REC', action: 'CREATE', projectScope: 'ALL' },
-      { module: 'REC', action: 'POST', projectScope: 'ALL' },
-      // REC read/update/delete/cancel — docs/srs/11-receipts.md §3 Actors: "Accounts Team | Creates,
-      // edits, posts, prints, and (permissioned) cancels/corrects receipts; selects the IPC an IPC-linked
-      // receipt settles; records general receipts; reviews per-IPC balance due after a receipt." (receipts-
-      // voucher-core #24 — the pre-existing seed only granted REC:CREATE/POST, so ACCOUNTS_TEAM could not
-      // read/edit/delete a draft receipt or cancel/repost a posted one, despite being this module's
-      // primary named actor for the full lifecycle.)
-      { module: 'REC', action: 'READ', projectScope: 'ALL' },
-      { module: 'REC', action: 'UPDATE', projectScope: 'ALL' },
-      { module: 'REC', action: 'DELETE', projectScope: 'ALL' },
-      { module: 'REC', action: 'CANCEL', projectScope: 'ALL' },
-      { module: 'RPT', action: 'READ', projectScope: 'ALL' },
-      { module: 'MAS', action: 'READ', projectScope: 'ALL' },
-      { module: 'CC', action: 'READ', projectScope: 'ALL' },
-      // DSH read — docs/srs/16-dashboard.md §3 Actors: "Accounts Team | Sees the full financial tile set
-      // across all projects ... Full company scope." The dashboard (DSH #33) gates on DSH:READ (the
-      // controller's @Roles({module:'DSH',action:'READ'})); role→tile filtering is business logic on top.
-      // ACCOUNTS_TEAM is the unscoped full-tile-set role (ADMIN gets DSH via ALL_MODULES).
-      { module: 'DSH', action: 'READ', projectScope: 'ALL' },
-      // INV/REQ read — reporting-inventory-hr-reports #31: the RPT inventory reports (stock valuation,
-      // low-stock, transfer summary) gate on INV:READ and the requisition-vs-issue cost-control report
-      // gates on REQ:READ (sub-report gating maps to the OWNING module's READ permission, FR-RPT-008).
-      // ACCOUNTS_TEAM is the unscoped reporting/cost-control role and reconciles stock value to the '1300'
-      // inventory control account, so it needs INV:READ (for stock valuation tie-out) and REQ:READ (for the
-      // requisition-vs-issue variance report); it held neither before this brief. ADMIN is covered by
-      // ALL_MODULES; STORE_KEEPER already holds INV:READ + REQ:READ; PM already holds REQ:READ.
-      { module: 'INV', action: 'READ', projectScope: 'ALL' },
-      { module: 'REQ', action: 'READ', projectScope: 'ALL' },
+    scope: 'ALL',
+    grants: [
+      read('dashboard'),
+      all('sales.ipcs'), read('sales.ipc_register'),
+      all('receipts'),
+      all('purchase.orders'), all('purchase.bills'), read('purchase.grn'),
+      all('payments.list'), read('payments.open_payables'),
+      all('contra_journal.vouchers'), all('contra_journal.opening'),
+      read('inventory.stock_journals'), read('inventory.stock_ledger'),
+      read('requisitions.list'), grant('requisitions.approvals', 'READ', 'APPROVE', 'REJECT'),
+      read('ledger.journal_entries'), read('ledger.account_ledger'), read('ledger.trial_balance'),
+      read('cost_control.budget_vs_actual'), read('cost_control.alerts'), read('cost_control.profitability'),
+      read('reports'),
+      read('master_data.chart_of_accounts'), read('master_data.parties'), read('master_data.items'),
+      all('periods'),
     ],
   },
   {
+    // Project Manager — assigned-project scope; deliberately narrow (resource-level exactness).
     name: 'PROJECT_MANAGER',
     isUnscoped: false,
     approvalLimit: null,
-    permissions: [
-      { module: 'MAS', action: 'READ', projectScope: 'ASSIGNED' },
-      { module: 'MAS', action: 'UPDATE', projectScope: 'ASSIGNED' },
-      { module: 'SAL', action: 'CREATE', projectScope: 'ASSIGNED' },
-      { module: 'SAL', action: 'READ', projectScope: 'ASSIGNED' },
-      { module: 'PUR', action: 'CREATE', projectScope: 'ASSIGNED' },
-      { module: 'PUR', action: 'READ', projectScope: 'ASSIGNED' },
-      // PUR approve (PO approval) — docs/srs/08-purchase.md §3 Actors: "Project Manager | Raises /
-      // approves purchase orders for assigned projects; sees the entry-time over-budget warning; reviews
-      // committed-vs-actual procurement spend for a project." (purchase-po-bill-posting — the pre-existing
-      // seed granted PM only PUR:CREATE/READ, so the PO `…/approve` route was unreachable for its own
-      // named actor. Store Keeper's PUR grant (GRN) landed with purchase-grn-matching — see STORE_KEEPER.)
-      { module: 'PUR', action: 'APPROVE', projectScope: 'ASSIGNED' },
-      { module: 'REQ', action: 'CREATE', projectScope: 'ASSIGNED' },
-      { module: 'REQ', action: 'READ', projectScope: 'ASSIGNED' },
-      { module: 'REQ', action: 'APPROVE', projectScope: 'ASSIGNED' },
-      // REQ update/delete (edit/delete own DRAFT + submit/close) — docs/srs/09-requisition.md §7 Flow A
-      // step 1: "A PM / Site Engineer creates a DRAFT requisition..."; FR-REQ-022: "a requisition shall
-      // be editable/deletable only while DRAFT" (the requester — PM per creation — is implied); FR-REQ-006:
-      // "The requester shall submit a DRAFT requisition for review." (tier2-rbac-guard-wiring #36 — PM
-      // held REQ:CREATE/READ/APPROVE only, so PATCH/DELETE/submit/close on PM's own draft requisitions
-      // were unreachable for the module's own named requester.)
-      { module: 'REQ', action: 'UPDATE', projectScope: 'ASSIGNED' },
-      { module: 'REQ', action: 'DELETE', projectScope: 'ASSIGNED' },
-      // REQ reject — docs/srs/09-requisition.md §3 Actors: "Project Manager | ... approves requisitions
-      // within the PM tier threshold ..." and FR-REQ-008 / §7 Flow B: "The authorised approver (PM within
-      // the tier, or Accounts above it) ... approves ... or rejects with a reason." Reject is the same
-      // authorised-approver action as approve, just the other outcome — PM needed both (tier2-rbac-guard-
-      // wiring #36 — PM held REQ:APPROVE but not REQ:REJECT before this brief).
-      { module: 'REQ', action: 'REJECT', projectScope: 'ASSIGNED' },
-      // INV approve — docs/srs/07-inventory.md §3 Actors: "Project Manager | Approves Stock Journals
-      // for assigned projects; reviews stock balances/valuation per project." (tier2-rbac-guard-wiring
-      // #36 — PM held zero INV grant before this brief, so the stock-journal `:id/approve` route was
-      // unreachable for its own named actor.)
-      { module: 'INV', action: 'APPROVE', projectScope: 'ASSIGNED' },
-      { module: 'HR', action: 'READ', projectScope: 'ASSIGNED' },
-      { module: 'CC', action: 'READ', projectScope: 'ASSIGNED' },
-      // RPT read — docs/srs/15-reporting.md §3 Actors: "Project Manager | Runs project-scoped reports
-      // (project P&L, IPC billed-vs-certified, material consumption vs budget, labour cost, outstanding)
-      // for assigned projects only (AUD F4)." RPT is the read-only reporting layer; the brief's
-      // "reports:financial"/"reports:project" permission maps to RPT:READ, project-scoped to assigned
-      // projects (reporting-financial-statements #29 — PM held zero RPT grant before this brief, so every
-      // /api/reports/* route was unreachable for its own named project-scoped actor; ACCOUNTS_TEAM already
-      // held RPT:READ ALL, and ADMIN gets it via ALL_MODULES).
-      { module: 'RPT', action: 'READ', projectScope: 'ASSIGNED' },
-      // REC read — docs/srs/11-receipts.md §3 Actors: "Project Manager | Reads receipts and the resulting
-      // per-IPC outstanding for assigned projects (collection visibility); does not post receipts."
-      // (receipts-voucher-core #24 — PM held zero REC grant before this brief, so project-scoped receipt
-      // visibility was unreachable for its own named read-only actor.)
-      { module: 'REC', action: 'READ', projectScope: 'ASSIGNED' },
-      // DSH read — docs/srs/16-dashboard.md §3 Actors: "Project Manager | Sees assigned-project tiles only
-      // (AUD F4) ... drills into the project-scoped RPT reports." DSH #33 gates on DSH:READ; the PM's
-      // project tiles are auto-filtered to assigned projects server-side (FR-DSH-008).
-      { module: 'DSH', action: 'READ', projectScope: 'ASSIGNED' },
+    scope: 'ASSIGNED',
+    grants: [
+      read('dashboard'),
+      read('sales.ipcs'), read('sales.ipc_register'),
+      read('inventory.stock_ledger'),
+      grant('requisitions.list', 'READ', 'CREATE', 'UPDATE', 'DELETE'),
+      grant('requisitions.approvals', 'READ', 'APPROVE', 'REJECT'),
+      read('ledger.account_ledger'),
+      read('cost_control.budget_vs_actual'), read('cost_control.alerts'),
+      read('reports'),
+      read('master_data.projects'),
     ],
   },
   {
+    // Site Engineer — captures requisitions + attendance for their site.
     name: 'SITE_ENGINEER',
     isUnscoped: false,
     approvalLimit: null,
-    permissions: [
-      { module: 'MAS', action: 'READ', projectScope: 'ASSIGNED' },
-      { module: 'REQ', action: 'CREATE', projectScope: 'ASSIGNED' },
-      { module: 'REQ', action: 'READ', projectScope: 'ASSIGNED' },
-      { module: 'HR', action: 'CREATE', projectScope: 'ASSIGNED' },
-      { module: 'HR', action: 'READ', projectScope: 'ASSIGNED' },
-      // DSH read — docs/srs/16-dashboard.md §3: "Site Engineer sees the same assigned-project tiles a PM
-      // does but limited to the site they work (project-scoped, AUD F4) — chiefly low-stock and attendance."
-      { module: 'DSH', action: 'READ', projectScope: 'ASSIGNED' },
+    scope: 'ASSIGNED',
+    grants: [
+      read('dashboard'),
+      grant('requisitions.list', 'READ', 'CREATE'),
+      grant('hr.attendance', 'READ', 'CREATE'),
     ],
   },
   {
+    // Store Keeper — GRN, stock journals, requisition issues.
     name: 'STORE_KEEPER',
     isUnscoped: false,
     approvalLimit: null,
-    permissions: [
-      { module: 'MAS', action: 'READ', projectScope: 'ASSIGNED' },
-      { module: 'INV', action: 'CREATE', projectScope: 'ASSIGNED' },
-      { module: 'INV', action: 'READ', projectScope: 'ASSIGNED' },
-      { module: 'INV', action: 'UPDATE', projectScope: 'ASSIGNED' },
-      // INV post/cancel — docs/srs/07-inventory.md §3 Actors: "Store Keeper | Records Stock Journals
-      // (transfers, issues, adjustments) ... the primary day-to-day INV user" and §7 Flow A/B: "Store
-      // Keeper posts ..." / "Store Keeper (or the REQ issue flow)". §7 Flow D names Accounts/PM
-      // (permissioned) for reversal too, but Store Keeper is the day-to-day poster and needed CANCEL to
-      // correct their own draft-stage mistakes without an Accounts/PM escalation for every case — kept
-      // minimal here to what the route table needs (tier2-rbac-guard-wiring #36 — Store Keeper held no
-      // POST/CANCEL grant before this brief, so the stock-journal post/reverse routes were unreachable).
-      { module: 'INV', action: 'POST', projectScope: 'ASSIGNED' },
-      { module: 'INV', action: 'CANCEL', projectScope: 'ASSIGNED' },
-      { module: 'REQ', action: 'READ', projectScope: 'ASSIGNED' },
-      // REQ post/cancel (issue + reverse-an-issue) — docs/srs/09-requisition.md §3 Actors: "Store Keeper |
-      // Issues an approved requisition (full or partial) from the project godown; the issue is what moves
-      // stock and posts consumption." and §7 Flow C step 1: "The Store Keeper opens an APPROVED/
-      // PARTIALLY_ISSUED requisition and enters, per line, an issue_quantity ...". Flow E names
-      // Accounts/PM (permissioned) as the one who *requests* a reversal, but the Store Keeper is this
-      // module's own named issuer and needed CANCEL to correct their own issue mistakes without an
-      // Accounts/PM escalation for every case — kept minimal here to what the route table needs, mirroring
-      // the exact `STORE_KEEPER: INV:POST/CANCEL` precedent above (same actor, same style;
-      // requisition-issue-posting #23 — Store Keeper held REQ:READ only before this brief, so the
-      // `…/issue` and `…/issues/:issueId/reverse` routes were unreachable for its own named actor).
-      { module: 'REQ', action: 'POST', projectScope: 'ASSIGNED' },
-      { module: 'REQ', action: 'CANCEL', projectScope: 'ASSIGNED' },
-      // PUR create/read/post (GRN) — docs/srs/08-purchase.md §3 Actors: "Store Keeper | Records the GRN
-      // (goods physically received) against a PO/Bill, capturing received quantities per item and godown;
-      // raises receipt discrepancies." and §7 Flow C: "Store Keeper opens a GRN against the PO/Bill ...
-      // enters the ACTUAL received quantity ... On post, the GRN ... records the line's billed-vs-received
-      // variance and match status." (purchase-grn-matching — #25 deliberately deferred this grant to this
-      // brief; before it, Store Keeper held ZERO PUR grant and the GRN routes were unreachable for their
-      // own named actor. Kept minimal to what the API contract's GRN routes need: POST /api/purchase/grns
-      // -> CREATE, GET .../grns(+/:id) -> READ, POST .../grns/:id/post -> POST. The contract exposes NO
-      // GRN PATCH/DELETE/cancel routes, so NO PUR:UPDATE/DELETE/CANCEL is granted.)
-      { module: 'PUR', action: 'CREATE', projectScope: 'ASSIGNED' },
-      { module: 'PUR', action: 'READ', projectScope: 'ASSIGNED' },
-      { module: 'PUR', action: 'POST', projectScope: 'ASSIGNED' },
-      // DSH read — docs/srs/16-dashboard.md §3 Actors: "Store Keeper | Sees the inventory tile (low-stock
-      // alerts) for the godowns / projects they serve, drilling into the RPT low-stock report." DSH #33
-      // gates on DSH:READ; role→tile filtering yields only the low-stock tile for STORE_KEEPER.
-      { module: 'DSH', action: 'READ', projectScope: 'ASSIGNED' },
+    scope: 'ASSIGNED',
+    grants: [
+      read('dashboard'),
+      grant('purchase.grn', 'READ', 'CREATE', 'POST'),
+      grant('inventory.stock_journals', 'READ', 'CREATE', 'UPDATE', 'POST', 'CANCEL'),
+      read('inventory.stock_ledger'),
+      read('requisitions.list'),
+      grant('requisitions.issues', 'READ', 'UPDATE'),
     ],
   },
   {
+    // HR Manager — org-wide (unscoped): employee master, attendance, payroll.
     name: 'HR_MANAGER',
-    isUnscoped: false,
+    isUnscoped: true,
     approvalLimit: null,
-    permissions: [
-      { module: 'HR', action: 'CREATE', projectScope: 'ASSIGNED' },
-      { module: 'HR', action: 'READ', projectScope: 'ASSIGNED' },
-      { module: 'HR', action: 'UPDATE', projectScope: 'ASSIGNED' },
-      // HR confirm/reverse (daily-labour accrual) — docs/srs/12-hr-payroll.md §3 Actors: "HR Manager |
-      // Maintains the employee master; reviews and confirms attendance; generates, reviews, and posts
-      // salary sheets ..." and §7.C step 3: "HR Manager/Accounts confirms the entry." (tier2-rbac-guard-
-      // wiring #36 — HR_MANAGER held no POST/CANCEL grant before this brief, so daily-labour confirm/
-      // reverse were unreachable for its own named actor.)
-      { module: 'HR', action: 'POST', projectScope: 'ASSIGNED' },
-      { module: 'HR', action: 'CANCEL', projectScope: 'ASSIGNED' },
-      { module: 'PAY', action: 'READ', projectScope: 'ASSIGNED' },
-      // DSH read — docs/srs/16-dashboard.md §3 Actors: "HR Manager | Sees the attendance summary tile,
-      // drilling into the RPT monthly attendance-summary report." DSH #33 gates on DSH:READ; role→tile
-      // filtering yields only the attendance-summary tile for HR_MANAGER.
-      { module: 'DSH', action: 'READ', projectScope: 'ASSIGNED' },
+    scope: 'ALL',
+    grants: [
+      read('dashboard'),
+      grant('hr.employees', 'READ', 'CREATE', 'UPDATE'),
+      // HR Manager owns daily-labour confirmation (SRS 12 §7.C) — attendance R + confirm(POST)/reverse(CANCEL).
+      grant('hr.attendance', 'READ', 'CREATE', 'UPDATE', 'POST', 'CANCEL'),
+      all('hr.salary_sheets'),
+      read('reports'),
     ],
   },
 ];
 
 export async function seedRolesPermissions(dataSource: DataSource, companyId: string): Promise<void> {
   for (const seed of ROLE_SEEDS) {
-    // Upsert role
+    // Upsert the built-in role (is_system=true).
     const existing = await dataSource.query(
       `SELECT id FROM "role" WHERE company_id = $1 AND name = $2`,
       [companyId, seed.name],
@@ -264,30 +140,32 @@ export async function seedRolesPermissions(dataSource: DataSource, companyId: st
     if (existing.length > 0) {
       roleId = existing[0].id;
       await dataSource.query(
-        `UPDATE "role" SET is_unscoped = $1, approval_limit = $2 WHERE id = $3`,
+        `UPDATE "role" SET is_system = true, is_unscoped = $1, approval_limit = $2 WHERE id = $3`,
         [seed.isUnscoped, seed.approvalLimit, roleId],
       );
     } else {
       roleId = crypto.randomUUID();
       await dataSource.query(
-        `INSERT INTO "role" (id, company_id, name, is_unscoped, approval_limit, version)
-         VALUES ($1, $2, $3, $4, $5, 1)`,
+        `INSERT INTO "role" (id, company_id, name, is_system, is_unscoped, approval_limit, version)
+         VALUES ($1, $2, $3, true, $4, $5, 1)`,
         [roleId, companyId, seed.name, seed.isUnscoped, seed.approvalLimit],
       );
     }
 
-    // Idempotent permissions: insert only if missing
-    for (const perm of seed.permissions) {
-      const existingPerm = await dataSource.query(
-        `SELECT id FROM "permission" WHERE role_id = $1 AND module = $2 AND action = $3`,
-        [roleId, perm.module, perm.action],
-      );
-      if (existingPerm.length === 0) {
-        await dataSource.query(
-          `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version)
-           VALUES ($1, $2, $3, $4, $5, $6, 1)`,
-          [crypto.randomUUID(), roleId, companyId, perm.module, perm.action, perm.projectScope],
+    // Idempotent resource-level permissions: insert only if the (role, resource, action) is missing.
+    for (const g of seed.grants) {
+      for (const action of g.actions) {
+        const existingPerm = await dataSource.query(
+          `SELECT id FROM "permission" WHERE role_id = $1 AND resource = $2 AND action = $3`,
+          [roleId, g.resource, action],
         );
+        if (existingPerm.length === 0) {
+          await dataSource.query(
+            `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version)
+             VALUES ($1, $2, $3, $4, $5, $6, 1)`,
+            [crypto.randomUUID(), roleId, companyId, g.resource, action, seed.scope],
+          );
+        }
       }
     }
   }

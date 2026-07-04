@@ -52,8 +52,8 @@ interface UserSeed {
 }
 
 const USER_SEEDS: UserSeed[] = [
-  { role: 'ADMIN',           name: 'Admin User',           email: 'admin@ze.local' },
-  { role: 'ACCOUNTS_TEAM',   name: 'Accounts Officer',     email: 'accounts@ze.local' },
+  { role: 'ADMIN',            name: 'Admin User',          email: 'admin@ze.local' },
+  { role: 'ACCOUNTS_MANAGER', name: 'Accounts Manager',    email: 'accounts@ze.local' },
   { role: 'PROJECT_MANAGER', name: 'Project Manager',      email: 'pm@ze.local' },
   { role: 'SITE_ENGINEER',   name: 'Site Engineer',        email: 'engineer@ze.local' },
   { role: 'STORE_KEEPER',    name: 'Store Keeper',         email: 'storekeeper@ze.local' },

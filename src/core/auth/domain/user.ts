@@ -16,6 +16,8 @@ export interface UserProps {
   name: string;
   role: RoleName;
   isActive: boolean;
+  /** Forced first-login change gate (FR-AUD-030). Behaviour lands in #38; this brief carries the column. */
+  mustChangePassword: boolean;
   lastLoginAt: Date | null;
   phone: string | null;
   failedLoginAttempts: number;
@@ -60,6 +62,7 @@ export class User {
       name: input.name.trim(),
       role: input.role,
       isActive: input.isActive ?? true,
+      mustChangePassword: true,
       lastLoginAt: null,
       phone: input.phone ?? null,
       failedLoginAttempts: 0,

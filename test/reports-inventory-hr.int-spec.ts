@@ -38,6 +38,7 @@ import { CreateMasterDataDimensions1700000500000 } from '../src/database/migrati
 import { CreateMasterDataAccountsPartiesItems1700000600000 } from '../src/database/migrations/1700000600000-CreateMasterDataAccountsPartiesItems';
 import { CreateUser1700000700000 } from '../src/database/migrations/1700000700000-CreateUser';
 import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700000800000-CreateRbacAndAudit';
+import { RbacV2ResourcePermissions1700002300000 } from '../src/database/migrations/1700002300000-RbacV2ResourcePermissions';
 import { AddExportActionToAuditLog1700000900000 } from '../src/database/migrations/1700000900000-AddExportActionToAuditLog';
 import { CreateStockMovementAndBalance1700001000000 } from '../src/database/migrations/1700001000000-CreateStockMovementAndBalance';
 import { CreateContraJournal1700001100000 } from '../src/database/migrations/1700001100000-CreateContraJournal';
@@ -70,7 +71,7 @@ import { Reflector } from '@nestjs/core';
 import { TypeOrmRoleRepository } from '../src/core/auth/infrastructure/typeorm-role.repository';
 import { TypeOrmPermissionRepository } from '../src/core/auth/infrastructure/typeorm-permission.repository';
 import { RolesGuard } from '../src/core/auth/presentation/roles.guard';
-import { PermissionRequirement } from '../src/core/auth/presentation/roles.decorator';
+import { PermissionRequirement } from '../src/core/auth/presentation/require-permission.decorator';
 
 jest.setTimeout(180_000);
 
@@ -112,7 +113,7 @@ const REQUISITION = '00000000-0000-0000-0000-0000000d4e01';
 const STOCK_JOURNAL = '00000000-0000-0000-0000-0000000d5301';
 
 const admin: Actor = {
-  userId: USER, companyId: CO, financialYearId: FY1, role: 'ACCOUNTS_TEAM',
+  userId: USER, companyId: CO, financialYearId: FY1, role: 'ACCOUNTS_MANAGER',
   isUnscoped: true, assignedProjectIds: [], approvalLimit: null,
 };
 const pmP: Actor = {
@@ -159,6 +160,7 @@ describe('RPT inventory / requisition / HR reports (real Postgres, real projecti
         CreateMasterDataAccountsPartiesItems1700000600000,
         CreateUser1700000700000,
         CreateRbacAndAudit1700000800000,
+        RbacV2ResourcePermissions1700002300000,
         AddExportActionToAuditLog1700000900000,
         CreateStockMovementAndBalance1700001000000,
         CreateContraJournal1700001100000,
@@ -444,7 +446,7 @@ describe('RPT inventory / requisition / HR reports (real Postgres, real projecti
     const ACC_ROLE = '00000000-0000-0000-0000-0000000e4b12';
     const hrActor: Actor = { ...admin, userId: 'hr-user', role: 'HR_MANAGER', isUnscoped: false, assignedProjectIds: [P] };
     const pmActor: Actor = { ...pmP };
-    const accActor: Actor = { ...admin, role: 'ACCOUNTS_TEAM' };
+    const accActor: Actor = { ...admin, role: 'ACCOUNTS_MANAGER' };
 
     function mockContext(user: Actor | undefined, requirements: PermissionRequirement[]): ExecutionContext {
       jest.spyOn(Reflector.prototype, 'getAllAndOverride').mockReturnValue(requirements);
@@ -458,30 +460,30 @@ describe('RPT inventory / requisition / HR reports (real Postgres, real projecti
     beforeAll(async () => {
       await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'HR_MANAGER',false,1) ON CONFLICT DO NOTHING`, [HR_ROLE, CO]);
       await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'PROJECT_MANAGER',false,1) ON CONFLICT DO NOTHING`, [PM_ROLE, CO]);
-      await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'ACCOUNTS_TEAM',true,1) ON CONFLICT DO NOTHING`, [ACC_ROLE, CO]);
-      // HR_MANAGER → HR:READ; ACCOUNTS_TEAM → INV:READ (per this brief's seed change). PM holds NEITHER
+      await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'ACCOUNTS_MANAGER',true,1) ON CONFLICT DO NOTHING`, [ACC_ROLE, CO]);
+      // HR_MANAGER → HR:READ; ACCOUNTS_MANAGER → INV:READ (per this brief's seed change). PM holds NEITHER
       // HR:READ nor INV:READ in this fixture — proving the owning-module gate blocks a role without it.
-      await ds.query(`INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(),$1,$2,'HR','READ','ASSIGNED',1)`, [HR_ROLE, CO]);
-      await ds.query(`INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(),$1,$2,'INV','READ','ALL',1)`, [ACC_ROLE, CO]);
+      await ds.query(`INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(),$1,$2,'hr.salary_sheets','READ','ASSIGNED',1)`, [HR_ROLE, CO]);
+      await ds.query(`INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(),$1,$2,'inventory.stock_ledger','READ','ALL',1)`, [ACC_ROLE, CO]);
     });
 
     it('403: PM (no HR:READ) is FORBIDDEN on salary-register (HR gate — SRS edge 3 / AC role-visibility)', async () => {
-      const ctx = mockContext(pmActor, [{ module: 'HR', action: 'READ' }]);
+      const ctx = mockContext(pmActor, [{ resource: 'hr.salary_sheets', action: 'READ' }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('200: HR_MANAGER (HR:READ) may run salary-register', async () => {
-      const ctx = mockContext(hrActor, [{ module: 'HR', action: 'READ' }]);
+      const ctx = mockContext(hrActor, [{ resource: 'hr.salary_sheets', action: 'READ' }]);
       await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
     });
 
-    it('200: ACCOUNTS_TEAM (INV:READ) may run stock-valuation', async () => {
-      const ctx = mockContext(accActor, [{ module: 'INV', action: 'READ' }]);
+    it('200: ACCOUNTS_MANAGER (INV:READ) may run stock-valuation', async () => {
+      const ctx = mockContext(accActor, [{ resource: 'inventory.stock_ledger', action: 'READ' }]);
       await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
     });
 
     it('403: PM (no INV:READ) is FORBIDDEN on stock-valuation (INV gate)', async () => {
-      const ctx = mockContext(pmActor, [{ module: 'INV', action: 'READ' }]);
+      const ctx = mockContext(pmActor, [{ resource: 'inventory.stock_ledger', action: 'READ' }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
   });

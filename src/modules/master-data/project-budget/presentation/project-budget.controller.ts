@@ -11,7 +11,7 @@ import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../../core/auth/presentation/roles.guard';
-import { Roles } from '../../../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../../../core/auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../../infrastructure/http/pagination';
 import { UpsertProjectBudgetUseCase, DeleteProjectBudgetUseCase } from '../application/project-budget.use-cases';
 import { ProjectBudgetDto, ProjectBudgetQueryService } from '../read/project-budget.query-service';
@@ -37,21 +37,21 @@ export class ProjectBudgetController {
   ) {}
 
   @Get()
-  @Roles({ module: 'MAS', action: 'READ' })
+  @RequirePermission('master_data.projects', 'READ')
   list(@Param('projectId', ParseUUIDPipe) projectId: string, @Query() q: PagingQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<ProjectBudgetDto>> {
     return this.query.listByProject(projectId, q, actor);
   }
 
   @Put()
   @HttpCode(200)
-  @Roles({ module: 'MAS', action: 'UPDATE' })
+  @RequirePermission('master_data.projects', 'UPDATE')
   upsert_(@Param('projectId', ParseUUIDPipe) projectId: string, @Body() body: UpsertBudgetDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.upsert.execute(projectId, body, actor);
   }
 
   @Delete(':id')
   @HttpCode(204)
-  @Roles({ module: 'MAS', action: 'DELETE' })
+  @RequirePermission('master_data.projects', 'DELETE')
   async delete_(@Param('projectId', ParseUUIDPipe) _projectId: string, @Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<void> {
     await this.remove.execute(id, actor);
   }

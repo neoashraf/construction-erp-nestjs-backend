@@ -68,11 +68,12 @@ import { RoleOrmEntity } from '../src/core/auth/infrastructure/role.orm-entity';
 import { PermissionOrmEntity } from '../src/core/auth/infrastructure/permission.orm-entity';
 import { CreateUser1700000700000 } from '../src/database/migrations/1700000700000-CreateUser';
 import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700000800000-CreateRbacAndAudit';
+import { RbacV2ResourcePermissions1700002300000 } from '../src/database/migrations/1700002300000-RbacV2ResourcePermissions';
 import { TypeOrmRoleRepository } from '../src/core/auth/infrastructure/typeorm-role.repository';
 import { TypeOrmPermissionRepository } from '../src/core/auth/infrastructure/typeorm-permission.repository';
 import { RolesGuard } from '../src/core/auth/presentation/roles.guard';
 import { JwtAuthGuard } from '../src/core/auth/presentation/jwt-auth.guard';
-import { PermissionRequirement } from '../src/core/auth/presentation/roles.decorator';
+import { PermissionRequirement } from '../src/core/auth/presentation/require-permission.decorator';
 
 jest.setTimeout(180_000);
 
@@ -156,6 +157,7 @@ describe('Receipts (real Postgres + real PostingService + a real posted SAL IPC)
         CreateMasterDataAccountsPartiesItems1700000600000,
         CreateUser1700000700000,
         CreateRbacAndAudit1700000800000,
+        RbacV2ResourcePermissions1700002300000,
         CreateSalesInvoice1700001200000,
         CreateReceipt1700001600000,
       ],
@@ -594,7 +596,7 @@ describe('Receipts (real Postgres + real PostingService + a real posted SAL IPC)
     const ACCOUNTS_ROLE = '00000000-0000-0000-0000-0000000e2b10';
     const PM_ROLE = '00000000-0000-0000-0000-0000000e2b11';
     const HR_ROLE = '00000000-0000-0000-0000-0000000e2b12';
-    const accountsActor: Actor = { ...actor, userId: 'acc-user', role: 'ACCOUNTS_TEAM' };
+    const accountsActor: Actor = { ...actor, userId: 'acc-user', role: 'ACCOUNTS_MANAGER' };
     const pmActor: Actor = { ...actor, userId: 'pm-user', role: 'PROJECT_MANAGER', isUnscoped: false, assignedProjectIds: [PROJECT] };
     const hrActor: Actor = { ...actor, userId: 'hr-user', role: 'HR_MANAGER', isUnscoped: false };
 
@@ -608,20 +610,20 @@ describe('Receipts (real Postgres + real PostingService + a real posted SAL IPC)
     }
 
     beforeAll(async () => {
-      await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'ACCOUNTS_TEAM',true,1) ON CONFLICT DO NOTHING`, [ACCOUNTS_ROLE, CO]);
+      await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'ACCOUNTS_MANAGER',true,1) ON CONFLICT DO NOTHING`, [ACCOUNTS_ROLE, CO]);
       await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'PROJECT_MANAGER',false,1) ON CONFLICT DO NOTHING`, [PM_ROLE, CO]);
       await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'HR_MANAGER',false,1) ON CONFLICT DO NOTHING`, [HR_ROLE, CO]);
 
-      // ACCOUNTS_TEAM: full REC lifecycle (create/read/update/delete/post/cancel) — per seed-roles-permissions.ts.
+      // ACCOUNTS_MANAGER: full REC lifecycle (create/read/update/delete/post/cancel) — per seed-roles-permissions.ts.
       for (const action of ['CREATE', 'READ', 'UPDATE', 'DELETE', 'POST', 'CANCEL']) {
         await ds.query(
-          `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'REC', $3, 'ALL', 1)`,
+          `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'receipts', $3, 'ALL', 1)`,
           [ACCOUNTS_ROLE, CO, action],
         );
       }
       // PROJECT_MANAGER: REC:READ only (project-scoped) — per seed-roles-permissions.ts.
       await ds.query(
-        `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'REC', 'READ', 'ASSIGNED', 1)`,
+        `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'receipts', 'READ', 'ASSIGNED', 1)`,
         [PM_ROLE, CO],
       );
       // HR_MANAGER holds zero REC grant — the "clearly lacks it" role for 403s.
@@ -643,7 +645,7 @@ describe('Receipts (real Postgres + real PostingService + a real posted SAL IPC)
       ['POST /:id/cancel', 'CANCEL'],
       ['POST /:id/repost', 'CANCEL'],
     ] as const)('403: HR_MANAGER (no REC grant) is FORBIDDEN on %s -> REC:%s', async (_route, action) => {
-      const ctx = mockContext(hrActor, [{ module: 'REC', action }]);
+      const ctx = mockContext(hrActor, [{ resource: 'receipts', action }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
@@ -657,23 +659,23 @@ describe('Receipts (real Postgres + real PostingService + a real posted SAL IPC)
       ['POST /:id/post', 'POST'],
       ['POST /:id/cancel', 'CANCEL'],
       ['POST /:id/repost', 'CANCEL'],
-    ] as const)('success: ACCOUNTS_TEAM holds REC:%s -> guard resolves true (%s)', async (_route, action) => {
-      const ctx = mockContext(accountsActor, [{ module: 'REC', action }]);
+    ] as const)('success: ACCOUNTS_MANAGER holds REC:%s -> guard resolves true (%s)', async (_route, action) => {
+      const ctx = mockContext(accountsActor, [{ resource: 'receipts', action }]);
       await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
     });
 
     it('success: PROJECT_MANAGER holds REC:READ -> guard resolves true', async () => {
-      const ctx = mockContext(pmActor, [{ module: 'REC', action: 'READ' }]);
+      const ctx = mockContext(pmActor, [{ resource: 'receipts', action: 'READ' }]);
       await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
     });
 
     it('403: PROJECT_MANAGER lacks REC:CREATE (PM does not raise receipts)', async () => {
-      const ctx = mockContext(pmActor, [{ module: 'REC', action: 'CREATE' }]);
+      const ctx = mockContext(pmActor, [{ resource: 'receipts', action: 'CREATE' }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('403: RolesGuard rejects when request.user is absent even if @Roles() is present (defence-in-depth)', async () => {
-      const ctx = mockContext(undefined, [{ module: 'REC', action: 'READ' }]);
+      const ctx = mockContext(undefined, [{ resource: 'receipts', action: 'READ' }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
   });

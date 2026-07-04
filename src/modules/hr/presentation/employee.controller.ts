@@ -38,7 +38,7 @@ import { Actor } from '../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
-import { Roles } from '../../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../../core/auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { EmployeeService } from '../application/employee.service';
 import { AssignmentDto, EmployeeDto, HrQueryService } from '../application/hr-query.service';
@@ -111,19 +111,19 @@ export class EmployeeController {
   ) {}
 
   @Get()
-  @Roles({ module: 'HR', action: 'READ' })
+  @RequirePermission('hr.employees', 'READ')
   list(@Query() q: EmployeeQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<EmployeeDto>> {
     return this.query.listEmployees(q, actor);
   }
 
   @Get(':id')
-  @Roles({ module: 'HR', action: 'READ' })
+  @RequirePermission('hr.employees', 'READ')
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<EmployeeDto> {
     return this.require(id, actor);
   }
 
   @Get(':id/assignments')
-  @Roles({ module: 'HR', action: 'READ' })
+  @RequirePermission('hr.employees', 'READ')
   assignments(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
@@ -133,13 +133,13 @@ export class EmployeeController {
 
   @Post()
   @HttpCode(201)
-  @Roles({ module: 'HR', action: 'CREATE' })
+  @RequirePermission('hr.employees', 'CREATE')
   create(@Body() body: CreateEmployeeDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.service.create(body as unknown as NewEmployee, actor);
   }
 
   @Patch(':id')
-  @Roles({ module: 'HR', action: 'UPDATE' })
+  @RequirePermission('hr.employees', 'UPDATE')
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateEmployeeDto,
@@ -152,7 +152,7 @@ export class EmployeeController {
 
   @Post(':id/reassign')
   @HttpCode(200)
-  @Roles({ module: 'HR', action: 'UPDATE' })
+  @RequirePermission('hr.employees', 'UPDATE')
   async reassign(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ReassignDto,
@@ -165,7 +165,7 @@ export class EmployeeController {
 
   @Post(':id/deactivate')
   @HttpCode(200)
-  @Roles({ module: 'HR', action: 'UPDATE' })
+  @RequirePermission('hr.employees', 'UPDATE')
   async deactivate(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: VersionDto,
@@ -177,7 +177,7 @@ export class EmployeeController {
 
   @Post(':id/reactivate')
   @HttpCode(200)
-  @Roles({ module: 'HR', action: 'UPDATE' })
+  @RequirePermission('hr.employees', 'UPDATE')
   async reactivate(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: VersionDto,

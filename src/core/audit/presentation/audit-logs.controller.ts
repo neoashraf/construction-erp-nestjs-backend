@@ -12,7 +12,7 @@ import { ApiTags } from '@nestjs/swagger';
 import * as ExcelJS from 'exceljs';
 import { JwtAuthGuard } from '../../auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../auth/presentation/roles.guard';
-import { Roles } from '../../auth/presentation/roles.decorator';
+import { RequirePermission } from '../../auth/presentation/require-permission.decorator';
 import { CurrentActor } from '../../auth/presentation/current-actor.decorator';
 import { Actor } from '../../tenancy/tenant-context';
 import { AuditLogsQueryService } from '../read/audit-logs.query-service';
@@ -58,7 +58,7 @@ export class AuditLogsController {
    * Response body is the raw file (no {data,meta} envelope — overview §6 binary exception).
    */
   @Get('export')
-  @Roles({ module: 'AUD', action: 'READ' })
+  @RequirePermission('audit.audit_log', 'READ')
   @NoEnvelope()
   async export(
     @CurrentActor() actor: Actor,
@@ -166,7 +166,7 @@ export class AuditLogsController {
   }
 
   @Get()
-  @Roles({ module: 'AUD', action: 'READ' })
+  @RequirePermission('audit.audit_log', 'READ')
   async list(
     @CurrentActor() actor: Actor,
     @Query('entityType') entityType?: string,
@@ -194,7 +194,7 @@ export class AuditLogsController {
   }
 
   @Get(':id')
-  @Roles({ module: 'AUD', action: 'READ' })
+  @RequirePermission('audit.audit_log', 'READ')
   async findById(@Param('id') id: string, @CurrentActor() actor: Actor) {
     const entry = await this.query.findById(id, actor.companyId);
     if (!entry) throw new NotFoundException('Audit log entry not found');

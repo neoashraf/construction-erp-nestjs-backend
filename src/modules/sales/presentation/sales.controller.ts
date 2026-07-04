@@ -42,7 +42,7 @@ import { Actor } from '../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
-import { Roles } from '../../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../../core/auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { CreateIpcUseCase } from '../application/create-ipc.usecase';
 import { DeleteIpcUseCase, UpdateIpcDraftUseCase } from '../application/update-ipc-draft.usecase';
@@ -141,26 +141,26 @@ export class SalesController {
   ) {}
 
   @Get()
-  @Roles({ module: 'SAL', action: 'READ' })
+  @RequirePermission('sales.ipcs', 'READ')
   list(@Query() q: IpcQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<IpcSummaryDto>> {
     return this.query.list(q, actor);
   }
 
   @Get(':id')
-  @Roles({ module: 'SAL', action: 'READ' })
+  @RequirePermission('sales.ipcs', 'READ')
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<IpcDto> {
     return this.require(id, actor);
   }
 
   @Post()
   @HttpCode(201)
-  @Roles({ module: 'SAL', action: 'CREATE' })
+  @RequirePermission('sales.ipcs', 'CREATE')
   create_(@Body() body: CreateIpcDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.create.execute(body, actor);
   }
 
   @Patch(':id')
-  @Roles({ module: 'SAL', action: 'UPDATE' })
+  @RequirePermission('sales.ipcs', 'UPDATE')
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateIpcDto,
@@ -173,14 +173,14 @@ export class SalesController {
 
   @Delete(':id')
   @HttpCode(204)
-  @Roles({ module: 'SAL', action: 'DELETE' })
+  @RequirePermission('sales.ipcs', 'DELETE')
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<void> {
     return this.del.execute(id, actor);
   }
 
   @Post(':id/post')
   @HttpCode(200)
-  @Roles({ module: 'SAL', action: 'POST' })
+  @RequirePermission('sales.ipcs', 'POST')
   async post(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() _body: PostIpcDto,
@@ -193,7 +193,7 @@ export class SalesController {
 
   @Post(':id/cancel')
   @HttpCode(200)
-  @Roles({ module: 'SAL', action: 'CANCEL' })
+  @RequirePermission('sales.ipcs', 'CANCEL')
   async cancel(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: CancelIpcDto,
@@ -205,7 +205,7 @@ export class SalesController {
 
   @Post(':id/repost')
   @HttpCode(200)
-  @Roles({ module: 'SAL', action: 'POST' })
+  @RequirePermission('sales.ipcs', 'POST')
   async repost(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: RepostIpcDto,
@@ -219,7 +219,7 @@ export class SalesController {
 
   @Post(':id/release-retention')
   @HttpCode(201)
-  @Roles({ module: 'SAL', action: 'POST' })
+  @RequirePermission('sales.ipcs', 'POST')
   async releaseRetention(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ReleaseRetentionDto,
@@ -230,7 +230,7 @@ export class SalesController {
   }
 
   @Get(':id/retention-releases')
-  @Roles({ module: 'SAL', action: 'READ' })
+  @RequirePermission('sales.ipcs', 'READ')
   retentionReleases(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
@@ -250,7 +250,7 @@ export class SalesController {
  * IPC register with running cumulative totals (design §5.4). A separate, sibling controller in the same
  * file/module because the API contract's path prefix (`/api/sales/projects`) doesn't fit under
  * `SalesController`'s `/api/sales/ipc` — guarded identically (`@UseGuards(JwtAuthGuard, RolesGuard)` +
- * `@Roles({module:'SAL', action:'READ'})`; PM project-scoping enforced in IpcQueryService.projectRegister).
+ * `@RequirePermission('sales.ipcs', 'READ')`; PM project-scoping enforced in IpcQueryService.projectRegister).
  */
 @ApiTags('Sales / IPC')
 @Controller('api/sales/projects')
@@ -259,7 +259,7 @@ export class SalesProjectsController {
   constructor(private readonly query: IpcQueryService) {}
 
   @Get(':projectId/register')
-  @Roles({ module: 'SAL', action: 'READ' })
+  @RequirePermission('sales.ipc_register', 'READ')
   register(
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Query('financialYearId') financialYearId: string | undefined,

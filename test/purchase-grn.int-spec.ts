@@ -49,6 +49,7 @@ import { CreateMasterDataDimensions1700000500000 } from '../src/database/migrati
 import { CreateMasterDataAccountsPartiesItems1700000600000 } from '../src/database/migrations/1700000600000-CreateMasterDataAccountsPartiesItems';
 import { CreateUser1700000700000 } from '../src/database/migrations/1700000700000-CreateUser';
 import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700000800000-CreateRbacAndAudit';
+import { RbacV2ResourcePermissions1700002300000 } from '../src/database/migrations/1700002300000-RbacV2ResourcePermissions';
 import { CreateStockMovementAndBalance1700001000000 } from '../src/database/migrations/1700001000000-CreateStockMovementAndBalance';
 import { CreateStockJournal1700001500000 } from '../src/database/migrations/1700001500000-CreateStockJournal';
 import { CreatePurchasePoBill1700002000000 } from '../src/database/migrations/1700002000000-CreatePurchasePoBill';
@@ -105,7 +106,7 @@ import { TypeOrmRoleRepository } from '../src/core/auth/infrastructure/typeorm-r
 import { TypeOrmPermissionRepository } from '../src/core/auth/infrastructure/typeorm-permission.repository';
 import { RolesGuard } from '../src/core/auth/presentation/roles.guard';
 import { JwtAuthGuard } from '../src/core/auth/presentation/jwt-auth.guard';
-import { PermissionRequirement } from '../src/core/auth/presentation/roles.decorator';
+import { PermissionRequirement } from '../src/core/auth/presentation/require-permission.decorator';
 
 jest.setTimeout(180_000);
 
@@ -201,6 +202,7 @@ describe('PUR GRN + match + registers (real Postgres; §10 Q4 option (a) — inf
         CreateMasterDataAccountsPartiesItems1700000600000,
         CreateUser1700000700000,
         CreateRbacAndAudit1700000800000,
+        RbacV2ResourcePermissions1700002300000,
         CreateStockMovementAndBalance1700001000000,
         CreateStockJournal1700001500000,
         CreatePurchasePoBill1700002000000,
@@ -640,7 +642,7 @@ describe('PUR GRN + match + registers (real Postgres; §10 Q4 option (a) — inf
     const ACCOUNTS_ROLE = '00000000-0000-0000-0000-0000000e8c10';
     const STORE_KEEPER_ROLE = '00000000-0000-0000-0000-0000000e8c11';
     const NO_GRANT_ROLE = '00000000-0000-0000-0000-0000000e8c12';
-    const accountsActor: Actor = { ...actor, userId: 'accounts-user', role: 'ACCOUNTS_TEAM', isUnscoped: true };
+    const accountsActor: Actor = { ...actor, userId: 'accounts-user', role: 'ACCOUNTS_MANAGER', isUnscoped: true };
     const storeKeeperActor: Actor = {
       ...actor,
       userId: 'store-user',
@@ -660,13 +662,13 @@ describe('PUR GRN + match + registers (real Postgres; §10 Q4 option (a) — inf
     }
 
     beforeAll(async () => {
-      await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'ACCOUNTS_TEAM',true,1) ON CONFLICT DO NOTHING`, [ACCOUNTS_ROLE, CO]);
+      await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'ACCOUNTS_MANAGER',true,1) ON CONFLICT DO NOTHING`, [ACCOUNTS_ROLE, CO]);
       await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'STORE_KEEPER',false,1) ON CONFLICT DO NOTHING`, [STORE_KEEPER_ROLE, CO]);
       await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'HR_MANAGER',false,1) ON CONFLICT DO NOTHING`, [NO_GRANT_ROLE, CO]);
 
       for (const action of ['READ', 'CREATE', 'UPDATE', 'DELETE', 'POST', 'CANCEL']) {
         await ds.query(
-          `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'PUR', $3, 'ALL', 1)`,
+          `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'purchase.grn', $3, 'ALL', 1)`,
           [ACCOUNTS_ROLE, CO, action],
         );
       }
@@ -674,7 +676,7 @@ describe('PUR GRN + match + registers (real Postgres; §10 Q4 option (a) — inf
       // PUR:CREATE/READ/POST, ASSIGNED — nothing more (the GRN contract has no PATCH/DELETE/cancel route).
       for (const action of ['CREATE', 'READ', 'POST']) {
         await ds.query(
-          `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'PUR', $3, 'ASSIGNED', 1)`,
+          `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'purchase.grn', $3, 'ASSIGNED', 1)`,
           [STORE_KEEPER_ROLE, CO, action],
         );
       }
@@ -696,7 +698,7 @@ describe('PUR GRN + match + registers (real Postgres; §10 Q4 option (a) — inf
       ['GET /orders/:id/match', 'READ'],
       ['GET /suppliers/:supplierId/register', 'READ'],
     ] as const)('success: STORE_KEEPER (the new seed grant) may reach %s -> PUR:%s', async (_route, action) => {
-      const ctx = mockContext(storeKeeperActor, [{ module: 'PUR', action }]);
+      const ctx = mockContext(storeKeeperActor, [{ resource: 'purchase.grn', action }]);
       await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
     });
 
@@ -705,7 +707,7 @@ describe('PUR GRN + match + registers (real Postgres; §10 Q4 option (a) — inf
       ['DELETE /bills/:id', 'DELETE'],
       ['POST /bills/:id/cancel', 'CANCEL'],
     ] as const)('403: STORE_KEEPER holds NO PUR:%s (%s) — kept minimal to the GRN routes', async (_route, action) => {
-      const ctx = mockContext(storeKeeperActor, [{ module: 'PUR', action }]);
+      const ctx = mockContext(storeKeeperActor, [{ resource: 'purchase.grn', action }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
@@ -714,19 +716,19 @@ describe('PUR GRN + match + registers (real Postgres; §10 Q4 option (a) — inf
       ['GET /grns', 'READ'],
       ['POST /grns/:id/post', 'POST'],
     ] as const)('403: a role with zero PUR grant is FORBIDDEN on %s -> PUR:%s', async (_route, action) => {
-      const ctx = mockContext(noGrantActor, [{ module: 'PUR', action }]);
+      const ctx = mockContext(noGrantActor, [{ resource: 'purchase.grn', action }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
-    it('success: ACCOUNTS_TEAM may reach every GRN/match/register route', async () => {
+    it('success: ACCOUNTS_MANAGER may reach every GRN/match/register route', async () => {
       for (const action of ['CREATE', 'READ', 'POST'] as const) {
-        const ctx = mockContext(accountsActor, [{ module: 'PUR', action }]);
+        const ctx = mockContext(accountsActor, [{ resource: 'purchase.grn', action }]);
         await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
       }
     });
 
     it('403: RolesGuard rejects when request.user is absent even with @Roles() present (defence-in-depth)', async () => {
-      const ctx = mockContext(undefined, [{ module: 'PUR', action: 'POST' }]);
+      const ctx = mockContext(undefined, [{ resource: 'purchase.grn', action: 'POST' }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
