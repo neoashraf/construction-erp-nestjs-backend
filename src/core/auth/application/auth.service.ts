@@ -28,6 +28,7 @@ export interface LoginResult extends TokenPair {
     financialYearId: string;
     isActive: boolean;
     lastLoginAt: Date | null;
+    mustChangePassword: boolean;
   };
 }
 
@@ -106,6 +107,7 @@ export class AuthService {
         financialYearId: user.props.financialYearId,
         isActive: user.props.isActive,
         lastLoginAt: user.props.lastLoginAt,
+        mustChangePassword: user.props.mustChangePassword,
       },
     };
   }
@@ -164,6 +166,7 @@ export class AuthService {
 
     const newHash = await this.hasher.hash(newPassword);
     user.changePasswordHash(newHash);
+    user.clearMustChangePassword(); // forced-change gate satisfied (FR-AUD-030)
     await this.users.save(user);
     await this.store.revokeAllFor(userId);
   }

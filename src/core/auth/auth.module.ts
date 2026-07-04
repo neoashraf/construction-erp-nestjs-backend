@@ -6,6 +6,7 @@
  * Exports AuthService + JwtAuthGuard + RolesGuard + AccessPolicy + JwtModule for other modules.
  */
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -21,6 +22,7 @@ import { TypeOrmUserProjectRepository } from './infrastructure/typeorm-user-proj
 import { JwtStrategy } from './presentation/jwt.strategy';
 import { JwtAuthGuard } from './presentation/jwt-auth.guard';
 import { RolesGuard } from './presentation/roles.guard';
+import { PasswordChangePolicyGuard } from './presentation/password-change-policy.guard';
 import { AuthController } from './presentation/auth.controller';
 import { RolesController } from './presentation/roles.controller';
 import { PermissionsController } from './presentation/permissions.controller';
@@ -30,6 +32,7 @@ import { AccessPolicy } from './domain/access-policy';
 import { RolesQueryService } from './read/roles.query-service';
 import { PermissionsQueryService } from './read/permissions.query-service';
 import { UsersQueryService } from './read/users.query-service';
+import { SessionQueryService } from './read/session.query-service';
 import { PASSWORD_HASHER } from './domain/ports/password-hasher.port';
 import { TOKEN_SIGNER } from './domain/ports/token-signer.port';
 import { REFRESH_TOKEN_STORE } from './domain/ports/refresh-token-store.port';
@@ -63,6 +66,9 @@ import { USER_PROJECT_ASSIGNMENT_REPOSITORY } from './domain/ports/user-project-
     RolesQueryService,
     PermissionsQueryService,
     UsersQueryService,
+    SessionQueryService,
+    // Global forced first-login change gate (FR-AUD-030) — platform-wide, like the response envelope.
+    { provide: APP_GUARD, useClass: PasswordChangePolicyGuard },
     { provide: USER_REPOSITORY, useClass: TypeOrmUserRepository },
     { provide: PASSWORD_HASHER, useClass: BcryptPasswordHasher },
     { provide: TOKEN_SIGNER, useClass: JwtTokenSigner },

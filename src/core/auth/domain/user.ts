@@ -105,6 +105,16 @@ export class User {
     this._props = { ...this._props, passwordHash: newHash };
   }
 
+  /** Re-arm the forced first-login change gate (Admin create/reset — FR-AUD-030). */
+  markMustChangePassword(): void {
+    this._props = { ...this._props, mustChangePassword: true };
+  }
+
+  /** Clear the forced-change gate on a successful self-service change (FR-AUD-030). */
+  clearMustChangePassword(): void {
+    this._props = { ...this._props, mustChangePassword: false };
+  }
+
   deactivate(): void {
     this._props = { ...this._props, isActive: false };
   }

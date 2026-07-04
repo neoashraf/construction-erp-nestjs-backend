@@ -414,6 +414,7 @@ export class UserAdminUseCases {
       if (dto.temporaryPassword.length < 10) throw new Error('Password must be at least 10 characters');
       const hash = await this.hasher.hash(dto.temporaryPassword);
       user.changePasswordHash(hash);
+      user.markMustChangePassword(); // Admin reset re-arms the forced-change gate (FR-AUD-030)
       await this.users.save(user);
       await this.store.revokeAllFor(userId);
       await this.audit.record({
