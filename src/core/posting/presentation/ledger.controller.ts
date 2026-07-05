@@ -61,8 +61,12 @@ export class LedgerController {
     return dto;
   }
 
+  // The account-ledger read (FR-LED-031): its grant key is `ledger.account_ledger` — the catalogue
+  // resource the Account Ledger screen is seeded/granted under (e.g. PROJECT_MANAGER holds ONLY this
+  // LED read). Annotating it `ledger.journal_entries` (as originally shipped) left the catalogue
+  // resource unenforced and PM's seeded grant dead — caught by the catalogue↔guard drift test.
   @Get('lines')
-  @RequirePermission('ledger.journal_entries', 'READ')
+  @RequirePermission('ledger.account_ledger', 'READ')
   lines(@Query() q: LinesQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<LedgerLineDto>> {
     return this.query.lines(q, actor);
   }

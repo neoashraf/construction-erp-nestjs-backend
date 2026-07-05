@@ -8,7 +8,9 @@
  * Usage: import and call seedRolesPermissions(dataSource, companyId).
  */
 import { DataSource } from 'typeorm';
-import { RESOURCE_CATALOG, RESOURCE_DEFS, ResourceDef } from '../../core/auth/domain/resource-catalog';
+import { RESOURCE_CATALOG, RESOURCE_DEFS, ResourceDef, resourceAllowsAction } from '../../core/auth/domain/resource-catalog';
+import { ActionCode } from '../../core/auth/domain/permission.entity';
+import { computeSeal } from '../../core/audit/infrastructure/typeorm-audit-log.repository';
 
 type Scope = 'ALL' | 'ASSIGNED';
 type Grant = { resource: string; actions: readonly string[] };
@@ -128,6 +130,62 @@ const ROLE_SEEDS: RoleSeed[] = [
     ],
   },
 ];
+
+/**
+ * Catalogue-lifecycle sweep (FR-AUD-035/020, brief aud-catalog-lifecycle): delete every `permission`
+ * row whose (resource, action) the Resource Catalogue no longer declares — the orphans a catalogue
+ * removal/rename strands. Each deletion is audited as a chained DELETE with its before-state
+ * (actor = the company's ADMIN user when present, else the nil UUID — a system sweep). Runs on
+ * deploy BEFORE seedRolesPermissions so a re-seed never re-plants a swept grant; idempotent
+ * (a clean catalogue → no-op). Resource codes are stable identifiers — a deliberate rename ships
+ * as a data migration updating `permission.resource`, never a bare catalogue edit + sweep.
+ */
+export async function sweepOrphanPermissions(dataSource: DataSource, companyId: string): Promise<number> {
+  const rows: Array<{ id: string; role_id: string; resource: string; action: string; project_scope: string }> =
+    await dataSource.query(
+      `SELECT id, role_id, resource, action, project_scope FROM "permission" WHERE company_id = $1`,
+      [companyId],
+    );
+  const orphans = rows.filter(r => !resourceAllowsAction(r.resource, r.action as ActionCode));
+  if (orphans.length === 0) return 0;
+
+  const admin = await dataSource.query(
+    `SELECT id FROM "user" WHERE company_id = $1 AND role = 'ADMIN' LIMIT 1`,
+    [companyId],
+  );
+  const actorId: string = admin[0]?.id ?? '00000000-0000-0000-0000-000000000000';
+
+  let prevSeal: string | null =
+    (
+      await dataSource.query(
+        `SELECT seal FROM "audit_log" WHERE company_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [companyId],
+      )
+    )[0]?.seal ?? null;
+
+  for (const o of orphans) {
+    const createdAt = new Date();
+    // Keys in jsonb's normalized order (key length, then bytewise) so the stored row's round-trip
+    // (jsonb → text → JSON.parse → JSON.stringify) re-serialises identically and the seal stays
+    // recomputable from the row (same property RealAuditService rows need for chain verification).
+    const before = {
+      action: o.action,
+      roleId: o.role_id,
+      resource: o.resource,
+      sweptReason: 'RESOURCE_NOT_IN_CATALOGUE',
+      projectScope: o.project_scope,
+    };
+    const seal = computeSeal(companyId, 'DELETE', 'Permission', o.id, actorId, before, null, createdAt.toISOString(), prevSeal);
+    await dataSource.query(`DELETE FROM "permission" WHERE id = $1 AND company_id = $2`, [o.id, companyId]);
+    await dataSource.query(
+      `INSERT INTO "audit_log" (id, company_id, action, entity_type, entity_id, user_id, before, after, ip_address, seal, created_at)
+       VALUES ($1, $2, 'DELETE', 'Permission', $3, $4, $5, NULL, NULL, $6, $7)`,
+      [crypto.randomUUID(), companyId, o.id, actorId, JSON.stringify(before), seal, createdAt],
+    );
+    prevSeal = seal;
+  }
+  return orphans.length;
+}
 
 export async function seedRolesPermissions(dataSource: DataSource, companyId: string): Promise<void> {
   for (const seed of ROLE_SEEDS) {

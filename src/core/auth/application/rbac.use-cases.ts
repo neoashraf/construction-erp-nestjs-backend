@@ -4,8 +4,9 @@
  *
  * RBAC v2: permissions are resource-level (validated against the Resource Catalogue); roles are CRUD-able
  * with protected built-ins (is_system) — DUPLICATE_ROLE_NAME / SYSTEM_ROLE_IMMUTABLE / ROLE_IN_USE.
- * The built-in Admin/superuser role is anti-lockout protected (ADMIN_LOCKOUT_FORBIDDEN — its grants are
- * edited only upward, FR-AUD-034); replaceRolePermissions is the atomic batch grid save (FR-AUD-019).
+ * The built-in Admin/superuser role is anti-lockout protected (ADMIN_LOCKOUT_FORBIDDEN — its
+ * CATALOGUE-VALID grants are edited only upward, FR-AUD-034; orphan grants left by a catalogue
+ * removal are exempt and revocable); replaceRolePermissions is the atomic batch grid save (FR-AUD-019).
  */
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import Decimal from 'decimal.js';
@@ -46,12 +47,21 @@ function parseLimit(valueLimit: string | null | undefined): Decimal | null {
 }
 
 /**
- * The built-in Admin/superuser role (anti-lockout target, FR-AUD-034). Core access is defined as
- * the role's ENTIRE current grant set: Admin's grid is edited only upward — any revoke or
- * scope/limit narrowing is rejected ADMIN_LOCKOUT_FORBIDDEN (technical design §RoleService guards).
+ * The built-in Admin/superuser role (anti-lockout target, FR-AUD-034). Core access is the role's
+ * CATALOGUE-VALID grant set: Admin's grid is edited only upward — any revoke or scope/limit
+ * narrowing of a catalogue-valid grant is rejected ADMIN_LOCKOUT_FORBIDDEN (technical design
+ * §RoleService guards). Grants whose (resource, action) is no longer in the Resource Catalogue
+ * (orphans left by a catalogue removal) are EXEMPT — they guard nothing and must stay revocable,
+ * otherwise one catalogue removal makes the Admin grid permanently unsaveable (the batch replace
+ * can neither include the orphan — catalogue validation — nor omit it — lockout).
  */
 function isAdminSuperuserRole(role: Role): boolean {
   return role.props.isSystem && role.props.name === 'ADMIN';
+}
+
+/** True when the grant's (resource, action) is still declared by the Resource Catalogue. */
+function isCatalogueValidGrant(grant: { resource: string; action: ActionCode }): boolean {
+  return resourceAllowsAction(grant.resource, grant.action);
 }
 
 function sameLimit(a: Decimal | null, b: Decimal | null): boolean {
@@ -202,6 +212,7 @@ export class RoleUseCases {
 
       if (isAdminSuperuserRole(role)) {
         for (const [key, pm] of currentByKey) {
+          if (!isCatalogueValidGrant(pm.props)) continue; // orphan (resource removed from the catalogue) — revocable
           const next = nextByKey.get(key);
           if (!next || narrowsGrant(pm.props, next)) throw new ConflictException('ADMIN_LOCKOUT_FORBIDDEN');
         }
@@ -360,9 +371,10 @@ export class PermissionUseCases {
         updates.valueLimit = dto.valueLimit !== null ? new Decimal(dto.valueLimit) : null;
       }
 
-      // Admin anti-lockout (FR-AUD-034): narrowing a superuser grant's scope/limit is rejected.
+      // Admin anti-lockout (FR-AUD-034): narrowing a catalogue-valid superuser grant is rejected.
+      // Orphan grants (resource no longer in the catalogue) are exempt — they guard nothing.
       const role = await this.roles.findById(perm.props.roleId, actor.companyId);
-      if (role && isAdminSuperuserRole(role)) {
+      if (role && isAdminSuperuserRole(role) && isCatalogueValidGrant(perm.props)) {
         const next = {
           projectScope: updates.projectScope ?? perm.props.projectScope,
           valueLimit: updates.valueLimit !== undefined ? updates.valueLimit : perm.props.valueLimit,
@@ -387,9 +399,13 @@ export class PermissionUseCases {
       const perm = await this.permissions.findById(id, actor.companyId);
       if (!perm) throw new NotFoundException('Permission not found');
 
-      // Admin anti-lockout (FR-AUD-034): revoking any superuser grant is a reduce below core access.
+      // Admin anti-lockout (FR-AUD-034): revoking a catalogue-valid superuser grant reduces core
+      // access. Orphan grants (resource removed from the catalogue) stay revocable — the sweep and
+      // the batch replace both need to be able to clear them.
       const role = await this.roles.findById(perm.props.roleId, actor.companyId);
-      if (role && isAdminSuperuserRole(role)) throw new ConflictException('ADMIN_LOCKOUT_FORBIDDEN');
+      if (role && isAdminSuperuserRole(role) && isCatalogueValidGrant(perm.props)) {
+        throw new ConflictException('ADMIN_LOCKOUT_FORBIDDEN');
+      }
 
       const before = { resource: perm.props.resource, action: perm.props.action, projectScope: perm.props.projectScope };
       await this.permissions.delete(id, actor.companyId);

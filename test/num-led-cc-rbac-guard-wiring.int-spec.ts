@@ -88,7 +88,9 @@ const ROUTE_ACTION_TABLE: { controller: string; resource: string; route: string;
   // ledger.controller.ts
   { controller: 'LedgerController', resource: 'ledger.journal_entries', route: 'GET /entries', action: 'READ' },
   { controller: 'LedgerController', resource: 'ledger.journal_entries', route: 'GET /entries/:id', action: 'READ' },
-  { controller: 'LedgerController', resource: 'ledger.journal_entries', route: 'GET /lines', action: 'READ' },
+  // GET /lines is the account-ledger read — re-annotated `ledger.account_ledger` by aud-catalog-lifecycle
+  // (#44): the catalogue resource was unenforced and PM's seeded grant dead under the old pair.
+  { controller: 'LedgerController', resource: 'ledger.account_ledger', route: 'GET /lines', action: 'READ' },
   { controller: 'LedgerController', resource: 'ledger.journal_entries', route: 'GET /trial-balance', action: 'READ' },
   // cost-control.controller.ts
   { controller: 'CostControlController', resource: 'cost_control.budget_vs_actual', route: 'GET /budget-vs-actual', action: 'READ' },
@@ -161,7 +163,7 @@ describe('num-led-cc-rbac-guard-wiring (#35) — real RolesGuard against every N
     await dataSource.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'HR_MANAGER',false,1)`, [hrRoleId, CO]);
 
     // ADMIN: blanket grant across every real MODULE_CODES entry (incl. CC, the brief's headline fix).
-    for (const resource of ['numbering', 'ledger.journal_entries', 'cost_control.budget_vs_actual', 'hr.employees']) {
+    for (const resource of ['numbering', 'ledger.journal_entries', 'ledger.account_ledger', 'cost_control.budget_vs_actual', 'hr.employees']) {
       for (const action of ['CREATE', 'READ', 'UPDATE', 'DELETE', 'POST', 'CANCEL', 'APPROVE', 'REJECT']) {
         await dataSource.query(
           `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, $3, $4, 'ALL', 1)`,
@@ -180,9 +182,19 @@ describe('num-led-cc-rbac-guard-wiring (#35) — real RolesGuard against every N
       `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'cost_control.budget_vs_actual', 'READ', 'ALL', 1)`,
       [accountsRoleId, CO],
     );
-    // PROJECT_MANAGER: CC:READ (ASSIGNED) only — per seed-roles-permissions.ts; no NUM/LED grant.
+    // ACCOUNTS_MANAGER also reads the account ledger — per seed-roles-permissions.ts.
+    await dataSource.query(
+      `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'ledger.account_ledger', 'READ', 'ALL', 1)`,
+      [accountsRoleId, CO],
+    );
+    // PROJECT_MANAGER: CC:READ + the account-ledger read (ASSIGNED) — per seed-roles-permissions.ts;
+    // no NUM grant and no OTHER LED grant (journal entries / trial balance stay forbidden).
     await dataSource.query(
       `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'cost_control.budget_vs_actual', 'READ', 'ASSIGNED', 1)`,
+      [pmRoleId, CO],
+    );
+    await dataSource.query(
+      `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'ledger.account_ledger', 'READ', 'ASSIGNED', 1)`,
       [pmRoleId, CO],
     );
     // HR_MANAGER gets an unrelated module only — proves the guard checks the SPECIFIC (module, action).
@@ -239,7 +251,7 @@ describe('num-led-cc-rbac-guard-wiring (#35) — real RolesGuard against every N
   });
 
   // ── success: ACCOUNTS_MANAGER passes LED reads + CC reads (per seed) ──
-  describe.each(ROUTE_ACTION_TABLE.filter(r => r.resource === 'ledger.journal_entries' || r.resource === 'cost_control.budget_vs_actual'))(
+  describe.each(ROUTE_ACTION_TABLE.filter(r => r.resource.startsWith('ledger.') || r.resource === 'cost_control.budget_vs_actual'))(
     'RolesGuard — success for ACCOUNTS_MANAGER ($controller $route, $resource:$action seed)',
     ({ resource, action }) => {
       it(`ACCOUNTS_MANAGER holds {${resource},${action}} -> guard resolves true`, async () => {
@@ -260,7 +272,12 @@ describe('num-led-cc-rbac-guard-wiring (#35) — real RolesGuard against every N
     await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
   });
 
-  it('PROJECT_MANAGER is FORBIDDEN on a LED:READ route (no LED grant seeded for PM)', async () => {
+  it('PROJECT_MANAGER holds {ledger.account_ledger,READ} -> guard resolves true (GET /lines — the #44 re-annotation makes PM\'s seeded grant live)', async () => {
+    const ctx = mockContext(pmActor, [{ resource: 'ledger.account_ledger', action: 'READ' }]);
+    await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
+  });
+
+  it('PROJECT_MANAGER is FORBIDDEN on a journal-entries LED:READ route (only the account-ledger read is seeded for PM)', async () => {
     const ctx = mockContext(pmActor, [{ resource: 'ledger.journal_entries', action: 'READ' }]);
     await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
   });
