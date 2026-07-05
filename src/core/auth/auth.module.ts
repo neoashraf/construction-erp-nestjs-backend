@@ -85,6 +85,6 @@ import { USER_PROJECT_ASSIGNMENT_REPOSITORY } from './domain/ports/user-project-
     { provide: PERMISSION_REPOSITORY, useClass: TypeOrmPermissionRepository },
     { provide: USER_PROJECT_ASSIGNMENT_REPOSITORY, useClass: TypeOrmUserProjectRepository },
   ],
-  exports: [AuthService, JwtAuthGuard, RolesGuard, AccessPolicy, JwtModule, ROLE_REPOSITORY, PERMISSION_REPOSITORY, USER_PROJECT_ASSIGNMENT_REPOSITORY],
+  exports: [AuthService, JwtAuthGuard, RolesGuard, AccessPolicy, JwtModule, TOKEN_SIGNER, ROLE_REPOSITORY, PERMISSION_REPOSITORY, USER_PROJECT_ASSIGNMENT_REPOSITORY],
 })
 export class AuthModule {}
