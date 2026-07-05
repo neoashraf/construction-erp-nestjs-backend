@@ -9,10 +9,12 @@ import { DataSource } from 'typeorm';
 import { CLOCK } from '../common/ports/clock.port';
 import { ID_GENERATOR } from '../common/ports/id-generator.port';
 import { UNIT_OF_WORK } from '../common/ports/unit-of-work.port';
+import { EVENT_PUBLISHER, EVENT_SUBSCRIBER } from '../common/ports/driven-ports';
 import { DATA_SOURCE } from '../database/database.module';
 import { SystemClock } from './system-clock';
 import { UuidIdGenerator } from './uuid-id-generator';
 import { TypeOrmUnitOfWork } from './unit-of-work/typeorm-unit-of-work';
+import { InProcessEventBus } from './events/in-process-event-bus';
 
 const providers: Provider[] = [
   { provide: CLOCK, useClass: SystemClock },
@@ -22,11 +24,15 @@ const providers: Provider[] = [
     inject: [DATA_SOURCE],
     useFactory: (dataSource: DataSource) => new TypeOrmUnitOfWork(dataSource),
   },
+  // One in-process event bus, exposed as both the publish and subscribe ports (same instance).
+  InProcessEventBus,
+  { provide: EVENT_PUBLISHER, useExisting: InProcessEventBus },
+  { provide: EVENT_SUBSCRIBER, useExisting: InProcessEventBus },
 ];
 
 @Global()
 @Module({
   providers,
-  exports: [CLOCK, ID_GENERATOR, UNIT_OF_WORK],
+  exports: [CLOCK, ID_GENERATOR, UNIT_OF_WORK, EVENT_PUBLISHER, EVENT_SUBSCRIBER],
 })
 export class InfrastructureModule {}

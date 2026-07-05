@@ -7,9 +7,11 @@
  * The built-in Admin/superuser role is anti-lockout protected (ADMIN_LOCKOUT_FORBIDDEN — its grants are
  * edited only upward, FR-AUD-034); replaceRolePermissions is the atomic batch grid save (FR-AUD-019).
  */
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import Decimal from 'decimal.js';
 import { UnitOfWork, UNIT_OF_WORK } from '../../../common/ports/unit-of-work.port';
+import { EventPublisher, EVENT_PUBLISHER } from '../../../common/ports/driven-ports';
+import { AuthEvents, AuthEvent } from '../domain/auth-events';
 import { RoleRepository, ROLE_REPOSITORY } from '../domain/ports/role.repository.port';
 import { PermissionRepository, PERMISSION_REPOSITORY } from '../domain/ports/permission.repository.port';
 import { UserProjectAssignmentRepository, USER_PROJECT_ASSIGNMENT_REPOSITORY } from '../domain/ports/user-project-assignment.repository.port';
@@ -462,13 +464,20 @@ export class UserAdminUseCases {
     @Inject(REFRESH_TOKEN_STORE) private readonly store: RefreshTokenStore,
     @Inject(AUDIT_SERVICE) private readonly audit: AuditService,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
+    // Out-of-band notification producer — @Optional so existing constructors/tests are unaffected.
+    @Optional() @Inject(EVENT_PUBLISHER) private readonly events?: EventPublisher,
   ) {}
+
+  /** Publish a domain event AFTER commit; best-effort — never fails the business op (FR-NTF-012). */
+  private async publish(event: AuthEvent): Promise<void> {
+    try { await this.events?.publish([event]); } catch { /* best-effort */ }
+  }
 
   async createUser(actor: Actor, dto: {
     email: string; name: string; roleId: string; financialYearId: string;
     phone?: string; temporaryPassword: string; isActive?: boolean;
   }) {
-    return this.uow.run(async () => {
+    const result = await this.uow.run(async () => {
       const { User } = await import('../domain/user');
       const role = await this.roles.findById(dto.roleId, actor.companyId);
       if (!role) throw new NotFoundException('Role not found');
@@ -492,12 +501,15 @@ export class UserAdminUseCases {
       });
       return { id: user.id, email: user.props.email, name: user.props.name, role: user.props.role, isActive: user.props.isActive, lastLoginAt: null, mustChangePassword: user.props.mustChangePassword };
     });
+    await this.publish(AuthEvents.userCreatedWelcome(actor.companyId, result.id, result.email));
+    return result;
   }
 
   async patchUser(userId: string, actor: Actor, dto: {
     name?: string; roleId?: string; financialYearId?: string; phone?: string; version: number;
   }) {
-    return this.uow.run(async () => {
+    let roleChanged = false;
+    const result = await this.uow.run(async () => {
       const user = await this.users.findById(userId);
       if (!user || user.props.companyId !== actor.companyId) throw new NotFoundException('User not found');
       if (user.props.version !== dto.version) throw new ConflictException('OPTIMISTIC_LOCK_CONFLICT');
@@ -506,6 +518,7 @@ export class UserAdminUseCases {
       const roleName = dto.roleId
         ? (await this.roles.findById(dto.roleId, actor.companyId))?.props.name ?? user.props.role
         : user.props.role;
+      roleChanged = roleName !== user.props.role;
       const { User } = await import('../domain/user');
       const updated = User.rehydrate(user.id, {
         ...user.props,
@@ -522,6 +535,8 @@ export class UserAdminUseCases {
       });
       return { id: updated.id, email: updated.props.email, name: updated.props.name, role: updated.props.role, isActive: updated.props.isActive };
     });
+    if (roleChanged) await this.publish(AuthEvents.rolePermissionsChanged(actor.companyId, userId, actor.userId));
+    return result;
   }
 
   async activateUser(userId: string, actor: Actor): Promise<{ id: string; isActive: boolean }> {
@@ -539,7 +554,7 @@ export class UserAdminUseCases {
   }
 
   async deactivateUser(userId: string, actor: Actor): Promise<{ id: string; isActive: boolean }> {
-    return this.uow.run(async () => {
+    const result = await this.uow.run(async () => {
       const user = await this.users.findById(userId);
       if (!user || user.props.companyId !== actor.companyId) throw new NotFoundException('User not found');
       user.deactivate();
@@ -551,6 +566,8 @@ export class UserAdminUseCases {
       });
       return { id: userId, isActive: false };
     });
+    await this.publish(AuthEvents.userDeactivated(actor.companyId, userId, actor.userId));
+    return result;
   }
 
   async resetPassword(userId: string, actor: Actor, dto: { temporaryPassword: string }): Promise<void> {
@@ -569,5 +586,6 @@ export class UserAdminUseCases {
         before: { passwordHash: '[REDACTED]' }, after: { passwordHash: '[REDACTED]' },
       });
     });
+    await this.publish(AuthEvents.passwordResetForced(actor.companyId, userId, actor.userId));
   }
 }

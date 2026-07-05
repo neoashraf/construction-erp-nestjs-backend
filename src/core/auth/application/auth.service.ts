@@ -4,11 +4,13 @@
  * Account lockout: 5 consecutive failures → 15-min lock; uniform INVALID_CREDENTIALS in all failure
  * paths so email-enumeration and lockout are not disclosed (FR-AUD-001/009, §6 business rule).
  */
-import { Inject, Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException, ForbiddenException, Optional } from '@nestjs/common';
 import { PasswordHasher, PASSWORD_HASHER } from '../domain/ports/password-hasher.port';
 import { TokenSigner, TOKEN_SIGNER, AccessClaims } from '../domain/ports/token-signer.port';
 import { RefreshTokenStore, REFRESH_TOKEN_STORE } from '../domain/ports/refresh-token-store.port';
 import { UserRepository, USER_REPOSITORY } from '../domain/ports/user.repository.port';
+import { EventPublisher, EVENT_PUBLISHER } from '../../../common/ports/driven-ports';
+import { AuthEvents } from '../domain/auth-events';
 import { User } from '../domain/user';
 import { RoleName } from '../domain/role';
 
@@ -42,6 +44,8 @@ export class AuthService {
     @Inject(PASSWORD_HASHER) private readonly hasher: PasswordHasher,
     @Inject(TOKEN_SIGNER) private readonly signer: TokenSigner,
     @Inject(REFRESH_TOKEN_STORE) private readonly store: RefreshTokenStore,
+    // Out-of-band notification producer — @Optional so existing constructors/tests are unaffected.
+    @Optional() @Inject(EVENT_PUBLISHER) private readonly events?: EventPublisher,
   ) {}
 
   /** FR-AUD-001/008/009 — lockout (§16): uniform error for all failure paths. */
@@ -66,8 +70,13 @@ export class AuthService {
 
     const valid = await this.hasher.verify(password, user.props.passwordHash);
     if (!valid) {
+      const wasLocked = user.isLockedOut(now);
       user.recordFailedLogin(now);
       await this.users.save(user);
+      // Notify on the transition into a locked state (the 5th consecutive failure) — best-effort.
+      if (!wasLocked && user.isLockedOut(now)) {
+        try { await this.events?.publish([AuthEvents.accountLockedOut(user.props.companyId, user.id)]); } catch { /* best-effort */ }
+      }
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
