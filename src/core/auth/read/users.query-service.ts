@@ -1,4 +1,8 @@
-/** Users read service (AUD read/ — FR-AUD-011/018/027). Company-scoped; never exposes password_hash. */
+/**
+ * Users read service (AUD read/ — FR-AUD-011/015/018/027). Company-scoped; never exposes password_hash.
+ * `roleId`/`roleIsSystem`/`roleIsUnscoped` are resolved by joining `role` on the denormalised
+ * `user.role` name, so clients key on the stable role id instead of name-matching.
+ */
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { DATA_SOURCE } from '../../../database/database.module';
@@ -20,8 +24,11 @@ export class UsersQueryService {
     const [rows, countRows] = await Promise.all([
       this.ds.query(
         `SELECT u.id, u.email, u.name, u.role, u.is_active AS "isActive", u.last_login_at AS "lastLoginAt",
+                r.id AS "roleId", r.is_system AS "roleIsSystem", r.is_unscoped AS "roleIsUnscoped",
                 (SELECT COUNT(*)::int FROM user_project up WHERE up.user_id = u.id) AS "assignedProjectCount"
-         FROM "user" u WHERE ${where} ORDER BY u.name LIMIT $${p} OFFSET $${p + 1}`,
+         FROM "user" u
+         LEFT JOIN "role" r ON r.name = u.role AND r.company_id = u.company_id
+         WHERE ${where} ORDER BY u.name LIMIT $${p} OFFSET $${p + 1}`,
         [...params, filters.pageSize, offset],
       ),
       this.ds.query(`SELECT COUNT(*)::int AS total FROM "user" u WHERE ${where}`, params),
@@ -32,9 +39,12 @@ export class UsersQueryService {
   async findById(id: string, companyId: string) {
     const [userRows, projRows] = await Promise.all([
       this.ds.query(
-        `SELECT id, email, name, role, financial_year_id AS "financialYearId", is_active AS "isActive",
-                last_login_at AS "lastLoginAt", must_change_password AS "mustChangePassword", phone, version
-         FROM "user" WHERE id = $1 AND company_id = $2`,
+        `SELECT u.id, u.email, u.name, u.role, u.financial_year_id AS "financialYearId", u.is_active AS "isActive",
+                u.last_login_at AS "lastLoginAt", u.must_change_password AS "mustChangePassword", u.phone, u.version,
+                r.id AS "roleId", r.is_system AS "roleIsSystem", r.is_unscoped AS "roleIsUnscoped"
+         FROM "user" u
+         LEFT JOIN "role" r ON r.name = u.role AND r.company_id = u.company_id
+         WHERE u.id = $1 AND u.company_id = $2`,
         [id, companyId],
       ),
       this.ds.query(

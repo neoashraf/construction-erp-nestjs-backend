@@ -4,6 +4,8 @@
  *
  * RBAC v2: permissions are resource-level (validated against the Resource Catalogue); roles are CRUD-able
  * with protected built-ins (is_system) — DUPLICATE_ROLE_NAME / SYSTEM_ROLE_IMMUTABLE / ROLE_IN_USE.
+ * The built-in Admin/superuser role is anti-lockout protected (ADMIN_LOCKOUT_FORBIDDEN — its grants are
+ * edited only upward, FR-AUD-034); replaceRolePermissions is the atomic batch grid save (FR-AUD-019).
  */
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import Decimal from 'decimal.js';
@@ -26,6 +28,42 @@ function assertResourceAction(resource: string, action: ActionCode): void {
   if (!isValidResource(resource) || !resourceAllowsAction(resource, action)) {
     throw new BadRequestException('VALIDATION_ERROR');
   }
+}
+
+/** Parse an optional Decimal(18,4) string; non-decimal or negative → VALIDATION_ERROR (400). */
+function parseLimit(valueLimit: string | null | undefined): Decimal | null {
+  if (valueLimit == null) return null;
+  let d: Decimal;
+  try {
+    d = new Decimal(valueLimit);
+  } catch {
+    throw new BadRequestException('VALIDATION_ERROR');
+  }
+  if (d.isNegative() || d.isNaN()) throw new BadRequestException('VALIDATION_ERROR');
+  return d;
+}
+
+/**
+ * The built-in Admin/superuser role (anti-lockout target, FR-AUD-034). Core access is defined as
+ * the role's ENTIRE current grant set: Admin's grid is edited only upward — any revoke or
+ * scope/limit narrowing is rejected ADMIN_LOCKOUT_FORBIDDEN (technical design §RoleService guards).
+ */
+function isAdminSuperuserRole(role: Role): boolean {
+  return role.props.isSystem && role.props.name === 'ADMIN';
+}
+
+function sameLimit(a: Decimal | null, b: Decimal | null): boolean {
+  return a === null ? b === null : b !== null && a.equals(b);
+}
+
+/** True when the change reduces a grant: ALL→ASSIGNED, a limit introduced, or a limit lowered. */
+function narrowsGrant(
+  existing: { projectScope: ProjectScope; valueLimit: Decimal | null },
+  next: { projectScope: ProjectScope; valueLimit: Decimal | null },
+): boolean {
+  if (existing.projectScope === 'ALL' && next.projectScope === 'ASSIGNED') return true;
+  if (next.valueLimit !== null && (existing.valueLimit === null || next.valueLimit.lt(existing.valueLimit))) return true;
+  return false;
 }
 
 // ── Role use cases ──────────────────────────────────────────────────────────
@@ -128,6 +166,98 @@ export class RoleUseCases {
     });
   }
 
+  /**
+   * PATCH /api/roles/:id/permissions — atomic FULL-SET replace of the role's grid in one write
+   * under a single optimistic-lock version check (FR-AUD-013/019/035). The supplied list becomes
+   * the entire grid: absent grants are revoked, new ones created, scope/limit changes applied —
+   * all-or-nothing; the audited delta mirrors the diff (FR-AUD-020). Admin anti-lockout (FR-AUD-034):
+   * the built-in superuser grid is edited only upward — a revoke/narrow rejects the whole batch.
+   */
+  async replaceRolePermissions(
+    id: string,
+    actor: Actor,
+    dto: { version: number; permissions: PermissionInput[] },
+  ) {
+    return this.uow.run(async () => {
+      const role = await this.roles.findById(id, actor.companyId);
+      if (!role) throw new NotFoundException('Role not found');
+      if (role.props.version !== dto.version) throw new ConflictException('OPTIMISTIC_LOCK_CONFLICT');
+
+      // Validate the entire payload before touching anything (whole-batch rejection).
+      const nextByKey = new Map<string, { resource: string; action: ActionCode; projectScope: ProjectScope; valueLimit: Decimal | null }>();
+      for (const p of dto.permissions) {
+        assertResourceAction(p.resource, p.action);
+        const key = `${p.resource}:${p.action}`;
+        if (nextByKey.has(key)) throw new BadRequestException('VALIDATION_ERROR'); // duplicate (resource, action) pair
+        nextByKey.set(key, { resource: p.resource, action: p.action, projectScope: p.projectScope, valueLimit: parseLimit(p.valueLimit) });
+      }
+      if (role.props.isUnscoped && dto.permissions.some(p => p.projectScope === 'ASSIGNED')) {
+        throw new ConflictException('ROLE_SCOPE_CONFLICT');
+      }
+
+      const current = await this.permissions.findByRoleId(id, actor.companyId);
+      const currentByKey = new Map(current.map(pm => [`${pm.props.resource}:${pm.props.action}`, pm]));
+
+      if (isAdminSuperuserRole(role)) {
+        for (const [key, pm] of currentByKey) {
+          const next = nextByKey.get(key);
+          if (!next || narrowsGrant(pm.props, next)) throw new ConflictException('ADMIN_LOCKOUT_FORBIDDEN');
+        }
+      }
+
+      // Revocations — in the current grid, absent from the replacement.
+      for (const [key, pm] of currentByKey) {
+        if (nextByKey.has(key)) continue;
+        await this.permissions.delete(pm.id, actor.companyId);
+        await this.audit.record({
+          action: 'DELETE' as any, entityType: 'Permission', entityId: pm.id,
+          actorId: actor.userId, companyId: actor.companyId,
+          before: { resource: pm.props.resource, action: pm.props.action, projectScope: pm.props.projectScope },
+          after: null,
+        });
+      }
+
+      // Additions + scope/limit changes. Unchanged grants keep their ids and produce no audit noise.
+      const result: Permission[] = [];
+      for (const [key, next] of nextByKey) {
+        const existing = currentByKey.get(key);
+        if (!existing) {
+          const perm = Permission.create(crypto.randomUUID(), {
+            roleId: id, companyId: actor.companyId,
+            resource: next.resource, action: next.action,
+            projectScope: next.projectScope, valueLimit: next.valueLimit,
+          });
+          await this.permissions.save(perm);
+          await this.audit.record({
+            action: 'CREATE', entityType: 'Permission', entityId: perm.id,
+            actorId: actor.userId, companyId: actor.companyId,
+            before: null, after: { resource: next.resource, action: next.action, projectScope: next.projectScope },
+          });
+          result.push(perm);
+          continue;
+        }
+        if (existing.props.projectScope !== next.projectScope || !sameLimit(existing.props.valueLimit, next.valueLimit)) {
+          const { before, after } = existing.patch({ projectScope: next.projectScope, valueLimit: next.valueLimit });
+          await this.permissions.save(existing);
+          await this.audit.record({
+            action: 'UPDATE', entityType: 'Permission', entityId: existing.id,
+            actorId: actor.userId, companyId: actor.companyId,
+            before: before as Record<string, unknown>, after: after as Record<string, unknown>,
+          });
+        }
+        result.push(existing);
+      }
+
+      // One version bump covers the whole grid (FR-AUD-019) — a concurrent editor's stale save rejects.
+      const bumped = Role.rehydrate(role.id, { ...role.props, version: role.props.version + 1 });
+      await this.roles.save(bumped);
+
+      const userCount = await this.roles.countUsers(actor.companyId, role.props.name);
+      result.sort((a, b) => a.props.resource.localeCompare(b.props.resource) || a.props.action.localeCompare(b.props.action));
+      return roleView(bumped, userCount, result);
+    });
+  }
+
   /** DELETE /api/roles/:id — custom only; blocked while assigned. FR-AUD-034. */
   async deleteRole(id: string, actor: Actor): Promise<void> {
     await this.uow.run(async () => {
@@ -227,6 +357,17 @@ export class PermissionUseCases {
       if (dto.valueLimit !== undefined) {
         updates.valueLimit = dto.valueLimit !== null ? new Decimal(dto.valueLimit) : null;
       }
+
+      // Admin anti-lockout (FR-AUD-034): narrowing a superuser grant's scope/limit is rejected.
+      const role = await this.roles.findById(perm.props.roleId, actor.companyId);
+      if (role && isAdminSuperuserRole(role)) {
+        const next = {
+          projectScope: updates.projectScope ?? perm.props.projectScope,
+          valueLimit: updates.valueLimit !== undefined ? updates.valueLimit : perm.props.valueLimit,
+        };
+        if (narrowsGrant(perm.props, next)) throw new ConflictException('ADMIN_LOCKOUT_FORBIDDEN');
+      }
+
       const { before, after } = perm.patch(updates);
       await this.permissions.save(perm);
       await this.audit.record({
@@ -243,6 +384,11 @@ export class PermissionUseCases {
     await this.uow.run(async () => {
       const perm = await this.permissions.findById(id, actor.companyId);
       if (!perm) throw new NotFoundException('Permission not found');
+
+      // Admin anti-lockout (FR-AUD-034): revoking any superuser grant is a reduce below core access.
+      const role = await this.roles.findById(perm.props.roleId, actor.companyId);
+      if (role && isAdminSuperuserRole(role)) throw new ConflictException('ADMIN_LOCKOUT_FORBIDDEN');
+
       const before = { resource: perm.props.resource, action: perm.props.action, projectScope: perm.props.projectScope };
       await this.permissions.delete(id, actor.companyId);
       await this.audit.record({
