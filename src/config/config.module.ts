@@ -5,7 +5,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule as NestConfigModule } from '@nestjs/config';
 import { envValidationSchema } from './env.schema';
-import { appConfig, databaseConfig, jwtConfig } from './app-config';
+import { appConfig, databaseConfig, jwtConfig, cloudinaryConfig } from './app-config';
 
 @Module({
   imports: [
@@ -14,7 +14,7 @@ import { appConfig, databaseConfig, jwtConfig } from './app-config';
       cache: true,
       // `.env` for local dev; in real environments the process env is authoritative.
       envFilePath: ['.env'],
-      load: [appConfig, databaseConfig, jwtConfig],
+      load: [appConfig, databaseConfig, jwtConfig, cloudinaryConfig],
       validationSchema: envValidationSchema,
       validationOptions: {
         // fail-fast: surface ALL invalid vars at once, never boot partially.

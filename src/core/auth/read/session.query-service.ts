@@ -20,7 +20,8 @@ export class SessionQueryService {
   async me(actor: Actor): Promise<SessionView> {
     const [userRow] = await this.ds.query(
       `SELECT id, email, name, role, company_id AS "companyId", financial_year_id AS "financialYearId",
-              is_active AS "isActive", last_login_at AS "lastLoginAt", must_change_password AS "mustChangePassword"
+              is_active AS "isActive", last_login_at AS "lastLoginAt", must_change_password AS "mustChangePassword",
+              avatar_url AS "avatarUrl"
        FROM "user" WHERE id = $1 AND company_id = $2`,
       [actor.userId, actor.companyId],
     );
@@ -65,6 +66,7 @@ export class SessionQueryService {
         isActive: userRow.isActive,
         lastLoginAt: userRow.lastLoginAt ? new Date(userRow.lastLoginAt).toISOString() : null,
         mustChangePassword: userRow.mustChangePassword,
+        avatarUrl: userRow.avatarUrl ?? null,
       },
       projectScope,
       approvalLimit: roleRow?.approvalLimit ?? null,

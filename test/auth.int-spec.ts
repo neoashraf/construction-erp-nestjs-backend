@@ -70,6 +70,10 @@ describe('Auth — JWT login/refresh/logout/change-password (real Postgres)', ()
     // (no role/permission/project) applies just that column so UserOrmEntity round-trips (mirrors
     // 1700002300000-RbacV2ResourcePermissions' user change).
     await dataSource.query(`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "must_change_password" boolean NOT NULL DEFAULT true`);
+    // Avatar columns (1700002400000-AddUserAvatar) — applied directly here so TypeOrmUserRepository
+    // (which now persists avatar_url/avatar_public_id) round-trips on save() in this minimal-subset test.
+    await dataSource.query(`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "avatar_url" varchar`);
+    await dataSource.query(`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "avatar_public_id" varchar`);
 
     // Seed a company + financial year (user table requires FK)
     companyId = crypto.randomUUID();

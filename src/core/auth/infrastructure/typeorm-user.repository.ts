@@ -42,6 +42,8 @@ export class TypeOrmUserRepository implements UserRepository {
         mustChangePassword: p.mustChangePassword,
         lastLoginAt: p.lastLoginAt,
         phone: p.phone,
+        avatarUrl: p.avatarUrl,
+        avatarPublicId: p.avatarPublicId,
         failedLoginAttempts: p.failedLoginAttempts,
         lockedUntil: p.lockedUntil,
       });
@@ -58,6 +60,8 @@ export class TypeOrmUserRepository implements UserRepository {
         mustChangePassword: p.mustChangePassword,
         lastLoginAt: p.lastLoginAt,
         phone: p.phone,
+        avatarUrl: p.avatarUrl,
+        avatarPublicId: p.avatarPublicId,
         failedLoginAttempts: p.failedLoginAttempts,
         lockedUntil: p.lockedUntil,
       });
@@ -77,6 +81,8 @@ function toDomain(r: UserOrmEntity): User {
     mustChangePassword: r.mustChangePassword,
     lastLoginAt: r.lastLoginAt,
     phone: r.phone,
+    avatarUrl: r.avatarUrl,
+    avatarPublicId: r.avatarPublicId,
     failedLoginAttempts: r.failedLoginAttempts,
     lockedUntil: r.lockedUntil,
     version: r.version,
