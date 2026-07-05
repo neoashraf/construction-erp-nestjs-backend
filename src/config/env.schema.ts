@@ -25,6 +25,13 @@ export const envValidationSchema = Joi.object({
   JWT_SECRET: Joi.string().min(16).required(),
   JWT_ACCESS_TTL: Joi.string().default('900s'),
   JWT_REFRESH_TTL: Joi.string().default('7d'),
+
+  // Cloudinary — profile-avatar image store (AUD profile slice, FR-AUD-038..043).
+  // OPTIONAL so the app boots in dev/test/CI without it; the MediaStorage adapter fails at
+  // call time (MEDIA_STORAGE_ERROR) if an avatar upload is attempted while unconfigured.
+  CLOUDINARY_CLOUD_NAME: Joi.string().allow('').optional(),
+  CLOUDINARY_API_KEY: Joi.string().allow('').optional(),
+  CLOUDINARY_API_SECRET: Joi.string().allow('').optional(),
 })
   // Reject unknown keys would be too strict (CI injects extras); allow but don't expose them.
   .unknown(true);

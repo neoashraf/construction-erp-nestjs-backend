@@ -16,6 +16,8 @@ export class UserOrmEntity {
   @Column({ name: 'must_change_password', type: 'boolean', default: true }) mustChangePassword!: boolean;
   @Column({ name: 'last_login_at', type: 'timestamptz', nullable: true }) lastLoginAt!: Date | null;
   @Column({ name: 'phone', type: 'varchar', nullable: true }) phone!: string | null;
+  @Column({ name: 'avatar_url', type: 'varchar', nullable: true }) avatarUrl!: string | null;
+  @Column({ name: 'avatar_public_id', type: 'varchar', nullable: true }) avatarPublicId!: string | null;
   @Column({ name: 'failed_login_attempts', type: 'int', default: 0 }) failedLoginAttempts!: number;
   @Column({ name: 'locked_until', type: 'timestamptz', nullable: true }) lockedUntil!: Date | null;
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;

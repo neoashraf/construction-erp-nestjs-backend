@@ -28,11 +28,16 @@ import { RolesController } from './presentation/roles.controller';
 import { PermissionsController } from './presentation/permissions.controller';
 import { UsersController } from './presentation/users.controller';
 import { UserProjectsController } from './presentation/user-projects.controller';
+import { ProfileController } from './presentation/profile.controller';
 import { AccessPolicy } from './domain/access-policy';
 import { RolesQueryService } from './read/roles.query-service';
 import { PermissionsQueryService } from './read/permissions.query-service';
 import { UsersQueryService } from './read/users.query-service';
 import { SessionQueryService } from './read/session.query-service';
+import { ProfileQueryService } from './read/profile.query-service';
+import { ProfileUseCases } from './application/profile.use-cases';
+import { CloudinaryMediaStorage } from './infrastructure/cloudinary-media-storage';
+import { MEDIA_STORAGE } from '../../common/ports/driven-ports';
 import { PASSWORD_HASHER } from './domain/ports/password-hasher.port';
 import { TOKEN_SIGNER } from './domain/ports/token-signer.port';
 import { REFRESH_TOKEN_STORE } from './domain/ports/refresh-token-store.port';
@@ -52,13 +57,14 @@ import { USER_PROJECT_ASSIGNMENT_REPOSITORY } from './domain/ports/user-project-
       }),
     }),
   ],
-  controllers: [AuthController, RolesController, PermissionsController, UsersController, UserProjectsController],
+  controllers: [AuthController, RolesController, PermissionsController, UsersController, UserProjectsController, ProfileController],
   providers: [
     AuthService,
     RoleUseCases,
     PermissionUseCases,
     UserProjectUseCases,
     UserAdminUseCases,
+    ProfileUseCases,
     AccessPolicy,
     JwtStrategy,
     JwtAuthGuard,
@@ -67,6 +73,8 @@ import { USER_PROJECT_ASSIGNMENT_REPOSITORY } from './domain/ports/user-project-
     PermissionsQueryService,
     UsersQueryService,
     SessionQueryService,
+    ProfileQueryService,
+    { provide: MEDIA_STORAGE, useClass: CloudinaryMediaStorage },
     // Global forced first-login change gate (FR-AUD-030) — platform-wide, like the response envelope.
     { provide: APP_GUARD, useClass: PasswordChangePolicyGuard },
     { provide: USER_REPOSITORY, useClass: TypeOrmUserRepository },

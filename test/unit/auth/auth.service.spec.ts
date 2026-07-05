@@ -28,6 +28,8 @@ function makeUser(overrides?: Partial<{
     mustChangePassword: false,
     lastLoginAt: null,
     phone: null,
+    avatarUrl: null,
+    avatarPublicId: null,
     failedLoginAttempts: overrides?.failedLoginAttempts ?? 0,
     lockedUntil: overrides?.lockedUntil ?? null,
     version: 1,

@@ -26,6 +26,7 @@ import { CreateMasterDataAccountsPartiesItems1700000600000 } from '../src/databa
 import { CreateUser1700000700000 } from '../src/database/migrations/1700000700000-CreateUser';
 import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700000800000-CreateRbacAndAudit';
 import { RbacV2ResourcePermissions1700002300000 } from '../src/database/migrations/1700002300000-RbacV2ResourcePermissions';
+import { AddUserAvatar1700002400000 } from '../src/database/migrations/1700002400000-AddUserAvatar';
 import { TypeOrmUserRepository } from '../src/core/auth/infrastructure/typeorm-user.repository';
 import { DbRefreshTokenStore } from '../src/core/auth/infrastructure/db-refresh-token-store';
 import { BcryptPasswordHasher } from '../src/core/auth/infrastructure/bcrypt-password-hasher';
@@ -104,6 +105,7 @@ describe('aud-session-and-forced-change (#38) — /auth/me + forced-change gate 
         CreateUser1700000700000,
         CreateRbacAndAudit1700000800000,
         RbacV2ResourcePermissions1700002300000,
+        AddUserAvatar1700002400000,
       ],
     });
     await ds.initialize();

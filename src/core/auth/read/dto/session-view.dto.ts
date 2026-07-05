@@ -14,6 +14,8 @@ export interface SessionUserDto {
   isActive: boolean;
   lastLoginAt: string | null;
   mustChangePassword: boolean;
+  /** Cloudinary served URL of the profile photo; null when none (AUD profile slice, FR-AUD-039). */
+  avatarUrl: string | null;
 }
 
 export type ProjectScopeDto =
