@@ -119,7 +119,9 @@ export const RESOURCE_CATALOG: readonly CatalogModule[] = [
   },
   {
     module: 'MAS', label: 'Master data', resources: [
-      { resource: 'master_data.company_settings', module: 'MAS', label: 'Company settings', actions: [R, U] },
+      // CREATE added by #44's drift reconciliation: POST /api/masters/companies demanded it while
+      // the catalogue declared only R/U — an undeclarable grant no role (incl. Admin) could hold.
+      { resource: 'master_data.company_settings', module: 'MAS', label: 'Company settings', actions: [R, C, U] },
       { resource: 'master_data.financial_years', module: 'MAS', label: 'Financial years', actions: [R, C, U] },
       { resource: 'master_data.projects', module: 'MAS', label: 'Projects', actions: [R, C, U, D] },
       { resource: 'master_data.cost_centres', module: 'MAS', label: 'Cost centres', actions: [R, C, U, D] },
