@@ -1,11 +1,12 @@
 /**
  * RolesController (PRESENTATION) — /api/roles. Admin only (audit.roles resource).
  * GET (list/detail), POST (create custom role), PATCH (rename custom / edit limit+scope),
- * DELETE (custom, blocked if assigned). FR-AUD-011/016/019/034.
+ * PATCH :id/permissions (atomic batch grid replace), DELETE (custom, blocked if assigned).
+ * FR-AUD-011/013/016/019/034/035.
  */
 import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsIn, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
@@ -35,6 +36,11 @@ class PatchRoleDto {
   @IsOptional() @IsString() approvalLimit?: string | null;
   @IsOptional() @IsBoolean() isUnscoped?: boolean;
   version!: number;
+}
+
+class ReplaceRolePermissionsDto {
+  @IsInt() version!: number;
+  @IsArray() @ValidateNested({ each: true }) @Type(() => RolePermissionDto) permissions!: RolePermissionDto[];
 }
 
 @ApiTags('Roles')
@@ -71,6 +77,13 @@ export class RolesController {
   @RequirePermission('audit.roles', 'UPDATE')
   async patch(@Param('id') id: string, @Body() dto: PatchRoleDto, @CurrentActor() actor: Actor) {
     return this.useCases.patchRole(id, actor, dto);
+  }
+
+  /** Atomic full-set replace of the role's permission grid (the editor's batch save). FR-AUD-013/019/035. */
+  @Patch(':id/permissions')
+  @RequirePermission('audit.roles', 'UPDATE')
+  async replacePermissions(@Param('id') id: string, @Body() dto: ReplaceRolePermissionsDto, @CurrentActor() actor: Actor) {
+    return this.useCases.replaceRolePermissions(id, actor, dto);
   }
 
   @Delete(':id')
