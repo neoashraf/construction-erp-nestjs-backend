@@ -24,6 +24,13 @@ export interface EventPublisher {
 }
 export const EVENT_PUBLISHER = Symbol('EventPublisher');
 
+/** Subscribe side of the same in-process bus — a consumer (e.g. NTF) registers a best-effort handler. */
+export type EventHandler = (event: DomainEvent) => Promise<void> | void;
+export interface EventSubscriber {
+  subscribe(handler: EventHandler): void;
+}
+export const EVENT_SUBSCRIBER = Symbol('EventSubscriber');
+
 /**
  * Image/media store — the profile avatar is offloaded here (Cloudinary adapter, AUD profile slice /
  * FR-AUD-038..043). The domain/application depend only on this interface; the vendor SDK lives in an

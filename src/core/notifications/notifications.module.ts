@@ -9,7 +9,10 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { NotificationService } from './application/notification.service';
+import { NotificationSubscriber } from './application/notification-subscriber';
+import { NtfSchedulerService } from './application/ntf-scheduler.service';
 import { NotificationsQueryService } from './read/notifications.query-service';
+import { NtfDueQueryService } from './read/ntf-due.query-service';
 import { NotificationsController } from './presentation/notifications.controller';
 import { NotificationsGateway } from './presentation/notifications.gateway';
 import { TypeOrmNotificationRepository } from './infrastructure/typeorm-notification.repository';
@@ -23,7 +26,10 @@ import { NOTIFICATION_PUSHER } from './domain/ports/notification-pusher.port';
   controllers: [NotificationsController],
   providers: [
     NotificationService,
+    NotificationSubscriber,
+    NtfSchedulerService,
     NotificationsQueryService,
+    NtfDueQueryService,
     NotificationsGateway,
     { provide: NOTIFICATION_REPOSITORY, useClass: TypeOrmNotificationRepository },
     { provide: RECIPIENT_RESOLVER, useClass: SqlRecipientResolver },

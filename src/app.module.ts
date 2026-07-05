@@ -5,6 +5,7 @@
  */
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppConfigModule } from './config/config.module';
 import { AppLoggerModule } from './infrastructure/logging/logger.module';
 import { DatabaseModule } from './database/database.module';
@@ -32,6 +33,7 @@ import { DashboardModule } from './dashboard/presentation/dashboard.module';
     AppLoggerModule,
     DatabaseModule,
     InfrastructureModule,
+    ScheduleModule.forRoot(), // NTF time-based reminders (FR-NTF-022..025)
     HealthModule,
     CoreModule,
     // Feature modules (modules/*) — added by their briefs.
