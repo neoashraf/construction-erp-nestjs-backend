@@ -10,6 +10,7 @@ import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { TenancyModule } from './tenancy/tenancy.module';
 import { CostControlModule } from './cost-control/cost-control.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { CostControlModule } from './cost-control/cost-control.module';
     AuthModule,
     TenancyModule,
     CostControlModule,
+    NotificationsModule,
   ],
   exports: [
     PostingModule,
@@ -29,6 +31,7 @@ import { CostControlModule } from './cost-control/cost-control.module';
     AuthModule,
     TenancyModule,
     CostControlModule,
+    NotificationsModule,
   ],
 })
 export class CoreModule {}
