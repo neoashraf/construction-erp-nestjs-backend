@@ -2,6 +2,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { DATA_SOURCE } from '../../../database/database.module';
+import { Paginated } from '../../../infrastructure/http/pagination';
 
 @Injectable()
 export class UsersQueryService {
@@ -26,7 +27,10 @@ export class UsersQueryService {
       ),
       this.ds.query(`SELECT COUNT(*)::int AS total FROM "user" u WHERE ${where}`, params),
     ]);
-    return { items: rows, total: countRows[0]?.total ?? 0 };
+    // Return a `Paginated` instance (not a plain object) so the ResponseEnvelopeInterceptor
+    // emits `{ data: items[], meta: { page, pageSize, total } }` per overview §6 — the shape
+    // the frontend list contract expects. A plain object falls through to `{ data: <object> }`.
+    return new Paginated(rows, filters.page, filters.pageSize, countRows[0]?.total ?? 0);
   }
 
   async findById(id: string, companyId: string) {
