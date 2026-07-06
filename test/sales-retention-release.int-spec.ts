@@ -71,11 +71,12 @@ import { RoleOrmEntity } from '../src/core/auth/infrastructure/role.orm-entity';
 import { PermissionOrmEntity } from '../src/core/auth/infrastructure/permission.orm-entity';
 import { CreateUser1700000700000 } from '../src/database/migrations/1700000700000-CreateUser';
 import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700000800000-CreateRbacAndAudit';
+import { RbacV2ResourcePermissions1700002300000 } from '../src/database/migrations/1700002300000-RbacV2ResourcePermissions';
 import { TypeOrmRoleRepository } from '../src/core/auth/infrastructure/typeorm-role.repository';
 import { TypeOrmPermissionRepository } from '../src/core/auth/infrastructure/typeorm-permission.repository';
 import { RolesGuard } from '../src/core/auth/presentation/roles.guard';
 import { JwtAuthGuard } from '../src/core/auth/presentation/jwt-auth.guard';
-import { PermissionRequirement } from '../src/core/auth/presentation/roles.decorator';
+import { PermissionRequirement } from '../src/core/auth/presentation/require-permission.decorator';
 
 jest.setTimeout(180_000);
 
@@ -155,6 +156,7 @@ describe('SAL retention release + per-IPC outstanding + project register (real P
         CreateMasterDataAccountsPartiesItems1700000600000,
         CreateUser1700000700000,
         CreateRbacAndAudit1700000800000,
+        RbacV2ResourcePermissions1700002300000,
         CreateSalesInvoice1700001200000,
         CreateReceipt1700001600000,
         CreateRetentionRelease1700001700000,
@@ -509,7 +511,7 @@ describe('SAL retention release + per-IPC outstanding + project register (real P
     const ACCOUNTS_ROLE = '00000000-0000-0000-0000-0000000e3b10';
     const PM_ROLE = '00000000-0000-0000-0000-0000000e3b11';
     const HR_ROLE = '00000000-0000-0000-0000-0000000e3b12';
-    const accountsActor: Actor = { ...actor, userId: 'acc-user', role: 'ACCOUNTS_TEAM' };
+    const accountsActor: Actor = { ...actor, userId: 'acc-user', role: 'ACCOUNTS_MANAGER' };
     const pmActor: Actor = { ...actor, userId: 'pm-user', role: 'PROJECT_MANAGER', isUnscoped: false, assignedProjectIds: [PROJECT] };
     const hrActor: Actor = { ...actor, userId: 'hr-user', role: 'HR_MANAGER', isUnscoped: false };
 
@@ -523,14 +525,14 @@ describe('SAL retention release + per-IPC outstanding + project register (real P
     }
 
     beforeAll(async () => {
-      await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'ACCOUNTS_TEAM',true,1) ON CONFLICT DO NOTHING`, [ACCOUNTS_ROLE, CO]);
+      await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'ACCOUNTS_MANAGER',true,1) ON CONFLICT DO NOTHING`, [ACCOUNTS_ROLE, CO]);
       await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'PROJECT_MANAGER',false,1) ON CONFLICT DO NOTHING`, [PM_ROLE, CO]);
       await ds.query(`INSERT INTO "role" (id, company_id, name, is_unscoped, version) VALUES ($1,$2,'HR_MANAGER',false,1) ON CONFLICT DO NOTHING`, [HR_ROLE, CO]);
 
-      // ACCOUNTS_TEAM: full SAL lifecycle incl. POST (release-retention uses SAL:POST) — per seed-roles-permissions.ts.
+      // ACCOUNTS_MANAGER: full SAL lifecycle incl. POST (release-retention uses SAL:POST) — per seed-roles-permissions.ts.
       for (const action of ['CREATE', 'READ', 'UPDATE', 'DELETE', 'POST', 'CANCEL']) {
         await ds.query(
-          `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'SAL', $3, 'ALL', 1)`,
+          `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'sales.ipcs', $3, 'ALL', 1)`,
           [ACCOUNTS_ROLE, CO, action],
         );
       }
@@ -538,11 +540,11 @@ describe('SAL retention release + per-IPC outstanding + project register (real P
       // hold SAL:POST, so release-retention (docs/srs/10-sales-ipc.md §3: Accounts Team performs retention
       // release) is unreachable for PM — asserted below.
       await ds.query(
-        `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'SAL', 'CREATE', 'ASSIGNED', 1)`,
+        `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'sales.ipcs', 'CREATE', 'ASSIGNED', 1)`,
         [PM_ROLE, CO],
       );
       await ds.query(
-        `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'SAL', 'READ', 'ASSIGNED', 1)`,
+        `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version) VALUES (gen_random_uuid(), $1, $2, 'sales.ipcs', 'READ', 'ASSIGNED', 1)`,
         [PM_ROLE, CO],
       );
       // HR_MANAGER holds zero SAL grant — the "clearly lacks it" role for 403s.
@@ -558,7 +560,7 @@ describe('SAL retention release + per-IPC outstanding + project register (real P
       ['GET /ipc/:id/retention-releases', 'READ'],
       ['GET /projects/:projectId/register', 'READ'],
     ] as const)('403: HR_MANAGER (no SAL grant) is FORBIDDEN on %s -> SAL:%s', async (_route, action) => {
-      const ctx = mockContext(hrActor, [{ module: 'SAL', action }]);
+      const ctx = mockContext(hrActor, [{ resource: 'sales.ipcs', action }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
@@ -566,23 +568,23 @@ describe('SAL retention release + per-IPC outstanding + project register (real P
       ['POST /ipc/:id/release-retention', 'POST'],
       ['GET /ipc/:id/retention-releases', 'READ'],
       ['GET /projects/:projectId/register', 'READ'],
-    ] as const)('success: ACCOUNTS_TEAM holds SAL:%s -> guard resolves true (%s)', async (_route, action) => {
-      const ctx = mockContext(accountsActor, [{ module: 'SAL', action }]);
+    ] as const)('success: ACCOUNTS_MANAGER holds SAL:%s -> guard resolves true (%s)', async (_route, action) => {
+      const ctx = mockContext(accountsActor, [{ resource: 'sales.ipcs', action }]);
       await expect(rolesGuard.canActivate(ctx)).resolves.toBe(true);
     });
 
     it('success: PROJECT_MANAGER holds SAL:READ -> guard resolves true (register + retention-releases)', async () => {
-      const ctxRegister = mockContext(pmActor, [{ module: 'SAL', action: 'READ' }]);
+      const ctxRegister = mockContext(pmActor, [{ resource: 'sales.ipcs', action: 'READ' }]);
       await expect(rolesGuard.canActivate(ctxRegister)).resolves.toBe(true);
     });
 
     it('403: PROJECT_MANAGER lacks SAL:POST (PM does not release retention)', async () => {
-      const ctx = mockContext(pmActor, [{ module: 'SAL', action: 'POST' }]);
+      const ctx = mockContext(pmActor, [{ resource: 'sales.ipcs', action: 'POST' }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('403: RolesGuard rejects when request.user is absent even if @Roles() is present (defence-in-depth)', async () => {
-      const ctx = mockContext(undefined, [{ module: 'SAL', action: 'READ' }]);
+      const ctx = mockContext(undefined, [{ resource: 'sales.ipcs', action: 'READ' }]);
       await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     });
   });

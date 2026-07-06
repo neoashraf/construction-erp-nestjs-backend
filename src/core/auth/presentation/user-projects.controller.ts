@@ -6,7 +6,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { IsArray, IsUUID } from 'class-validator';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
-import { Roles } from './roles.decorator';
+import { RequirePermission } from './require-permission.decorator';
 import { CurrentActor } from './current-actor.decorator';
 import { Actor } from '../../tenancy/tenant-context';
 import { UsersQueryService } from '../read/users.query-service';
@@ -28,7 +28,7 @@ export class UserProjectsController {
   ) {}
 
   @Get()
-  @Roles({ module: 'AUD', action: 'READ' })
+  @RequirePermission('audit.users', 'READ')
   async getProjects(@Param('id') id: string, @CurrentActor() actor: Actor) {
     const result = await this.query.findProjectsForUser(id, actor.companyId);
     if (result === null) throw new NotFoundException('User not found');
@@ -36,14 +36,14 @@ export class UserProjectsController {
   }
 
   @Put()
-  @Roles({ module: 'AUD', action: 'UPDATE' })
+  @RequirePermission('audit.users', 'UPDATE')
   async replaceProjects(@Param('id') id: string, @Body() dto: PutProjectsDto, @CurrentActor() actor: Actor) {
     await this.useCases.replaceProjects(id, actor, dto.projectIds);
     return this.query.findProjectsForUser(id, actor.companyId);
   }
 
   @Delete(':projectId')
-  @Roles({ module: 'AUD', action: 'DELETE' })
+  @RequirePermission('audit.users', 'UPDATE')
   @HttpCode(204)
   async unassignProject(@Param('id') id: string, @Param('projectId') projectId: string, @CurrentActor() actor: Actor): Promise<void> {
     await this.useCases.unassignProject(id, projectId, actor);

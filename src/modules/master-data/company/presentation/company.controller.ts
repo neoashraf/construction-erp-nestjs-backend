@@ -21,7 +21,7 @@ import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../../core/auth/presentation/roles.guard';
-import { Roles } from '../../../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../../../core/auth/presentation/require-permission.decorator';
 import { CreateCompanyUseCase } from '../../application/company/create-company.use-case';
 import { UpdateCompanyUseCase } from '../../application/company/update-company.use-case';
 import { UpdateLocalizationUseCase } from '../../application/company/update-localization.use-case';
@@ -41,13 +41,13 @@ export class CompanyController {
   ) {}
 
   @Get()
-  @Roles({ module: 'MAS', action: 'READ' })
+  @RequirePermission('master_data.company_settings', 'READ')
   list(@CurrentActor() actor: Actor): Promise<Paginated<CompanyDto>> {
     return this.query.list(actor);
   }
 
   @Get(':id')
-  @Roles({ module: 'MAS', action: 'READ' })
+  @RequirePermission('master_data.company_settings', 'READ')
   async getById(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
@@ -58,7 +58,7 @@ export class CompanyController {
   }
 
   @Post()
-  @Roles({ module: 'MAS', action: 'CREATE' })
+  @RequirePermission('master_data.company_settings', 'CREATE')
   create(@Body() body: CreateCompanyDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.createCompany.execute(
       {
@@ -76,7 +76,7 @@ export class CompanyController {
   }
 
   @Patch(':id')
-  @Roles({ module: 'MAS', action: 'UPDATE' })
+  @RequirePermission('master_data.company_settings', 'UPDATE')
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateCompanyDto,
@@ -88,7 +88,7 @@ export class CompanyController {
   }
 
   @Put(':id/localization')
-  @Roles({ module: 'MAS', action: 'UPDATE' })
+  @RequirePermission('master_data.company_settings', 'UPDATE')
   async putLocalization(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateLocalizationDto,

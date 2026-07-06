@@ -23,7 +23,7 @@ import * as dotenv from 'dotenv';
 import * as bcrypt from 'bcrypt';
 import { DataSource } from 'typeorm';
 import { buildDataSourceOptions } from '../data-source';
-import { seedRolesPermissions } from './seed-roles-permissions';
+import { seedRolesPermissions, sweepOrphanPermissions } from './seed-roles-permissions';
 import {
   STANDARD_ACCOUNT_GROUPS,
   STANDARD_ACCOUNTS,
@@ -52,8 +52,8 @@ interface UserSeed {
 }
 
 const USER_SEEDS: UserSeed[] = [
-  { role: 'ADMIN',           name: 'Admin User',           email: 'admin@ze.local' },
-  { role: 'ACCOUNTS_TEAM',   name: 'Accounts Officer',     email: 'accounts@ze.local' },
+  { role: 'ADMIN',            name: 'Admin User',          email: 'admin@ze.local' },
+  { role: 'ACCOUNTS_MANAGER', name: 'Accounts Manager',    email: 'accounts@ze.local' },
   { role: 'PROJECT_MANAGER', name: 'Project Manager',      email: 'pm@ze.local' },
   { role: 'SITE_ENGINEER',   name: 'Site Engineer',        email: 'engineer@ze.local' },
   { role: 'STORE_KEEPER',    name: 'Store Keeper',         email: 'storekeeper@ze.local' },
@@ -244,6 +244,8 @@ async function main(): Promise<void> {
   const financialYearId = await ensureFinancialYear(ds, companyId);
 
   await seedCoA(ds, companyId);
+  const swept = await sweepOrphanPermissions(ds, companyId);
+  log(swept > 0 ? `Orphan grants swept     → ${swept} (audited)` : 'Orphan grants           → none');
   await seedRolesPermissions(ds, companyId);
   log('Roles & permissions     → seeded');
 

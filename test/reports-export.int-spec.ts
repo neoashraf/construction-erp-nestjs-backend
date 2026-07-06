@@ -35,6 +35,7 @@ import { CreateMasterDataDimensions1700000500000 } from '../src/database/migrati
 import { CreateMasterDataAccountsPartiesItems1700000600000 } from '../src/database/migrations/1700000600000-CreateMasterDataAccountsPartiesItems';
 import { CreateUser1700000700000 } from '../src/database/migrations/1700000700000-CreateUser';
 import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700000800000-CreateRbacAndAudit';
+import { RbacV2ResourcePermissions1700002300000 } from '../src/database/migrations/1700002300000-RbacV2ResourcePermissions';
 import { AddExportActionToAuditLog1700000900000 } from '../src/database/migrations/1700000900000-AddExportActionToAuditLog';
 import { CreateStockMovementAndBalance1700001000000 } from '../src/database/migrations/1700001000000-CreateStockMovementAndBalance';
 import { CreateContraJournal1700001100000 } from '../src/database/migrations/1700001100000-CreateContraJournal';
@@ -52,6 +53,11 @@ import { CreatePayment1700002200000 } from '../src/database/migrations/170000220
 
 import { Actor } from '../src/core/tenancy/tenant-context';
 import { LedgerReadAdapter } from '../src/reports/infrastructure/ledger.read.adapter';
+import { InventoryReadAdapter } from '../src/reports/infrastructure/inventory.read.adapter';
+import { RequisitionReadAdapter } from '../src/reports/infrastructure/requisition.read.adapter';
+import { HrReadAdapter } from '../src/reports/infrastructure/hr.read.adapter';
+import { SalesReadAdapter } from '../src/reports/infrastructure/sales.read.adapter';
+import { CostControlReadAdapter } from '../src/reports/infrastructure/cost-control.read.adapter';
 import { ReportQueryService } from '../src/reports/application/report-query.service';
 import { ReportScopeService } from '../src/reports/application/report-scope.service';
 import { CompanyQueryService } from '../src/modules/master-data/company/read/company.query-service';
@@ -86,7 +92,7 @@ const ACC = {
 };
 
 const admin: Actor = {
-  userId: USER, companyId: CO, financialYearId: FY1, role: 'ACCOUNTS_TEAM',
+  userId: USER, companyId: CO, financialYearId: FY1, role: 'ACCOUNTS_MANAGER',
   isUnscoped: true, assignedProjectIds: [], approvalLimit: null,
 };
 
@@ -176,6 +182,7 @@ describe('RPT export end-to-end (real Postgres ledger → ReportsController → 
         InitialBaseline1700000000000, CreateCompanyFinancialYear1700000100000, CreateNumberingSeries1700000200000,
         CreateAccountingPeriod1700000300000, CreateLedger1700000400000, CreateMasterDataDimensions1700000500000,
         CreateMasterDataAccountsPartiesItems1700000600000, CreateUser1700000700000, CreateRbacAndAudit1700000800000,
+        RbacV2ResourcePermissions1700002300000,
         AddExportActionToAuditLog1700000900000, CreateStockMovementAndBalance1700001000000, CreateContraJournal1700001100000,
         CreateSalesInvoice1700001200000, CreateHrEmployeeAttendance1700001300000, CreateRequisition1700001400000,
         CreateStockJournal1700001500000, CreateReceipt1700001600000, CreateRetentionRelease1700001700000,
@@ -237,7 +244,15 @@ describe('RPT export end-to-end (real Postgres ledger → ReportsController → 
       { account: ACC.revenue, project: P, credit: '4000' },
     ]);
 
-    const query = new ReportQueryService(new LedgerReadAdapter(ds), new ReportScopeService());
+    const query = new ReportQueryService(
+      new LedgerReadAdapter(ds),
+      new InventoryReadAdapter(ds),
+      new RequisitionReadAdapter(ds),
+      new HrReadAdapter(ds),
+      new ReportScopeService(),
+      new SalesReadAdapter(ds),
+      new CostControlReadAdapter(ds),
+    );
     const exporters = [new JsonExporter(), new ExcelExporter(), new PdfExporter()];
     controller = new ReportsController(query, new CompanyQueryService(ds), exporters);
   });

@@ -20,7 +20,7 @@ import { Actor } from '../../tenancy/tenant-context';
 import { CurrentActor } from '../../auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../auth/presentation/roles.guard';
-import { Roles } from '../../auth/presentation/roles.decorator';
+import { RequirePermission } from '../../auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import {
   LedgerEntryDetailDto,
@@ -42,7 +42,7 @@ export class LedgerController {
   constructor(private readonly query: LedgerQueryService) {}
 
   @Get('entries')
-  @Roles({ module: 'LED', action: 'READ' })
+  @RequirePermission('ledger.journal_entries', 'READ')
   entries(
     @Query() q: EntriesQueryDto,
     @CurrentActor() actor: Actor,
@@ -51,7 +51,7 @@ export class LedgerController {
   }
 
   @Get('entries/:id')
-  @Roles({ module: 'LED', action: 'READ' })
+  @RequirePermission('ledger.journal_entries', 'READ')
   async entryById(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
@@ -61,14 +61,18 @@ export class LedgerController {
     return dto;
   }
 
+  // The account-ledger read (FR-LED-031): its grant key is `ledger.account_ledger` — the catalogue
+  // resource the Account Ledger screen is seeded/granted under (e.g. PROJECT_MANAGER holds ONLY this
+  // LED read). Annotating it `ledger.journal_entries` (as originally shipped) left the catalogue
+  // resource unenforced and PM's seeded grant dead — caught by the catalogue↔guard drift test.
   @Get('lines')
-  @Roles({ module: 'LED', action: 'READ' })
+  @RequirePermission('ledger.account_ledger', 'READ')
   lines(@Query() q: LinesQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<LedgerLineDto>> {
     return this.query.lines(q, actor);
   }
 
   @Get('trial-balance')
-  @Roles({ module: 'LED', action: 'READ' })
+  @RequirePermission('ledger.trial_balance', 'READ')
   trialBalance(
     @Query() q: TrialBalanceQueryDto,
     @CurrentActor() actor: Actor,

@@ -38,7 +38,7 @@ const actor: Actor = {
   userId: 'u-accounts',
   companyId: CO,
   financialYearId: FY,
-  role: 'ACCOUNTS_TEAM',
+  role: 'ACCOUNTS_MANAGER',
   isUnscoped: true,
   assignedProjectIds: [],
   approvalLimit: null,

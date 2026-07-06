@@ -40,7 +40,7 @@ import { Actor } from '../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
-import { Roles } from '../../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../../core/auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { CreateJournalUseCase } from '../application/create-journal.usecase';
 import { DeleteJournalUseCase, UpdateJournalUseCase } from '../application/update-journal.usecase';
@@ -108,32 +108,32 @@ export class JournalController {
   ) {}
 
   @Get()
-  @Roles({ module: 'GEN', action: 'READ' })
+  @RequirePermission('contra_journal.vouchers', 'READ')
   list(@Query() q: JournalQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<JournalVoucherDto>> {
     return this.query.listJournal(q, actor);
   }
 
   @Post('opening')
-  @Roles({ module: 'GEN', action: 'POST' })
+  @RequirePermission('contra_journal.opening', 'POST')
   async opening(@Body() body: OpeningDto, @CurrentActor() actor: Actor): Promise<JournalVoucherDto> {
     const { id } = await this.openingUc.execute(body, actor);
     return this.require(id, actor);
   }
 
   @Get(':id')
-  @Roles({ module: 'GEN', action: 'READ' })
+  @RequirePermission('contra_journal.vouchers', 'READ')
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<JournalVoucherDto> {
     return this.require(id, actor);
   }
 
   @Post()
-  @Roles({ module: 'GEN', action: 'CREATE' })
+  @RequirePermission('contra_journal.vouchers', 'CREATE')
   create_(@Body() body: CreateJournalDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.create.execute(body, actor);
   }
 
   @Patch(':id')
-  @Roles({ module: 'GEN', action: 'UPDATE' })
+  @RequirePermission('contra_journal.vouchers', 'UPDATE')
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateJournalDto,
@@ -150,14 +150,14 @@ export class JournalController {
 
   @Delete(':id')
   @HttpCode(204)
-  @Roles({ module: 'GEN', action: 'DELETE' })
+  @RequirePermission('contra_journal.vouchers', 'DELETE')
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<void> {
     return this.del.execute(id, actor);
   }
 
   @Post(':id/post')
   @HttpCode(200)
-  @Roles({ module: 'GEN', action: 'POST' })
+  @RequirePermission('contra_journal.vouchers', 'POST')
   async post(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<JournalVoucherDto> {
     await this.postUc.execute(id, actor);
     return this.require(id, actor);
@@ -165,7 +165,7 @@ export class JournalController {
 
   @Post(':id/reverse')
   @HttpCode(200)
-  @Roles({ module: 'GEN', action: 'CANCEL' })
+  @RequirePermission('contra_journal.vouchers', 'CANCEL')
   async reverse(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ReverseDto,

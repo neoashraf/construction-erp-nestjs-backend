@@ -11,7 +11,6 @@ import { AuthService } from '../application/auth.service';
 import { Actor } from '../../tenancy/tenant-context';
 import { RoleRepository, ROLE_REPOSITORY } from '../domain/ports/role.repository.port';
 import { UserProjectAssignmentRepository, USER_PROJECT_ASSIGNMENT_REPOSITORY } from '../domain/ports/user-project-assignment.repository.port';
-import { assertRoleName } from '../domain/role';
 
 interface JwtPayload {
   sub: string;
@@ -43,7 +42,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     }
 
     const companyId = user.props.companyId;
-    const roleName = assertRoleName(user.props.role);
+    const roleName = user.props.role;
 
     // Load RBAC context for Actor enrichment
     const [role, assignments] = await Promise.all([

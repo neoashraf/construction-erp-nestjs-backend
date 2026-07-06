@@ -21,7 +21,7 @@ import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../../core/auth/presentation/roles.guard';
-import { Roles } from '../../../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../../../core/auth/presentation/require-permission.decorator';
 import { CreateFinancialYearUseCase } from '../../application/financial-year/create-financial-year.use-case';
 import { UpdateFinancialYearUseCase } from '../../application/financial-year/update-financial-year.use-case';
 import { SetActiveFinancialYearUseCase } from '../../application/financial-year/set-active-financial-year.use-case';
@@ -45,7 +45,7 @@ export class FinancialYearController {
   ) {}
 
   @Get()
-  @Roles({ module: 'MAS', action: 'READ' })
+  @RequirePermission('master_data.financial_years', 'READ')
   list(
     @Query() q: ListFinancialYearsQueryDto,
     @CurrentActor() actor: Actor,
@@ -55,7 +55,7 @@ export class FinancialYearController {
   }
 
   @Post()
-  @Roles({ module: 'MAS', action: 'CREATE' })
+  @RequirePermission('master_data.financial_years', 'CREATE')
   create(
     @Body() body: CreateFinancialYearDto,
     @CurrentActor() actor: Actor,
@@ -64,7 +64,7 @@ export class FinancialYearController {
   }
 
   @Patch(':id')
-  @Roles({ module: 'MAS', action: 'UPDATE' })
+  @RequirePermission('master_data.financial_years', 'UPDATE')
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateFinancialYearDto,
@@ -77,7 +77,7 @@ export class FinancialYearController {
 
   @Post(':id/set-active')
   @HttpCode(200)
-  @Roles({ module: 'MAS', action: 'UPDATE' })
+  @RequirePermission('master_data.financial_years', 'UPDATE')
   async setActive(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,

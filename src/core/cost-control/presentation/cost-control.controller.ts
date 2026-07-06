@@ -15,7 +15,7 @@ import { Actor } from '../../tenancy/tenant-context';
 import { CurrentActor } from '../../auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../auth/presentation/roles.guard';
-import { Roles } from '../../auth/presentation/roles.decorator';
+import { RequirePermission } from '../../auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import {
   BudgetVsActualRow,
@@ -56,7 +56,7 @@ export class CostControlController {
   ) {}
 
   @Get('budget-vs-actual')
-  @Roles({ module: 'CC', action: 'READ' })
+  @RequirePermission('cost_control.budget_vs_actual', 'READ')
   budgetVsActual(
     @Query() q: BudgetVsActualQueryDto,
     @CurrentActor() actor: Actor,
@@ -66,7 +66,7 @@ export class CostControlController {
   }
 
   @Get('profitability')
-  @Roles({ module: 'CC', action: 'READ' })
+  @RequirePermission('cost_control.profitability', 'READ')
   profitability(
     @Query() q: ProfitabilityQueryDto,
     @CurrentActor() actor: Actor,
@@ -76,7 +76,7 @@ export class CostControlController {
   }
 
   @Get('alerts')
-  @Roles({ module: 'CC', action: 'READ' })
+  @RequirePermission('cost_control.alerts', 'READ')
   alerts(
     @Query() q: AlertsQueryDto,
     @CurrentActor() actor: Actor,
@@ -86,7 +86,7 @@ export class CostControlController {
   }
 
   @Post('budget-check')
-  @Roles({ module: 'CC', action: 'READ' })
+  @RequirePermission('cost_control.budget_vs_actual', 'READ')
   async budgetCheckEndpoint(
     @Body() body: BudgetCheckBodyDto,
     @CurrentActor() actor: Actor,

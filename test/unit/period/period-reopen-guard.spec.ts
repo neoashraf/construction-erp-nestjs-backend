@@ -116,7 +116,7 @@ describe('RolesGuard on POST /api/periods/:id/reopen (per-fy-lock-error)', () =>
   beforeEach(() => {
     getAllAndOverride = jest
       .spyOn(reflector, 'getAllAndOverride')
-      .mockReturnValue([{ module: 'PER', action: 'UPDATE' }]);
+      .mockReturnValue([{ resource: 'periods', action: 'UPDATE' }]);
   });
 
   afterEach(() => getAllAndOverride.mockRestore());
@@ -124,18 +124,22 @@ describe('RolesGuard on POST /api/periods/:id/reopen (per-fy-lock-error)', () =>
   it('rejects a caller whose role lacks {PER, UPDATE} with ForbiddenException (FORBIDDEN) — no state touched', async () => {
     const roles: RoleRepository = {
       findById: async () => null,
-      findByName: async (companyId, name) => Role.rehydrate('role-pm', { companyId, name, approvalLimit: null, isUnscoped: false, version: 1 }),
-      findAll: async () => [],
-      save: async () => {},
-    };
-    // PROJECT_MANAGER role has no PER permission (mirrors the real seed).
-    const permissions: PermissionRepository = {
-      findById: async () => null,
-      findByRoleId: async () => [],
-      findByRoleIdModuleAction: async () => null,
+      findByName: async (companyId, name) => Role.rehydrate('role-pm', { companyId, name, isSystem: true, approvalLimit: null, isUnscoped: false, version: 1 }),
       findAll: async () => [],
       save: async () => {},
       delete: async () => {},
+      countUsers: async () => 0,
+      renameUserReferences: async () => {},
+    };
+    // PROJECT_MANAGER role has no `periods` permission (mirrors the real seed).
+    const permissions: PermissionRepository = {
+      findById: async () => null,
+      findByRoleId: async () => [],
+      findByRoleIdResourceAction: async () => null,
+      findAll: async () => [],
+      save: async () => {},
+      delete: async () => {},
+      deleteByRoleId: async () => {},
     };
     const guard = new RolesGuard(reflector, roles, permissions);
     const ctx = mockContext('PROJECT_MANAGER');
@@ -147,14 +151,17 @@ describe('RolesGuard on POST /api/periods/:id/reopen (per-fy-lock-error)', () =>
   it('admits a caller whose role holds {PER, UPDATE} (e.g. ADMIN) through to the use case', async () => {
     const roles: RoleRepository = {
       findById: async () => null,
-      findByName: async (companyId, name) => Role.rehydrate('role-admin', { companyId, name, approvalLimit: null, isUnscoped: true, version: 1 }),
+      findByName: async (companyId, name) => Role.rehydrate('role-admin', { companyId, name, isSystem: true, approvalLimit: null, isUnscoped: true, version: 1 }),
       findAll: async () => [],
       save: async () => {},
+      delete: async () => {},
+      countUsers: async () => 0,
+      renameUserReferences: async () => {},
     };
     const grantedPermission = Permission.create('perm-1', {
       roleId: 'role-admin',
       companyId: 'co-1',
-      module: 'PER',
+      resource: 'periods',
       action: 'UPDATE',
       projectScope: 'ALL',
       valueLimit: null,
@@ -162,10 +169,11 @@ describe('RolesGuard on POST /api/periods/:id/reopen (per-fy-lock-error)', () =>
     const permissions: PermissionRepository = {
       findById: async () => null,
       findByRoleId: async () => [grantedPermission],
-      findByRoleIdModuleAction: async () => grantedPermission,
+      findByRoleIdResourceAction: async () => grantedPermission,
       findAll: async () => [],
       save: async () => {},
       delete: async () => {},
+      deleteByRoleId: async () => {},
     };
     const guard = new RolesGuard(reflector, roles, permissions);
     const ctx = mockContext('ADMIN');

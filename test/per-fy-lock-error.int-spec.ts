@@ -32,6 +32,7 @@ import { CreateMasterDataDimensions1700000500000 } from '../src/database/migrati
 import { CreateMasterDataAccountsPartiesItems1700000600000 } from '../src/database/migrations/1700000600000-CreateMasterDataAccountsPartiesItems';
 import { CreateUser1700000700000 } from '../src/database/migrations/1700000700000-CreateUser';
 import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700000800000-CreateRbacAndAudit';
+import { RbacV2ResourcePermissions1700002300000 } from '../src/database/migrations/1700002300000-RbacV2ResourcePermissions';
 import { TypeOrmAccountingPeriodRepository } from '../src/core/period/infrastructure/typeorm-accounting-period.repository';
 import { GeneratePeriodsUseCase } from '../src/core/period/application/generate-periods.use-case';
 import { ClosePeriodUseCase } from '../src/core/period/application/close-period.use-case';
@@ -108,6 +109,7 @@ describe('per-fy-lock-error — full reopen evaluation order (real Postgres + re
         CreateMasterDataAccountsPartiesItems1700000600000,
         CreateUser1700000700000,
         CreateRbacAndAudit1700000800000,
+        RbacV2ResourcePermissions1700002300000,
       ],
     });
     await dataSource.initialize();
@@ -135,14 +137,14 @@ describe('per-fy-lock-error — full reopen evaluation order (real Postgres + re
       [pmRoleId, CO],
     );
     await dataSource.query(
-      `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version)
-       VALUES (gen_random_uuid(), $1, $2, 'PER', 'UPDATE', 'ALL', 1)`,
+      `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version)
+       VALUES (gen_random_uuid(), $1, $2, 'periods', 'UPDATE', 'ALL', 1)`,
       [adminRoleId, CO],
     );
     // PM gets an unrelated permission only — proves the guard checks the SPECIFIC (module,action), not "any permission".
     await dataSource.query(
-      `INSERT INTO "permission" (id, role_id, company_id, module, action, project_scope, version)
-       VALUES (gen_random_uuid(), $1, $2, 'MAS', 'READ', 'ASSIGNED', 1)`,
+      `INSERT INTO "permission" (id, role_id, company_id, resource, action, project_scope, version)
+       VALUES (gen_random_uuid(), $1, $2, 'master_data.projects', 'READ', 'ASSIGNED', 1)`,
       [pmRoleId, CO],
     );
 
@@ -158,7 +160,7 @@ describe('per-fy-lock-error — full reopen evaluation order (real Postgres + re
     const roleRepo = new TypeOrmRoleRepository(dataSource);
     const permRepo = new TypeOrmPermissionRepository(dataSource);
     rolesGuard = new RolesGuard(new Reflector(), roleRepo, permRepo);
-    jest.spyOn(Reflector.prototype, 'getAllAndOverride').mockReturnValue([{ module: 'PER', action: 'UPDATE' }]);
+    jest.spyOn(Reflector.prototype, 'getAllAndOverride').mockReturnValue([{ resource: 'periods', action: 'UPDATE' }]);
   });
 
   afterAll(async () => {

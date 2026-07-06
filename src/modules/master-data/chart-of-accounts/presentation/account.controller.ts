@@ -10,7 +10,7 @@ import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../../core/auth/presentation/roles.guard';
-import { Roles } from '../../../../core/auth/presentation/roles.decorator';
+import { RequirePermission } from '../../../../core/auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../../infrastructure/http/pagination';
 import { MasterListQueryDto, VersionBodyDto, parseActive } from '../../shared/dto';
 import { ACCOUNT_TYPES } from '../domain/account-type';
@@ -53,7 +53,7 @@ export class AccountController {
   ) {}
 
   @Get()
-  @Roles({ module: 'MAS', action: 'READ' })
+  @RequirePermission('master_data.chart_of_accounts', 'READ')
   list(@Query() q: AccountQueryDto, @CurrentActor() actor: Actor): Promise<Paginated<AccountDto>> {
     return this.query.list(
       { page: q.page, pageSize: q.pageSize, type: q.type, accountGroupId: q.accountGroupId, isActive: parseActive(q.isActive), q: q.q },
@@ -62,19 +62,19 @@ export class AccountController {
   }
 
   @Get(':id')
-  @Roles({ module: 'MAS', action: 'READ' })
+  @RequirePermission('master_data.chart_of_accounts', 'READ')
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentActor() actor: Actor): Promise<AccountDto> {
     return this.require(id, actor);
   }
 
   @Post()
-  @Roles({ module: 'MAS', action: 'CREATE' })
+  @RequirePermission('master_data.chart_of_accounts', 'CREATE')
   create_(@Body() body: CreateAccountDto, @CurrentActor() actor: Actor): Promise<{ id: string }> {
     return this.create.execute(body, actor);
   }
 
   @Patch(':id')
-  @Roles({ module: 'MAS', action: 'UPDATE' })
+  @RequirePermission('master_data.chart_of_accounts', 'UPDATE')
   async patch(@Param('id', ParseUUIDPipe) id: string, @Body() body: UpdateAccountDto, @CurrentActor() actor: Actor): Promise<AccountDto> {
     await this.update.execute(
       id,
@@ -87,7 +87,7 @@ export class AccountController {
 
   @Post(':id/deactivate')
   @HttpCode(200)
-  @Roles({ module: 'MAS', action: 'UPDATE' })
+  @RequirePermission('master_data.chart_of_accounts', 'UPDATE')
   async deactivate_(@Param('id', ParseUUIDPipe) id: string, @Body() body: VersionBodyDto, @CurrentActor() actor: Actor): Promise<AccountDto> {
     await this.deactivate.execute(id, body.version, actor);
     return this.require(id, actor);
@@ -95,7 +95,7 @@ export class AccountController {
 
   @Post(':id/reactivate')
   @HttpCode(200)
-  @Roles({ module: 'MAS', action: 'UPDATE' })
+  @RequirePermission('master_data.chart_of_accounts', 'UPDATE')
   async reactivate_(@Param('id', ParseUUIDPipe) id: string, @Body() body: VersionBodyDto, @CurrentActor() actor: Actor): Promise<AccountDto> {
     await this.reactivate.execute(id, body.version, actor);
     return this.require(id, actor);

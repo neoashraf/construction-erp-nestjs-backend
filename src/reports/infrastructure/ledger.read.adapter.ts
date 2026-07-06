@@ -21,6 +21,7 @@ import { resolvePaging } from '../../infrastructure/http/pagination';
 import {
   AccountLedgerRow,
   BalanceSheetRow,
+  LabourCostRow,
   ProjectPnlRow,
   TrialBalanceRow,
 } from '../domain/report-result.model';
@@ -42,6 +43,9 @@ const PNL_GROUP_COLS: Record<string, string> = {
 
 /** Cash & bank GL account codes (seed CoA: 1100 Cash, 1110 Bank) — cash/bank book population. */
 const CASH_BANK_CODES = "'1100','1110'";
+
+/** Labour EXPENSE account codes (seed CoA: 5110 Labour Expense, 6100 Salary Expense) — labour cost. */
+const LABOUR_CODES = "'5110','6100'";
 
 interface Cond {
   conds: string[];
@@ -253,6 +257,40 @@ export class LedgerReadAdapter implements LedgerReadPort {
         profit: r.profit as string,
       })),
       totals: { revenue: tot.revenue, cost: tot.cost, profit: tot.profit },
+    };
+  }
+
+  // ── labour cost per cost centre (FR-RPT-019) ─────────────────────────────────────────────────────
+  async labourCost(
+    scope: LedgerScope,
+  ): Promise<{ rows: LabourCostRow[]; totals: { labourCost: string } }> {
+    const { conds, params } = this.cond(scope, { balanceMode: false });
+    conds.push(
+      `l.account_id IN (SELECT id FROM account WHERE company_id = $1 AND code IN (${LABOUR_CODES}))`,
+    );
+    const where = conds.join(' AND ');
+    const from = 'FROM journal_line l JOIN journal_entry e ON e.id = l.journal_entry_id';
+    const COST = 'SUM(l.debit - l.credit)';
+
+    const rows = await this.manager().query(
+      `SELECT l.project_id, l.cost_centre_id,
+              ${COST}::numeric(18,4)::text AS labour_cost
+         ${from} WHERE ${where}
+        GROUP BY l.project_id, l.cost_centre_id
+        ORDER BY l.project_id, l.cost_centre_id`,
+      params,
+    );
+    const [tot] = await this.manager().query(
+      `SELECT COALESCE(${COST},0)::numeric(18,4)::text AS labour_cost ${from} WHERE ${where}`,
+      params,
+    );
+    return {
+      rows: rows.map((r: Record<string, string | null>) => ({
+        projectId: (r.project_id as string) ?? null,
+        costCentreId: (r.cost_centre_id as string) ?? null,
+        labourCost: r.labour_cost as string,
+      })),
+      totals: { labourCost: tot.labour_cost },
     };
   }
 

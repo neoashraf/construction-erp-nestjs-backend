@@ -24,7 +24,7 @@ import { Actor } from '../../tenancy/tenant-context';
 import { CurrentActor } from '../../auth/presentation/current-actor.decorator';
 import { JwtAuthGuard } from '../../auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../auth/presentation/roles.guard';
-import { Roles } from '../../auth/presentation/roles.decorator';
+import { RequirePermission } from '../../auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
 import { CreateNumberingSeriesUseCase } from '../application/create-numbering-series.use-case';
 import { UpdateNumberingSeriesUseCase } from '../application/update-numbering-series.use-case';
@@ -51,7 +51,7 @@ export class NumberingAdminController {
   ) {}
 
   @Get()
-  @Roles({ module: 'NUM', action: 'READ' })
+  @RequirePermission('numbering', 'READ')
   list(
     @Query() q: ListNumberingSeriesQueryDto,
     @CurrentActor() actor: Actor,
@@ -60,7 +60,7 @@ export class NumberingAdminController {
   }
 
   @Post()
-  @Roles({ module: 'NUM', action: 'CREATE' })
+  @RequirePermission('numbering', 'CREATE')
   create(
     @Body() body: CreateNumberingSeriesDto,
     @CurrentActor() actor: Actor,
@@ -69,7 +69,7 @@ export class NumberingAdminController {
   }
 
   @Get(':id')
-  @Roles({ module: 'NUM', action: 'READ' })
+  @RequirePermission('numbering', 'READ')
   async getById(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
@@ -80,7 +80,7 @@ export class NumberingAdminController {
   }
 
   @Patch(':id')
-  @Roles({ module: 'NUM', action: 'UPDATE' })
+  @RequirePermission('numbering', 'UPDATE')
   async patch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateNumberingSeriesDto,
@@ -93,7 +93,7 @@ export class NumberingAdminController {
   }
 
   @Get(':id/next-preview')
-  @Roles({ module: 'NUM', action: 'READ' })
+  @RequirePermission('numbering', 'READ')
   nextPreview(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,
@@ -102,7 +102,7 @@ export class NumberingAdminController {
   }
 
   @Get(':id/gap-audit')
-  @Roles({ module: 'NUM', action: 'READ' })
+  @RequirePermission('numbering', 'READ')
   gapAudit(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,

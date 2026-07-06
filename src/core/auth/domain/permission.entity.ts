@@ -1,9 +1,16 @@
 /**
- * Permission domain entity (AUD RBAC — FR-AUD-012/013/016/019). PURE TypeScript.
- * A Permission is a (role, module, action) grant with project_scope + optional value_limit.
+ * Permission domain entity (AUD RBAC v2 — FR-AUD-012/013/016/019/035). PURE TypeScript.
+ * A Permission is a (role, RESOURCE, action) grant with project_scope + optional value_limit.
+ * `resource` is a Resource-Catalogue code (screen/feature — see resource-catalog.ts), validated
+ * app-side against the catalogue, not a DB enum — the catalogue grows with screens migration-free.
  */
 import Decimal from 'decimal.js';
 
+/**
+ * Module codes — the nav/module grouping used by the Resource Catalogue and by the RPT report
+ * catalogue's `requiredPermission` gating (FR-RPT-008). Permissions themselves are RESOURCE-level
+ * (see resource-catalog.ts); a `Permission` no longer carries a `module` column.
+ */
 export const MODULE_CODES = [
   'AUD', 'NUM', 'PER', 'LED', 'MAS',
   'SAL', 'PUR', 'REQ', 'INV', 'REC',
@@ -22,7 +29,7 @@ export type ProjectScope = 'ALL' | 'ASSIGNED';
 export interface PermissionProps {
   roleId: string;
   companyId: string;
-  module: ModuleCode;
+  resource: string;
   action: ActionCode;
   projectScope: ProjectScope;
   valueLimit: Decimal | null;

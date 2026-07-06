@@ -20,10 +20,42 @@ export const MONEY_KEYS = new Set<string>([
   'runningBalance',
   'openingBalance',
   'amount',
+  // Inventory / HR / requisition report money & rate columns (RPT #31).
+  'totalValue',
+  'weightedAverageRate',
+  'value',
+  'gross',
+  'allowances',
+  'tds',
+  'pf',
+  'advanceRecovery',
+  'other',
+  'paidAmount',
+  // Project report money columns (RPT #32).
+  'certifiedAmount',
+  'billedAmount',
+  'receivedAmount',
+  'outstandingAmount',
+  'retentionHeld',
+  'budgetedAmount',
+  'actualCost',
+  'variance',
+  'labourCost',
 ]);
 
 /** Row keys that carry an ISO date/timestamp — rendered `DD/MM/YYYY`. */
-export const DATE_KEYS = new Set<string>(['voucherDate', 'date', 'asOf', 'dateFrom', 'dateTo']);
+export const DATE_KEYS = new Set<string>([
+  'voucherDate',
+  'date',
+  'asOf',
+  'dateFrom',
+  'dateTo',
+  'asOfDate',
+  'paymentDate',
+  // Project report date columns (RPT #32).
+  'ipcDate',
+  'dueDate',
+]);
 
 export const isMoneyKey = (key: string): boolean => MONEY_KEYS.has(key);
 export const isDateKey = (key: string): boolean => DATE_KEYS.has(key);

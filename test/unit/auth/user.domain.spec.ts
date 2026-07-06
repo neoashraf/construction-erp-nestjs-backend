@@ -10,6 +10,8 @@ function baseUser(overrides?: Partial<{ isActive: boolean; failedLoginAttempts: 
     passwordHash: 'h', name: 'N', role: 'ADMIN',
     isActive: overrides?.isActive ?? true,
     lastLoginAt: null, phone: null,
+    avatarUrl: null, avatarPublicId: null,
+    mustChangePassword: false,
     failedLoginAttempts: overrides?.failedLoginAttempts ?? 0,
     lockedUntil: overrides?.lockedUntil ?? null,
     version: 1,
@@ -81,5 +83,37 @@ describe('User (domain)', () => {
     expect(u.props.isActive).toBe(false);
     u.activate();
     expect(u.props.isActive).toBe(true);
+  });
+
+  // ── Profile self-edit + avatar (FR-AUD-032/034/038/041) ──
+  it('editProfile trims the name and updates phone; returns before/after', () => {
+    const u = baseUser();
+    const { before, after } = u.editProfile({ name: '  রফিক আহমেদ  ', phone: '+8801712345678' });
+    expect(u.props.name).toBe('রফিক আহমেদ'); // Bangla preserved, trimmed
+    expect(u.props.phone).toBe('+8801712345678');
+    expect(before).toEqual({ name: 'N', phone: null });
+    expect(after).toEqual({ name: 'রফিক আহমেদ', phone: '+8801712345678' });
+  });
+
+  it('editProfile with only phone leaves name unchanged; null clears phone', () => {
+    const u = baseUser();
+    u.editProfile({ phone: '+8801711111111' });
+    expect(u.props.name).toBe('N');
+    u.editProfile({ phone: null });
+    expect(u.props.phone).toBeNull();
+  });
+
+  it('editProfile rejects an empty/whitespace name', () => {
+    expect(() => baseUser().editProfile({ name: '   ' })).toThrow();
+  });
+
+  it('setAvatar stores url + public_id; clearAvatar nulls both', () => {
+    const u = baseUser();
+    u.setAvatar('https://cdn/x.webp', 'companies/co/avatars/user_u-1');
+    expect(u.props.avatarUrl).toBe('https://cdn/x.webp');
+    expect(u.props.avatarPublicId).toBe('companies/co/avatars/user_u-1');
+    u.clearAvatar();
+    expect(u.props.avatarUrl).toBeNull();
+    expect(u.props.avatarPublicId).toBeNull();
   });
 });

@@ -6,7 +6,6 @@ import { getManager } from '../../../infrastructure/unit-of-work/transaction-con
 import { User } from '../domain/user';
 import { UserRepository } from '../domain/ports/user.repository.port';
 import { UserOrmEntity } from './user.orm-entity';
-import { assertRoleName } from '../domain/role';
 
 @Injectable()
 export class TypeOrmUserRepository implements UserRepository {
@@ -40,8 +39,11 @@ export class TypeOrmUserRepository implements UserRepository {
         name: p.name,
         role: p.role,
         isActive: p.isActive,
+        mustChangePassword: p.mustChangePassword,
         lastLoginAt: p.lastLoginAt,
         phone: p.phone,
+        avatarUrl: p.avatarUrl,
+        avatarPublicId: p.avatarPublicId,
         failedLoginAttempts: p.failedLoginAttempts,
         lockedUntil: p.lockedUntil,
       });
@@ -55,8 +57,11 @@ export class TypeOrmUserRepository implements UserRepository {
         name: p.name,
         role: p.role,
         isActive: p.isActive,
+        mustChangePassword: p.mustChangePassword,
         lastLoginAt: p.lastLoginAt,
         phone: p.phone,
+        avatarUrl: p.avatarUrl,
+        avatarPublicId: p.avatarPublicId,
         failedLoginAttempts: p.failedLoginAttempts,
         lockedUntil: p.lockedUntil,
       });
@@ -71,10 +76,13 @@ function toDomain(r: UserOrmEntity): User {
     email: r.email,
     passwordHash: r.passwordHash,
     name: r.name,
-    role: assertRoleName(r.role),
+    role: r.role,
     isActive: r.isActive,
+    mustChangePassword: r.mustChangePassword,
     lastLoginAt: r.lastLoginAt,
     phone: r.phone,
+    avatarUrl: r.avatarUrl,
+    avatarPublicId: r.avatarPublicId,
     failedLoginAttempts: r.failedLoginAttempts,
     lockedUntil: r.lockedUntil,
     version: r.version,

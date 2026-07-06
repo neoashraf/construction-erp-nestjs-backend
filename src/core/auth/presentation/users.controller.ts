@@ -6,7 +6,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { IsBoolean, IsEmail, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
-import { Roles } from './roles.decorator';
+import { RequirePermission } from './require-permission.decorator';
 import { CurrentActor } from './current-actor.decorator';
 import { Actor } from '../../tenancy/tenant-context';
 import { UsersQueryService } from '../read/users.query-service';
@@ -44,7 +44,7 @@ export class UsersController {
   ) {}
 
   @Get()
-  @Roles({ module: 'AUD', action: 'READ' })
+  @RequirePermission('audit.users', 'READ')
   findAll(
     @CurrentActor() actor: Actor,
     @Query('role') role?: string,
@@ -63,14 +63,14 @@ export class UsersController {
   }
 
   @Post()
-  @Roles({ module: 'AUD', action: 'CREATE' })
+  @RequirePermission('audit.users', 'CREATE')
   @HttpCode(201)
   create(@Body() dto: CreateUserDto, @CurrentActor() actor: Actor) {
     return this.useCases.createUser(actor, dto);
   }
 
   @Get(':id')
-  @Roles({ module: 'AUD', action: 'READ' })
+  @RequirePermission('audit.users', 'READ')
   async findById(@Param('id') id: string, @CurrentActor() actor: Actor) {
     const user = await this.query.findById(id, actor.companyId);
     if (!user) throw new NotFoundException('User not found');
@@ -78,27 +78,27 @@ export class UsersController {
   }
 
   @Patch(':id')
-  @Roles({ module: 'AUD', action: 'UPDATE' })
+  @RequirePermission('audit.users', 'UPDATE')
   patch(@Param('id') id: string, @Body() dto: PatchUserDto, @CurrentActor() actor: Actor) {
     return this.useCases.patchUser(id, actor, dto);
   }
 
   @Post(':id/activate')
-  @Roles({ module: 'AUD', action: 'UPDATE' })
+  @RequirePermission('audit.users', 'UPDATE')
   @HttpCode(200)
   activate(@Param('id') id: string, @CurrentActor() actor: Actor) {
     return this.useCases.activateUser(id, actor);
   }
 
   @Post(':id/deactivate')
-  @Roles({ module: 'AUD', action: 'UPDATE' })
+  @RequirePermission('audit.users', 'UPDATE')
   @HttpCode(200)
   deactivate(@Param('id') id: string, @CurrentActor() actor: Actor) {
     return this.useCases.deactivateUser(id, actor);
   }
 
   @Post(':id/reset-password')
-  @Roles({ module: 'AUD', action: 'UPDATE' })
+  @RequirePermission('audit.users', 'UPDATE')
   @HttpCode(204)
   async resetPassword(@Param('id') id: string, @Body() dto: ResetPasswordDto, @CurrentActor() actor: Actor): Promise<void> {
     await this.useCases.resetPassword(id, actor, dto);

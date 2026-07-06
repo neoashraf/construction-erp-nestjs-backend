@@ -27,6 +27,12 @@ export interface AppConfig {
   logLevel: string;
 }
 
+export interface CloudinaryConfig {
+  cloudName: string;
+  apiKey: string;
+  apiSecret: string;
+}
+
 export const appConfig = registerAs(
   'app',
   (): AppConfig => ({
@@ -55,6 +61,15 @@ export const jwtConfig = registerAs(
     secret: process.env.JWT_SECRET as string,
     accessTtl: process.env.JWT_ACCESS_TTL ?? '900s',
     refreshTtl: process.env.JWT_REFRESH_TTL ?? '7d',
+  }),
+);
+
+export const cloudinaryConfig = registerAs(
+  'cloudinary',
+  (): CloudinaryConfig => ({
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME ?? '',
+    apiKey: process.env.CLOUDINARY_API_KEY ?? '',
+    apiSecret: process.env.CLOUDINARY_API_SECRET ?? '',
   }),
 );
 
