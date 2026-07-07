@@ -35,9 +35,15 @@ RUN npm ci --omit=dev && npm cache clean --force
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
 
-# Copy any required runtime files
-COPY --from=builder /app/.env* ./
+# Migration entrypoint — runs `typeorm migration:run` against dist/database/data-source.js
+# before starting the server. Real secrets are injected at runtime via docker-compose env_file,
+# never baked into the image.
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
 
 EXPOSE 3000
 
-CMD ["node", "dist/main.js"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -q -O /dev/null http://localhost:3000/health || exit 1
+
+ENTRYPOINT ["./docker-entrypoint.sh"]

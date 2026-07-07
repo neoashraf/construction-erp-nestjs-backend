@@ -1,0 +1,49 @@
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches: [dev]
+
+jobs:
+  test:
+    name: Typecheck, lint & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+
+  deploy:
+    name: Deploy over SSH
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Hostinger VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOSTINGER_HOST }}
+          username: ${{ secrets.HOSTINGER_USERNAME }}
+          key: ${{ secrets.HOSTINGER_SSH_KEY }}
+          port: ${{ secrets.HOSTINGER_PORT }}
+          script: |
+            set -e
+            DEPLOY_DIR="${{ secrets.HOSTINGER_DEPLOY_PATH }}"
+
+            if [ ! -d "$DEPLOY_DIR/.git" ]; then
+              echo "Repo not found at $DEPLOY_DIR — cloning..."
+              git clone -b dev git@github.com:Startsmartz-Technologies-Projects/ze-erp-nestjs-backend.git "$DEPLOY_DIR"
+            fi
+
+            cd "$DEPLOY_DIR"
+            git fetch origin dev
+            git reset --hard origin/dev
+
+            docker compose build
+            docker compose up -d
+            docker image prune -f
