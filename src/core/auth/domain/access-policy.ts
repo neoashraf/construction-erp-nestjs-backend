@@ -4,7 +4,6 @@
  * reads or writes project-bound data so cross-module calls cannot bypass these checks (design §5.1).
  */
 import Decimal from 'decimal.js';
-import { Injectable } from '@nestjs/common';
 import { Actor } from '../../tenancy/tenant-context';
 
 /** Raised when the actor's role has no authority to approve this value (FR-AUD-016). */
@@ -27,7 +26,6 @@ export class ForbiddenScopeError extends Error {
   }
 }
 
-@Injectable()
 export class AccessPolicy {
   /**
    * Asserts the actor may read/write the given project.
