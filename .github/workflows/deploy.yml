@@ -1,8 +1,13 @@
-name: Deploy to Hostinger
+name: Deploy to Hostinger (self-hosted)
 
 on:
   push:
     branches: [dev]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ze-erp-backend-deploy
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -20,30 +25,51 @@ jobs:
       - run: npm test
 
   deploy:
-    name: Deploy over SSH
+    name: Build and restart ze-erp-backend
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+
     steps:
-      - name: Deploy to Hostinger VPS
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.HOSTINGER_HOST }}
-          username: ${{ secrets.HOSTINGER_USERNAME }}
-          key: ${{ secrets.HOSTINGER_SSH_KEY }}
-          port: ${{ secrets.HOSTINGER_PORT }}
-          script: |
-            set -e
-            DEPLOY_DIR="${{ secrets.HOSTINGER_DEPLOY_PATH }}"
+      - name: Checkout latest code
+        uses: actions/checkout@v4
 
-            if [ ! -d "$DEPLOY_DIR/.git" ]; then
-              echo "Repo not found at $DEPLOY_DIR — cloning..."
-              git clone -b dev git@github.com:Startsmartz-Technologies-Projects/ze-erp-nestjs-backend.git "$DEPLOY_DIR"
+      - name: Load server env file
+        shell: bash
+        run: |
+          SERVER_ENV="$HOME/ze-erp-nestjs-backend/.env"
+
+          if [ -f "$SERVER_ENV" ]; then
+            cp "$SERVER_ENV" .env
+            echo "Loaded server env file from $SERVER_ENV"
+          else
+            echo "Server env file not found at $SERVER_ENV"
+            echo "Upload your env file to $SERVER_ENV on the self-hosted runner server."
+            exit 1
+          fi
+
+      - name: Build and restart containers
+        shell: bash
+        run: docker compose up -d --build --remove-orphans
+
+      - name: Wait for health check
+        shell: bash
+        run: |
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            if curl -sf http://localhost:7001/health > /dev/null; then
+              echo "Healthy."
+              exit 0
             fi
+            echo "Waiting for app to become healthy... attempt ${attempt}/15"
+            sleep 3
+          done
+          echo "App did not become healthy in time — last logs:"
+          docker compose logs --tail=100 ze-erp-backend
+          exit 1
 
-            cd "$DEPLOY_DIR"
-            git fetch origin dev
-            git reset --hard origin/dev
+      - name: Show running containers
+        shell: bash
+        run: docker compose ps
 
-            docker compose build
-            docker compose up -d
-            docker image prune -f
+      - name: Prune old images
+        shell: bash
+        run: docker image prune -f
