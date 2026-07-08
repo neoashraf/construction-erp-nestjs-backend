@@ -31,9 +31,7 @@ jobs:
     name: Build and restart ze-erp-backend
     needs: test
 
-    runs-on:
-      - self-hosted
-      - startsmartz
+    runs-on: self-hosted
 
     steps:
       - name: Debug runner
