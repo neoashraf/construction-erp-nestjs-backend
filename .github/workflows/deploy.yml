@@ -52,16 +52,13 @@ jobs:
         shell: bash
         run: |
           echo "Checking env file..."
-
-          ls -lah /root || true
-          ls -lah /root/zakir-erp || true
-          ls -lah /root/zakir-erp/backend || true
-          ls -lah /root/zakir-erp/backend/.env || true
+          ls -lah /opt/ze-erp || true
+          ls -lah /opt/ze-erp/.env || true
 
       - name: Load server env file
         shell: bash
         run: |
-          SERVER_ENV="/root/zakir-erp/backend/.env"
+          SERVER_ENV="/opt/ze-erp/.env"
 
           echo "Trying to load: $SERVER_ENV"
 
