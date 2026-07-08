@@ -33,21 +33,28 @@ jobs:
 
     runs-on:
       - self-hosted
+      - startsmartz
 
     steps:
-      - name: Debug Runner
+      - name: Debug runner
+        shell: bash
         run: |
+          echo "================================="
+          echo "RUNNER_NAME=$RUNNER_NAME"
           echo "HOSTNAME=$(hostname)"
           echo "USER=$(whoami)"
           echo "HOME=$HOME"
+          echo "PWD=$(pwd)"
+          echo "================================="
 
       - name: Checkout latest code
         uses: actions/checkout@v4
 
-      - name: Show filesystem
+      - name: Verify env file
+        shell: bash
         run: |
-          pwd
-          ls -lah
+          echo "Checking env file..."
+
           ls -lah /root || true
           ls -lah /root/zakir-erp || true
           ls -lah /root/zakir-erp/backend || true
@@ -70,26 +77,36 @@ jobs:
           fi
 
       - name: Build and restart containers
+        shell: bash
         run: |
           docker compose up -d --build --remove-orphans
 
       - name: Wait for health check
+        shell: bash
         run: |
           for attempt in $(seq 1 15); do
             if curl -sf http://localhost:7001/health >/dev/null; then
-              echo "Healthy"
+              echo "Application is healthy"
               exit 0
             fi
 
-            echo "Waiting... ${attempt}/15"
+            echo "Waiting for app... attempt ${attempt}/15"
             sleep 3
           done
 
-          docker compose logs --tail=100 ze-erp-backend
+          echo "Health check failed"
+
+          docker compose ps || true
+          docker compose logs --tail=100 ze-erp-backend || true
+
           exit 1
 
-      - name: Show containers
-        run: docker compose ps
+      - name: Show running containers
+        shell: bash
+        run: |
+          docker compose ps
 
-      - name: Prune images
-        run: docker image prune -f
+      - name: Prune old images
+        shell: bash
+        run: |
+          docker image prune -f
