@@ -8,4 +8,10 @@ services:
     env_file:
       - .env
     ports:
-      - "7001:3000"
+      - '7001:3000'
+    networks:
+      - ze-erp-net
+
+networks:
+  ze-erp-net:
+    external: true
