@@ -2,8 +2,7 @@ name: Deploy to Hostinger (self-hosted)
 
 on:
   push:
-    branches:
-      - dev
+    branches: [dev]
   workflow_dispatch:
 
 concurrency:
@@ -50,19 +49,13 @@ jobs:
       - name: Checkout latest code
         uses: actions/checkout@v4
 
-      - name: Debug runner
+      - name: Debug environment
         shell: bash
         run: |
-          echo "=============================="
-          echo "RUNNER DEBUG"
-          echo "=============================="
+          echo "========== DEBUG =========="
 
-          echo "USER:"
+          echo "User:"
           whoami
-
-          echo ""
-          echo "HOSTNAME:"
-          hostname
 
           echo ""
           echo "PWD:"
@@ -104,6 +97,9 @@ jobs:
           echo "WORKSPACE:"
           ls -lah
 
+          echo ""
+          echo "========== END DEBUG =========="
+
       - name: Load server env file
         shell: bash
         run: |
@@ -116,7 +112,7 @@ jobs:
             echo "Loaded server env file"
             ls -lah .env
           else
-            echo "Server env file not found"
+            echo "Server env file not found at $SERVER_ENV"
             exit 1
           fi
 
@@ -134,14 +130,12 @@ jobs:
               exit 0
             fi
 
-            echo "Waiting... ${attempt}/15"
+            echo "Waiting for app to become healthy... attempt ${attempt}/15"
             sleep 3
           done
 
-          echo "Application failed health check"
-
+          echo "App did not become healthy in time — last logs:"
           docker compose logs --tail=100 ze-erp-backend || true
-
           exit 1
 
       - name: Show running containers
