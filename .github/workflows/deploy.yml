@@ -30,7 +30,7 @@ jobs:
   deploy:
     name: Build and restart ze-erp-backend
     needs: test
-    runs-on: self-hosted
+    runs-on: [self-hosted, linux, ze-erp-vps]
 
     steps:
       - name: Debug runner
@@ -50,72 +50,49 @@ jobs:
       - name: Verify env file
         shell: bash
         run: |
-          echo "===== DEBUG ====="
-          echo "USER=$(whoami)"
-          echo "HOSTNAME=$(hostname)"
-          echo "PWD=$(pwd)"
-          echo "HOME=$HOME"
-
-          echo "===== OPT CHECK ====="
-          ls -ld /opt || true
+          echo "===== ENV FILE CHECK ====="
           ls -ld /opt/ze-erp || true
           ls -lah /opt/ze-erp/.env || true
 
-          echo "===== ROOT CHECK ====="
-          ls -ld /root || true
-
-          echo "===== FILE CHECK ====="
-          if [ -f /opt/ze-erp/.env ]; then
-            echo "FOUND"
-          else
-            echo "NOT FOUND"
-          fi
-
-      - name: Load server env file
-        shell: bash
-        run: |
-          SERVER_ENV="/opt/ze-erp/.env"
-
-          echo "Trying to load: $SERVER_ENV"
-
-          if [ -f "$SERVER_ENV" ]; then
-            cp "$SERVER_ENV" .env
-            echo "Loaded server env file"
-            ls -lah .env
-          else
-            echo "Server env file not found at $SERVER_ENV"
+          if [ ! -f /opt/ze-erp/.env ]; then
+            echo "Server env file not found at /opt/ze-erp/.env"
             exit 1
           fi
 
+          echo "Env file present"
+
       - name: Build and restart containers
         shell: bash
+        working-directory: ${{ github.workspace }}
         run: |
-          docker compose up -d --build --remove-orphans
+          docker compose --env-file /opt/ze-erp/.env up -d --build --remove-orphans
 
       - name: Wait for health check
         shell: bash
+        working-directory: ${{ github.workspace }}
         run: |
-          for attempt in $(seq 1 15); do
+          for attempt in $(seq 1 20); do
             if curl -sf http://localhost:7001/health >/dev/null; then
               echo "Application is healthy"
               exit 0
             fi
 
-            echo "Waiting for app... attempt ${attempt}/15"
+            echo "Waiting for app... attempt ${attempt}/20"
             sleep 3
           done
 
           echo "Health check failed"
 
-          docker compose ps || true
-          docker compose logs --tail=100 ze-erp-backend || true
+          docker compose --env-file /opt/ze-erp/.env ps || true
+          docker compose --env-file /opt/ze-erp/.env logs --tail=100 ze-erp-backend || true
 
           exit 1
 
       - name: Show running containers
         shell: bash
+        working-directory: ${{ github.workspace }}
         run: |
-          docker compose ps
+          docker compose --env-file /opt/ze-erp/.env ps
 
       - name: Prune old images
         shell: bash
