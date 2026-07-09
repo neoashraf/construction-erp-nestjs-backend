@@ -30,7 +30,6 @@ jobs:
   deploy:
     name: Build and restart ze-erp-backend
     needs: test
-
     runs-on: self-hosted
 
     steps:
@@ -51,9 +50,26 @@ jobs:
       - name: Verify env file
         shell: bash
         run: |
-          echo "Checking env file..."
-          ls -lah /opt/ze-erp || true
+          echo "===== DEBUG ====="
+          echo "USER=$(whoami)"
+          echo "HOSTNAME=$(hostname)"
+          echo "PWD=$(pwd)"
+          echo "HOME=$HOME"
+
+          echo "===== OPT CHECK ====="
+          ls -ld /opt || true
+          ls -ld /opt/ze-erp || true
           ls -lah /opt/ze-erp/.env || true
+
+          echo "===== ROOT CHECK ====="
+          ls -ld /root || true
+
+          echo "===== FILE CHECK ====="
+          if [ -f /opt/ze-erp/.env ]; then
+            echo "FOUND"
+          else
+            echo "NOT FOUND"
+          fi
 
       - name: Load server env file
         shell: bash
