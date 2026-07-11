@@ -48,7 +48,7 @@ jobs:
       - name: Load server env file
         shell: bash
         run: |
-          SERVER_ENV="/root/zakir-erp/backend/.env"
+          SERVER_ENV="/root/zakir-erp/ze-erp-nestjs-backend/.env"
 
           if [ -f "$SERVER_ENV" ]; then
             cp "$SERVER_ENV" .env
@@ -64,7 +64,7 @@ jobs:
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
-          docker compose --env-file /opt/ze-erp/.env up -d --build --remove-orphans
+          docker compose up -d --build --remove-orphans
 
       - name: Wait for health check
         shell: bash
@@ -82,8 +82,8 @@ jobs:
 
           echo "Health check failed"
 
-          docker compose --env-file /opt/ze-erp/.env ps || true
-          docker compose --env-file /opt/ze-erp/.env logs --tail=100 ze-erp-backend || true
+          docker compose ps || true
+          docker compose logs --tail=100 ze-erp-backend || true
 
           exit 1
 
@@ -96,7 +96,7 @@ jobs:
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
-          docker compose --env-file /opt/ze-erp/.env ps
+          docker compose ps
 
       - name: Prune old images
         shell: bash
