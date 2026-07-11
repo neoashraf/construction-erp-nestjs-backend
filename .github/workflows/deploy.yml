@@ -4,6 +4,15 @@ on:
   push:
     branches: [dev]
   workflow_dispatch:
+    inputs:
+      seed_database:
+        description: "Seed demo ERP data after deploy"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 concurrency:
   group: ze-erp-backend-deploy
@@ -47,15 +56,55 @@ jobs:
       - name: Checkout latest code
         uses: actions/checkout@v4
 
-      - name: Verify env file
+      - name: Debug environment
         shell: bash
         run: |
-          echo "===== ENV FILE CHECK ====="
-          ls -ld /opt/ze-erp || true
-          ls -lah /opt/ze-erp/.env || true
+          echo "========== DEBUG =========="
 
-          if [ ! -f /opt/ze-erp/.env ]; then
-            echo "Server env file not found at /opt/ze-erp/.env"
+          echo "User:"
+          whoami
+
+          echo ""
+          echo "PWD:"
+          pwd
+
+          echo ""
+          echo "HOME:"
+          echo "$HOME"
+
+          echo ""
+          echo "=== Current Directory ==="
+          ls -lah
+
+          echo ""
+          echo "=== /root ==="
+          ls -lah /root || true
+
+          echo ""
+          echo "=== /root/zakir-erp ==="
+          ls -lah /root/zakir-erp || true
+
+          echo ""
+          echo "=== /root/zakir-erp/backend ==="
+          ls -lah /root/zakir-erp/backend || true
+
+          echo ""
+          echo "=== ENV FILE ==="
+          ls -lah /root/zakir-erp/backend/.env || true
+
+          echo ""
+          echo "========== END DEBUG =========="
+
+      - name: Load server env file
+        shell: bash
+        run: |
+          SERVER_ENV="/root/zakir-erp/backend/.env"
+
+          if [ -f "$SERVER_ENV" ]; then
+            cp "$SERVER_ENV" .env
+            echo "Loaded server env file from $SERVER_ENV"
+          else
+            echo "Server env file not found at $SERVER_ENV"
             exit 1
           fi
 
@@ -87,6 +136,11 @@ jobs:
           docker compose --env-file /opt/ze-erp/.env logs --tail=100 ze-erp-backend || true
 
           exit 1
+
+      - name: Seed demo data
+        if: github.event_name == 'workflow_dispatch' && inputs.seed_database == 'true'
+        shell: bash
+        run: docker compose run --rm seed
 
       - name: Show running containers
         shell: bash
