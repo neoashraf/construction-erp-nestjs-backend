@@ -1,4 +1,4 @@
-name: Deploy to Hostinger (self-hosted)
+name: Deploy to Homelab (self-hosted)
 
 on:
   push:
@@ -39,61 +39,11 @@ jobs:
   deploy:
     name: Build and restart ze-erp-backend
     needs: test
-    runs-on: [self-hosted, linux, ze-erp-vps]
+    runs-on: [self-hosted, ze-erp-home]
 
     steps:
-      - name: Debug runner
-        shell: bash
-        run: |
-          echo "================================="
-          echo "RUNNER_NAME=$RUNNER_NAME"
-          echo "HOSTNAME=$(hostname)"
-          echo "USER=$(whoami)"
-          echo "HOME=$HOME"
-          echo "PWD=$(pwd)"
-          echo "================================="
-
       - name: Checkout latest code
         uses: actions/checkout@v4
-
-      - name: Debug environment
-        shell: bash
-        run: |
-          echo "========== DEBUG =========="
-
-          echo "User:"
-          whoami
-
-          echo ""
-          echo "PWD:"
-          pwd
-
-          echo ""
-          echo "HOME:"
-          echo "$HOME"
-
-          echo ""
-          echo "=== Current Directory ==="
-          ls -lah
-
-          echo ""
-          echo "=== /root ==="
-          ls -lah /root || true
-
-          echo ""
-          echo "=== /root/zakir-erp ==="
-          ls -lah /root/zakir-erp || true
-
-          echo ""
-          echo "=== /root/zakir-erp/backend ==="
-          ls -lah /root/zakir-erp/backend || true
-
-          echo ""
-          echo "=== ENV FILE ==="
-          ls -lah /root/zakir-erp/backend/.env || true
-
-          echo ""
-          echo "========== END DEBUG =========="
 
       - name: Load server env file
         shell: bash
