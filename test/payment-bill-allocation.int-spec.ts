@@ -72,6 +72,7 @@ import { PaymentAccountMapAdapter } from '../src/modules/payment/infrastructure/
 import { PaymentAllocationReadModel } from '../src/modules/payment/infrastructure/payment-allocation.read-model';
 import { PayableSettlementAdapter } from '../src/modules/payment/infrastructure/payable-settlement.adapter';
 import { PaymentQueryService } from '../src/modules/payment/application/payment-query.service';
+import { VoucherLinkageReader } from '../src/core/posting/read/voucher-linkage';
 import { CreatePaymentUseCase } from '../src/modules/payment/application/create-payment.usecase';
 import { PostPaymentUseCase } from '../src/modules/payment/application/post-payment.usecase';
 import { CancelPaymentUseCase } from '../src/modules/payment/application/cancel-payment.usecase';
@@ -252,7 +253,7 @@ describe('PAY #28 payment-bill-allocation (real Postgres + PostingService + PUR/
 
     readModel = new PaymentAllocationReadModel(ds);
     settlement = new PayableSettlementAdapter(readModel);
-    paymentQuery = new PaymentQueryService(ds, readModel);
+    paymentQuery = new PaymentQueryService(ds, readModel, new VoucherLinkageReader(ds));
     purchaseQuery = new PurchaseQueryService(ds, new PaymentBackedBillPaymentAdapter(settlement), new PurchaseRegisterReadRepo(ds));
     hrQuery = new HrQueryService(ds, settlement);
   });
@@ -393,6 +394,37 @@ describe('PAY #28 payment-bill-allocation (real Postgres + PostingService + PUR/
     // AC2: purchase_bill row byte-for-byte unchanged (read seam never writes to PUR).
     const after = await ds.query(`SELECT * FROM purchase_bill WHERE id=$1`, [billId]);
     expect(after).toEqual(before);
+  });
+
+  it('linkage: GET payment exposes the cancel chain derived from the ledger by source (shared VoucherLinkageReader)', async () => {
+    const billId = await createPurchaseBill(9, '231150');
+    const draft = await createPayment.execute(
+      {
+        paymentDate: '2026-06-30',
+        paymentMode: 'CASH',
+        paymentAccountId: ACC.cash,
+        paymentAmount: '200000',
+        bankChargesAmount: '0',
+        allocations: [{ payableType: 'PURCHASE_BILL', payableId: billId, amountAllocated: '200000' }],
+      },
+      actor,
+    );
+    const posted = await postPayment.execute(draft.id, actor);
+
+    // Before cancel: single-entry chain, no history (viewer hides the panel).
+    const beforeDto = await paymentQuery.get(draft.id, actor);
+    expect(beforeDto?.linkage).toMatchObject({ hasHistory: false, currentEntryNo: posted.entryNo });
+
+    const cancelled = await cancelPayment.execute(draft.id, 'wrong bill', actor);
+
+    // After cancel: the reversal inherited the payment's source, so GET returns the whole chain —
+    // the original number retained + "reversed by" the reversal (FR-PAY-018/-019).
+    const dto = await paymentQuery.get(draft.id, actor);
+    expect(dto?.linkage?.hasHistory).toBe(true);
+    expect(dto?.linkage?.currentEntryNo).toBe(posted.entryNo);
+    expect(dto?.linkage?.originalEntryNo).toBe(posted.entryNo);
+    const current = dto?.linkage?.entries.find((e) => e.isCurrent);
+    expect(current?.reversedByEntryNo).toBe(cancelled.reversalEntryNo);
   });
 
   it('AC5: PUR outstandingForBill reads PAY through the rebound port (231150 → 31150 after payment)', async () => {

@@ -23,6 +23,7 @@ import {
   AllowAllProjectStatusService,
 } from './infrastructure/mas-seam.adapters';
 import { LedgerQueryService } from './read/ledger-query.service';
+import { VoucherLinkageReader } from './read/voucher-linkage';
 import { LedgerController } from './presentation/ledger.controller';
 
 @Module({
@@ -35,7 +36,8 @@ import { LedgerController } from './presentation/ledger.controller';
     { provide: PROJECT_STATUS_SERVICE, useClass: AllowAllProjectStatusService },
     { provide: MASTER_LOOKUP_SERVICE, useClass: AllowAllMasterLookupService },
     LedgerQueryService,
+    VoucherLinkageReader,
   ],
-  exports: [PostingService],
+  exports: [PostingService, VoucherLinkageReader],
 })
 export class PostingModule {}
