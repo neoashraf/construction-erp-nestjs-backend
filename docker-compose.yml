@@ -9,3 +9,22 @@ services:
       - .env
     ports:
       - "7001:3000"
+    networks:
+      - ze-erp-net
+
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    env_file:
+      - .env
+    command: npm run seed
+    profiles:
+      - seed
+    networks:
+      - ze-erp-net
+
+networks:
+  ze-erp-net:
+    external: true
