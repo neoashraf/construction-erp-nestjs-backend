@@ -21,6 +21,11 @@ import { Actor } from '../../../core/tenancy/tenant-context';
 import { Paginated, resolvePaging } from '../../../infrastructure/http/pagination';
 import { IpcOrmEntity } from '../infrastructure/ipc.orm-entity';
 import { IpcListFilter } from '../domain/ports/ipc.repository';
+import {
+  IPC_LEDGER_LINKAGE_PORT,
+  IpcLedgerLinkagePort,
+} from '../domain/ports/ipc-ledger-linkage.port';
+import { IpcLinkageDto, buildIpcLinkage } from './ipc-linkage';
 
 export interface IpcSummaryDto {
   id: string;
@@ -55,6 +60,8 @@ export interface IpcDto extends IpcSummaryDto {
   version: number;
   createdAt: string;
   updatedAt: string;
+  /** Cancel/repost chain (FR-SAL-022), derived from the ledger; null for a DRAFT IPC. */
+  linkage: IpcLinkageDto | null;
 }
 
 export interface RetentionReleaseDto {
@@ -103,7 +110,10 @@ const ZERO4 = '0.0000';
 
 @Injectable()
 export class IpcQueryService {
-  constructor(@Inject(DATA_SOURCE) private readonly dataSource: DataSource) {}
+  constructor(
+    @Inject(DATA_SOURCE) private readonly dataSource: DataSource,
+    @Inject(IPC_LEDGER_LINKAGE_PORT) private readonly linkage: IpcLedgerLinkagePort,
+  ) {}
 
   async list(filter: IpcListFilter, actor: Actor): Promise<Paginated<IpcSummaryDto>> {
     const { page, pageSize, skip, take } = resolvePaging(filter);
@@ -153,7 +163,19 @@ export class IpcQueryService {
     if (!row) return null;
     this.assertProjectVisible(actor, row.projectId);
     const derived = await this.derivedForOne(row);
-    return fullDto(row, derived);
+    const linkage = await this.linkageForRow(row);
+    return fullDto(row, derived, linkage);
+  }
+
+  /**
+   * The cancel/repost chain for an IPC (FR-SAL-022), derived from the immutable ledger — no SAL linkage
+   * columns. Null for a DRAFT IPC (no ledger footprint). One extra source-filtered read per `get`.
+   */
+  private async linkageForRow(row: IpcOrmEntity): Promise<IpcLinkageDto | null> {
+    if (!row.journalEntryId) return null;
+    const entries = await this.linkage.entriesForIpc(row.id, row.companyId);
+    if (entries.length === 0) return null;
+    return buildIpcLinkage(entries, row.journalEntryId, row.status === 'CANCELLED');
   }
 
   /** Per-IPC outstanding = currentlyDueAmount − Σ(receipts applied, REC) for a POSTED IPC (design §5.3). */
@@ -393,7 +415,11 @@ function summaryDto(r: IpcOrmEntity, derived: { outstanding: string; retentionHe
   };
 }
 
-function fullDto(r: IpcOrmEntity, derived: { outstanding: string; retentionHeld: string }): IpcDto {
+function fullDto(
+  r: IpcOrmEntity,
+  derived: { outstanding: string; retentionHeld: string },
+  linkage: IpcLinkageDto | null,
+): IpcDto {
   return {
     ...summaryDto(r, derived),
     billDate: r.billDate,
@@ -413,5 +439,6 @@ function fullDto(r: IpcOrmEntity, derived: { outstanding: string; retentionHeld:
     version: r.version,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
+    linkage,
   };
 }

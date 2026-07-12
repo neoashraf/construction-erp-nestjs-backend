@@ -62,6 +62,7 @@ import { SalesAccountMapAdapter } from '../src/modules/sales/infrastructure/sale
 import { TypeOrmIpcRepository } from '../src/modules/sales/infrastructure/typeorm-ipc.repository';
 import { ReleaseRetentionUseCase } from '../src/modules/sales/application/release-retention.usecase';
 import { IpcQueryService } from '../src/modules/sales/application/ipc-query.service';
+import { IpcLedgerLinkageAdapter } from '../src/modules/sales/infrastructure/ipc-ledger-linkage.adapter';
 import { OverReleaseError } from '../src/modules/sales/domain/errors';
 
 // RolesGuard smoke test deps (mandatory per skill §13 — proves the controller's guard wiring is real).
@@ -243,7 +244,7 @@ describe('SAL retention release + per-IPC outstanding + project register (real P
       clock,
       ids,
     );
-    queryService = new IpcQueryService(ds);
+    queryService = new IpcQueryService(ds, new IpcLedgerLinkageAdapter(ds));
 
     const roleRepo = new TypeOrmRoleRepository(ds);
     const permRepo = new TypeOrmPermissionRepository(ds);

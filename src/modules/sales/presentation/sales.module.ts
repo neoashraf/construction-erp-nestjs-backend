@@ -28,12 +28,14 @@ import { IPC_CONFIG_PORT } from '../domain/ports/ipc-config.port';
 import { ADVANCE_BALANCE_PORT } from '../domain/ports/advance-balance.port';
 import { RETENTION_RELEASE_REPOSITORY } from '../domain/ports/retention-release.repository';
 import { RECEIPT_ALLOCATION_PORT } from '../domain/ports/receipt-allocation.port';
+import { IPC_LEDGER_LINKAGE_PORT } from '../domain/ports/ipc-ledger-linkage.port';
 import { TypeOrmIpcRepository } from '../infrastructure/typeorm-ipc.repository';
 import { SalesAccountMapAdapter } from '../infrastructure/sales-account-map.adapter';
 import { IpcConfigAdapter } from '../infrastructure/ipc-config.adapter';
 import { AdvanceBalanceAdapter } from '../infrastructure/advance-balance.adapter';
 import { TypeOrmRetentionReleaseRepository } from '../infrastructure/typeorm-retention-release.repository';
 import { ReceiptAllocationAdapter } from '../infrastructure/receipt-allocation.adapter';
+import { IpcLedgerLinkageAdapter } from '../infrastructure/ipc-ledger-linkage.adapter';
 import { SalesController, SalesProjectsController } from './sales.controller';
 
 @Module({
@@ -47,6 +49,7 @@ import { SalesController, SalesProjectsController } from './sales.controller';
     { provide: ADVANCE_BALANCE_PORT, useClass: AdvanceBalanceAdapter },
     { provide: RETENTION_RELEASE_REPOSITORY, useClass: TypeOrmRetentionReleaseRepository },
     { provide: RECEIPT_ALLOCATION_PORT, useClass: ReceiptAllocationAdapter },
+    { provide: IPC_LEDGER_LINKAGE_PORT, useClass: IpcLedgerLinkageAdapter },
     // use cases
     CreateIpcUseCase,
     UpdateIpcDraftUseCase,
