@@ -16,6 +16,8 @@ import { Paginated, resolvePaging } from '../../../infrastructure/http/paginatio
 import { ReceiptOrmEntity } from '../infrastructure/receipt.orm-entity';
 import { ReceiptListFilter } from '../domain/ports/receipt.repository';
 import { IPC_REFERENCE_PORT, IpcReferencePort } from '../domain/ports/ipc-reference.port';
+import { RECEIPT_SOURCE_TYPE } from '../domain/receipt';
+import { VoucherLinkageDto, VoucherLinkageReader } from '../../../core/posting/read/voucher-linkage';
 
 export interface ReceiptSummaryDto {
   id: string;
@@ -44,6 +46,8 @@ export interface ReceiptDto extends ReceiptSummaryDto {
   postedAt: string | null;
   postedBy: string | null;
   version: number;
+  /** Cancel/repost chain (FR-REC-021/-022), derived from the ledger; null for a DRAFT receipt. */
+  linkage: VoucherLinkageDto | null;
 }
 
 export interface ReceiptsAppliedRow {
@@ -67,6 +71,7 @@ export class ReceiptQueryService {
   constructor(
     @Inject(DATA_SOURCE) private readonly dataSource: DataSource,
     @Inject(IPC_REFERENCE_PORT) private readonly ipcRef: IpcReferencePort,
+    private readonly linkageReader?: VoucherLinkageReader,
   ) {}
 
   async list(filter: ReceiptListFilter, actor: Actor): Promise<Paginated<ReceiptSummaryDto>> {
@@ -125,7 +130,15 @@ export class ReceiptQueryService {
       const outstanding = await this.ipcRef.outstandingForIpc(row.ipcId, actor.companyId);
       ipcOutstandingAfter = outstanding.amount.toFixed(4);
     }
-    return fullDto(row, ipcOutstandingAfter);
+    const linkage =
+      (await this.linkageReader?.forVoucher(
+        actor.companyId,
+        RECEIPT_SOURCE_TYPE,
+        row.id,
+        row.journalEntryId,
+        row.status === 'CANCELLED',
+      )) ?? null;
+    return fullDto(row, ipcOutstandingAfter, linkage);
   }
 
   /** Receipts applied to one IPC + the resulting balance due (FR-REC-016, FR-REC-018). */
@@ -196,7 +209,11 @@ function summaryDto(r: ReceiptOrmEntity): ReceiptSummaryDto {
   };
 }
 
-function fullDto(r: ReceiptOrmEntity, ipcOutstandingAfter: string | null): ReceiptDto {
+function fullDto(
+  r: ReceiptOrmEntity,
+  ipcOutstandingAfter: string | null,
+  linkage: VoucherLinkageDto | null,
+): ReceiptDto {
   return {
     ...summaryDto(r),
     depositAccountId: r.depositAccountId,
@@ -211,5 +228,6 @@ function fullDto(r: ReceiptOrmEntity, ipcOutstandingAfter: string | null): Recei
     postedAt: r.postedAt ? r.postedAt.toISOString() : null,
     postedBy: r.postedBy,
     version: r.version,
+    linkage,
   };
 }

@@ -59,6 +59,8 @@ import { IpcReferenceAdapter } from '../src/modules/receipt/infrastructure/ipc-r
 import { CreateReceiptUseCase } from '../src/modules/receipt/application/create-receipt.usecase';
 import { PostReceiptUseCase } from '../src/modules/receipt/application/post-receipt.usecase';
 import { CancelReceiptUseCase } from '../src/modules/receipt/application/cancel-receipt.usecase';
+import { RECEIPT_SOURCE_TYPE } from '../src/modules/receipt/domain/receipt';
+import { VoucherLinkageReader } from '../src/core/posting/read/voucher-linkage';
 import { OverApplicationError } from '../src/modules/receipt/domain/errors';
 
 // RolesGuard smoke test deps (mandatory per skill §13 — proves the controller's guard wiring is real).
@@ -526,6 +528,20 @@ describe('Receipts (real Postgres + real PostingService + a real posted SAL IPC)
     // SAL's outstandingForIpc restores — no compensating write.
     const outstandingAfter = await ipcRef.outstandingForIpc(ipcId, CO);
     expect(outstandingAfter.amount.toFixed(4)).toBe('775000.0000');
+
+    // FR-REC-022 linkage: the shared reader derives the cancel chain from the ledger by source
+    // (the reversal inherited the receipt's source), so the viewer's linkage panel is a plain read.
+    const linkage = await new VoucherLinkageReader(ds).forVoucher(
+      CO,
+      RECEIPT_SOURCE_TYPE,
+      id,
+      posted.entryId,
+      true,
+    );
+    expect(linkage?.hasHistory).toBe(true);
+    expect(linkage?.currentEntryNo).toBe(posted.entryNo);
+    expect(linkage?.originalEntryNo).toBe(posted.entryNo);
+    expect(linkage?.entries.find((e) => e.isCurrent)?.reversedByEntryNo).toBe(cancelled.reversalEntryNo);
   });
 
   it('AC3: a general receipt (no project) posts balanced Dr Cash / Cr Income', async () => {
