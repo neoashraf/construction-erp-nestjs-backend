@@ -3,16 +3,7 @@ name: Deploy to Homelab (self-hosted)
 on:
   push:
     branches: [dev]
-  workflow_dispatch:
-    inputs:
-      seed_database:
-        description: "Seed demo ERP data after deploy"
-        required: true
-        default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
+  workflow_dispatch: {}
 
 concurrency:
   group: ze-erp-backend-deploy
@@ -88,9 +79,8 @@ jobs:
           exit 1
 
       - name: Seed demo data
-        if: github.event_name == 'workflow_dispatch' && inputs.seed_database == 'true'
         shell: bash
-        run: docker compose run --rm seed
+        run: docker compose run --rm seed sh -c "npm run seed && npm run seed:workflow-demo"
 
       - name: Show running containers
         shell: bash
