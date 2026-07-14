@@ -3,7 +3,7 @@
  */
 import { Body, Controller, Get, HttpCode, NotFoundException, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsInt, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
 import { RequirePermission } from './require-permission.decorator';
@@ -27,7 +27,9 @@ class PatchUserDto {
   @IsOptional() @IsUUID() roleId?: string;
   @IsOptional() @IsUUID() financialYearId?: string;
   @IsOptional() @IsString() phone?: string;
-  version!: number;
+  // @IsInt() required: the whitelist+forbidNonWhitelisted ValidationPipe rejects any
+  // property with no validation decorator ("property version should not exist").
+  @IsInt() version!: number;
 }
 
 class ResetPasswordDto {

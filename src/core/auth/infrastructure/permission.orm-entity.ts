@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryColumn, UpdateDateColumn, VersionColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 import { ActionCode, ProjectScope } from '../domain/permission.entity';
 import { decimalTransformer } from '../../../database/persistence/decimal.transformer';
 
@@ -16,5 +16,7 @@ export class PermissionOrmEntity {
   valueLimit!: import('decimal.js').default | null;
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' }) updatedAt!: Date;
-  @VersionColumn({ name: 'version', type: 'int' }) version!: number;
+  // Plain column, NOT @VersionColumn (see role.orm-entity.ts): the domain owns the
+  // version; @VersionColumn would ignore the passed value and auto-bump, desyncing it.
+  @Column({ name: 'version', type: 'int', default: 1 }) version!: number;
 }

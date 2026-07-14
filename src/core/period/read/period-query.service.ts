@@ -34,15 +34,20 @@ interface PeriodRow {
   status: string;
   closed_at: string | null;
   closed_by: string | null;
+  closed_by_name: string | null;
 }
 
-const SELECT = `SELECT id, financial_year_id, name,
-       to_char(start_date,'YYYY-MM-DD') AS start_date,
-       to_char(end_date,'YYYY-MM-DD') AS end_date,
-       status,
-       to_char(closed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS closed_at,
-       closed_by
-  FROM accounting_period`;
+// LEFT JOIN the reserved "user" table (raw SQL, quoted) to resolve closed_by → display name,
+// mirroring the audit read side. Aliased `ap` so callers' WHERE clauses stay unambiguous.
+const SELECT = `SELECT ap.id, ap.financial_year_id, ap.name,
+       to_char(ap.start_date,'YYYY-MM-DD') AS start_date,
+       to_char(ap.end_date,'YYYY-MM-DD') AS end_date,
+       ap.status,
+       to_char(ap.closed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS closed_at,
+       ap.closed_by,
+       u.name AS closed_by_name
+  FROM accounting_period ap
+  LEFT JOIN "user" u ON u.id = ap.closed_by`;
 
 @Injectable()
 export class PeriodQueryService {
@@ -56,18 +61,18 @@ export class PeriodQueryService {
     await this.assertFyExists(actor.companyId, filter.financialYearId);
     const { page, pageSize, skip, take } = resolvePaging(filter);
     const params: unknown[] = [actor.companyId, filter.financialYearId];
-    let where = 'company_id = $1 AND financial_year_id = $2';
+    let where = 'ap.company_id = $1 AND ap.financial_year_id = $2';
     if (filter.status) {
       params.push(filter.status);
-      where += ` AND status = $${params.length}`;
+      where += ` AND ap.status = $${params.length}`;
     }
     const countRows: Array<{ count: string }> = await this.manager().query(
-      `SELECT count(*)::text AS count FROM accounting_period WHERE ${where}`,
+      `SELECT count(*)::text AS count FROM accounting_period ap WHERE ${where}`,
       params,
     );
     const total = parseInt(countRows[0]?.count ?? '0', 10);
     const rows: PeriodRow[] = await this.manager().query(
-      `${SELECT} WHERE ${where} ORDER BY start_date ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      `${SELECT} WHERE ${where} ORDER BY ap.start_date ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, take, skip],
     );
     return new Paginated(rows.map(toDto), page, pageSize, total);
@@ -75,7 +80,7 @@ export class PeriodQueryService {
 
   async getById(id: string, actor: Actor): Promise<AccountingPeriodDto | null> {
     const rows: PeriodRow[] = await this.manager().query(
-      `${SELECT} WHERE id = $1 AND company_id = $2`,
+      `${SELECT} WHERE ap.id = $1 AND ap.company_id = $2`,
       [id, actor.companyId],
     );
     return rows[0] ? toDto(rows[0]) : null;
@@ -84,7 +89,7 @@ export class PeriodQueryService {
   async resolve(financialYearId: string, date: string, actor: Actor): Promise<ResolveResult> {
     await this.assertFyExists(actor.companyId, financialYearId);
     const rows: PeriodRow[] = await this.manager().query(
-      `${SELECT} WHERE company_id = $1 AND financial_year_id = $2 AND start_date <= $3 AND end_date >= $3 LIMIT 1`,
+      `${SELECT} WHERE ap.company_id = $1 AND ap.financial_year_id = $2 AND ap.start_date <= $3 AND ap.end_date >= $3 LIMIT 1`,
       [actor.companyId, financialYearId, date],
     );
     if (!rows[0]) return { date, period: null, isOpen: false, reason: 'NO_PERIOD_DEFINED' };
@@ -111,5 +116,6 @@ function toDto(r: PeriodRow): AccountingPeriodDto {
     status: r.status as 'OPEN' | 'CLOSED',
     closedAt: r.closed_at,
     closedBy: r.closed_by,
+    closedByName: r.closed_by_name,
   };
 }

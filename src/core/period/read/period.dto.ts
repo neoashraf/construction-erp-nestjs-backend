@@ -9,7 +9,10 @@ export interface AccountingPeriodDto {
   endDate: string;
   status: 'OPEN' | 'CLOSED';
   closedAt: string | null;
+  /** The acting user's id (audit reference). */
   closedBy: string | null;
+  /** The acting user's resolved display name, or null when unresolved (e.g. write-side responses). */
+  closedByName: string | null;
 }
 
 export function toPeriodDto(p: AccountingPeriod): AccountingPeriodDto {
@@ -23,5 +26,7 @@ export function toPeriodDto(p: AccountingPeriod): AccountingPeriodDto {
     status: props.status,
     closedAt: props.closedAt ? props.closedAt.toISOString() : null,
     closedBy: props.closedBy,
+    // Write-side (domain) responses carry only the actor id; the name is resolved on the next list read.
+    closedByName: null,
   };
 }

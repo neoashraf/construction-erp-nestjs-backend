@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryColumn, UpdateDateColumn, VersionColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 import { decimalTransformer } from '../../../database/persistence/decimal.transformer';
 
 @Entity({ name: 'role' })
@@ -13,5 +13,10 @@ export class RoleOrmEntity {
   @Column({ name: 'is_unscoped', type: 'boolean', default: false }) isUnscoped!: boolean;
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' }) updatedAt!: Date;
-  @VersionColumn({ name: 'version', type: 'int' }) version!: number;
+  // Plain column, NOT @VersionColumn: the domain owns the optimistic-lock version
+  // (use-cases bump it explicitly and the repository writes p.version). A
+  // @VersionColumn would auto-increment on every save and ignore the passed value,
+  // desyncing the version the read-side returns from the one persisted — which
+  // produced spurious OPTIMISTIC_LOCK_CONFLICT on the RBAC batch save.
+  @Column({ name: 'version', type: 'int', default: 1 }) version!: number;
 }

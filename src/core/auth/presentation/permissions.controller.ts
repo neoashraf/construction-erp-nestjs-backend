@@ -4,7 +4,7 @@
  */
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID } from 'class-validator';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
 import { RequirePermission } from './require-permission.decorator';
@@ -25,7 +25,9 @@ class CreatePermissionDto {
 class PatchPermissionDto {
   @IsOptional() @IsIn(['ALL', 'ASSIGNED']) projectScope?: ProjectScope;
   @IsOptional() @IsString() valueLimit?: string | null;
-  version!: number;
+  // @IsInt() required: the whitelist+forbidNonWhitelisted ValidationPipe rejects any
+  // property with no validation decorator ("property version should not exist").
+  @IsInt() version!: number;
 }
 
 @ApiTags('Permissions')
