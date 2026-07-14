@@ -1,9 +1,18 @@
-name: Deploy to Hostinger (self-hosted)
+name: Deploy to Homelab (self-hosted)
 
 on:
   push:
     branches: [dev]
   workflow_dispatch:
+    inputs:
+      seed_database:
+        description: "Seed demo ERP data after deploy"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 concurrency:
   group: ze-erp-backend-deploy
@@ -30,32 +39,22 @@ jobs:
   deploy:
     name: Build and restart ze-erp-backend
     needs: test
-    runs-on: [self-hosted, linux, ze-erp-vps]
+    runs-on: [self-hosted, ze-erp-home]
 
     steps:
-      - name: Debug runner
-        shell: bash
-        run: |
-          echo "================================="
-          echo "RUNNER_NAME=$RUNNER_NAME"
-          echo "HOSTNAME=$(hostname)"
-          echo "USER=$(whoami)"
-          echo "HOME=$HOME"
-          echo "PWD=$(pwd)"
-          echo "================================="
-
       - name: Checkout latest code
         uses: actions/checkout@v4
 
-      - name: Verify env file
+      - name: Load server env file
         shell: bash
         run: |
-          echo "===== ENV FILE CHECK ====="
-          ls -ld /opt/ze-erp || true
-          ls -lah /opt/ze-erp/.env || true
+          SERVER_ENV="/root/zakir-erp/ze-erp-nestjs-backend/.env"
 
-          if [ ! -f /opt/ze-erp/.env ]; then
-            echo "Server env file not found at /opt/ze-erp/.env"
+          if [ -f "$SERVER_ENV" ]; then
+            cp "$SERVER_ENV" .env
+            echo "Loaded server env file from $SERVER_ENV"
+          else
+            echo "Server env file not found at $SERVER_ENV"
             exit 1
           fi
 
@@ -65,7 +64,7 @@ jobs:
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
-          docker compose --env-file /opt/ze-erp/.env up -d --build --remove-orphans
+          docker compose up -d --build --remove-orphans
 
       - name: Wait for health check
         shell: bash
@@ -83,16 +82,21 @@ jobs:
 
           echo "Health check failed"
 
-          docker compose --env-file /opt/ze-erp/.env ps || true
-          docker compose --env-file /opt/ze-erp/.env logs --tail=100 ze-erp-backend || true
+          docker compose ps || true
+          docker compose logs --tail=100 ze-erp-backend || true
 
           exit 1
+
+      - name: Seed demo data
+        if: github.event_name == 'workflow_dispatch' && inputs.seed_database == 'true'
+        shell: bash
+        run: docker compose run --rm seed
 
       - name: Show running containers
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
-          docker compose --env-file /opt/ze-erp/.env ps
+          docker compose ps
 
       - name: Prune old images
         shell: bash

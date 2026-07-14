@@ -58,6 +58,8 @@ import { PostIpcUseCase } from '../src/modules/sales/application/post-ipc.usecas
 import { CancelIpcUseCase } from '../src/modules/sales/application/cancel-ipc.usecase';
 import { RepostIpcUseCase } from '../src/modules/sales/application/repost-ipc.usecase';
 import { DuplicateSeqNoError } from '../src/modules/sales/domain/errors';
+import { IpcLedgerLinkageAdapter } from '../src/modules/sales/infrastructure/ipc-ledger-linkage.adapter';
+import { buildIpcLinkage } from '../src/modules/sales/application/ipc-linkage';
 
 jest.setTimeout(180_000);
 
@@ -414,5 +416,40 @@ describe('Sales / IPC (real Postgres + real PostingService)', () => {
     expect(v.entry_no).toBe(reposted.entryNo);
     expect(v.journal_entry_id).toBe(reposted.entryId);
     expect(v.cert).toBe('2000000.0000');
+  });
+
+  it('FR-SAL-022: the linkage adapter reads the CANCELLED chain from the ledger by source', async () => {
+    const { id } = await createIpc.execute(baseDraft, actor);
+    const posted = await postIpc.execute(id, actor);
+    const cancelled = await cancelIpc.execute(id, 'certified % corrected', actor);
+
+    const chain = await new IpcLedgerLinkageAdapter(ds).entriesForIpc(id, CO);
+    // reversal inherits the original's source, so ONE source-filtered read returns both, oldest → newest
+    expect(chain.map((e) => e.entryId)).toEqual([posted.entryId, cancelled.reversalEntryId]);
+    expect(chain[0]).toMatchObject({ isReversal: false, reversalOfEntryId: null });
+    expect(chain[1]).toMatchObject({ isReversal: true, reversalOfEntryId: posted.entryId });
+
+    // and the derived view: current stays the retained original, "reversed by" the reversal
+    const linkage = buildIpcLinkage(chain, posted.entryId, true);
+    expect(linkage.hasHistory).toBe(true);
+    expect(linkage.currentEntryNo).toBe(posted.entryNo);
+    expect(linkage.originalEntryNo).toBe(posted.entryNo);
+    expect(linkage.entries.find((e) => e.isCurrent)!.reversedByEntryNo).toBe(cancelled.reversalEntryNo);
+  });
+
+  it('FR-SAL-022: the linkage adapter reads the CORRECTED (reposted) chain — original → reversal → corrected', async () => {
+    const { id } = await createIpc.execute(baseDraft, actor);
+    const posted = await postIpc.execute(id, actor);
+    const reposted = await repostIpc.execute(id, { certifiedAmount: '2000000' }, 'measurement corrected', actor);
+
+    const chain = await new IpcLedgerLinkageAdapter(ds).entriesForIpc(id, CO);
+    expect(chain).toHaveLength(3);
+    expect(chain.map((e) => e.entryId)).toEqual([posted.entryId, reposted.reversalEntryId, reposted.entryId]);
+
+    const linkage = buildIpcLinkage(chain, reposted.entryId, false);
+    expect(linkage.currentEntryNo).toBe(reposted.entryNo); // the corrected posting
+    expect(linkage.originalEntryNo).toBe(posted.entryNo); // retained
+    const original = linkage.entries.find((e) => e.entryId === posted.entryId)!;
+    expect(original).toMatchObject({ isReversed: true, reversedByEntryNo: reposted.reversalEntryNo, isCurrent: false });
   });
 });
