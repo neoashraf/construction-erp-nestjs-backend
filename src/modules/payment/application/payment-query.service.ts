@@ -18,6 +18,8 @@ import { PaymentAllocationOrmEntity } from '../infrastructure/payment-allocation
 import { PaymentListFilter } from '../domain/ports/payment.repository';
 import { PayableType } from '../domain/allocation';
 import { PaymentAllocationReadModel, PaymentApplicationRow } from '../infrastructure/payment-allocation.read-model';
+import { PAYMENT_SOURCE_TYPE } from '../domain/payment-voucher';
+import { VoucherLinkageDto, VoucherLinkageReader } from '../../../core/posting/read/voucher-linkage';
 
 export interface PaymentSummaryDto {
   id: string;
@@ -57,6 +59,8 @@ export interface PaymentDto extends PaymentSummaryDto {
   unallocatedAmount: string;
   allocations: PaymentAllocationDto[];
   version: number;
+  /** Cancel/repost chain (FR-PAY-018/-019), derived from the ledger; null for a DRAFT payment. */
+  linkage: VoucherLinkageDto | null;
 }
 
 export interface OpenPayableRow {
@@ -104,6 +108,7 @@ export class PaymentQueryService {
   constructor(
     @Inject(DATA_SOURCE) private readonly dataSource: DataSource,
     private readonly readModel: PaymentAllocationReadModel,
+    private readonly linkageReader?: VoucherLinkageReader,
   ) {}
 
   async list(filter: PaymentListFilter, actor: Actor): Promise<Paginated<PaymentSummaryDto>> {
@@ -157,7 +162,15 @@ export class PaymentQueryService {
     const allocations = await m
       .getRepository(PaymentAllocationOrmEntity)
       .find({ where: { paymentVoucherId: id } });
-    return fullDto(row, allocations);
+    const linkage =
+      (await this.linkageReader?.forVoucher(
+        actor.companyId,
+        PAYMENT_SOURCE_TYPE,
+        row.id,
+        row.journalEntryId,
+        row.status === 'CANCELLED',
+      )) ?? null;
+    return fullDto(row, allocations, linkage);
   }
 
   /**
@@ -375,7 +388,11 @@ function summaryDto(r: PaymentVoucherOrmEntity): PaymentSummaryDto {
   };
 }
 
-function fullDto(r: PaymentVoucherOrmEntity, allocations: PaymentAllocationOrmEntity[]): PaymentDto {
+function fullDto(
+  r: PaymentVoucherOrmEntity,
+  allocations: PaymentAllocationOrmEntity[],
+  linkage: VoucherLinkageDto | null,
+): PaymentDto {
   const allocated = allocations.reduce((s, a) => s.plus(new Decimal(a.amountAllocated)), new Decimal(0));
   const unallocated = new Decimal(r.paymentAmount).minus(allocated);
   return {
@@ -406,5 +423,6 @@ function fullDto(r: PaymentVoucherOrmEntity, allocations: PaymentAllocationOrmEn
         purposeId: a.purposeId,
       })),
     version: r.version,
+    linkage,
   };
 }
