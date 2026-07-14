@@ -8,5 +8,28 @@ services:
     env_file:
       - .env
     ports:
-      - "7001:3000"
-     
+      - "7001:3000" # LAN access only (no port forwarding to WAN)
+    networks:
+      - ze-erp-net
+
+  # Only runs when explicitly invoked: `docker compose run --rm seed`
+  # (the deploy workflow does this via workflow_dispatch). Needs the
+  # "builder" stage since ts-node/tsconfig-paths are devDependencies, not
+  # in the slim production image.
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    restart: "no"
+    profiles:
+      - seed
+    env_file:
+      - .env
+    command: npm run seed
+    networks:
+      - ze-erp-net
+
+networks:
+  ze-erp-net:
+    external: true
