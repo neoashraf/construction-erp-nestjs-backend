@@ -80,7 +80,7 @@ jobs:
 
       - name: Seed demo data
         shell: bash
-        run: docker compose run --rm --build seed sh -c "npm run seed && npm run seed:workflow-demo"
+        run: docker compose run --rm --build seed sh -c "npm run seed && npm run seed:workflow-demo && npm run seed:module-samples"
 
       - name: Show running containers
         shell: bash
