@@ -26,7 +26,8 @@
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed.ts",
     "seed:workflow-demo": "ts-node -r tsconfig-paths/register src/database/seeds/seed-workflow-demo.ts",
-    "seed:module-samples": "ts-node -r tsconfig-paths/register src/database/seeds/seed-module-samples.ts"
+    "seed:module-samples": "ts-node -r tsconfig-paths/register src/database/seeds/seed-module-samples.ts",
+    "seed:purchase-inventory-demo": "ts-node -r tsconfig-paths/register src/database/seeds/seed-purchase-inventory-demo.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.4",
