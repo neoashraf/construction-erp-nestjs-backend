@@ -1,12 +1,17 @@
 /**
- * Sales/IPC · Purchase · Inventory · Requisition · HR-Payroll sample-data seed.
+ * Sales/IPC · Purchase · Inventory · Requisition · HR-Payroll · Receipt · Payment · Contra/Journal
+ * sample-data seed.
+ *
+ * Covers every business module under `src/modules/` that is actually implemented and wired into
+ * `app.module.ts` (verified by reading each controller) — not the ones that only exist as SRS/API-
+ * contract docs.
  *
  * Mirrors `seed-workflow-demo.ts`'s philosophy: voucher-bearing records (IPC, PO/Bill/GRN, Stock
- * Journal, Requisition, Attendance/Salary) are NOT inserted directly by raw SQL here — numbering,
- * weighted-average valuation, the tag matrix, and journal balancing all live in each module's use
- * cases, and the only ledger writer is LED's `PostingService` (CLAUDE.md "one posting layer"). Instead
- * this script:
- *   1. Seeds the small amount of ADDITIONAL master data these 5 modules need that
+ * Journal, Requisition, Attendance/Salary, Receipt, Payment, Contra, Journal) are NOT inserted
+ * directly by raw SQL here — numbering, weighted-average valuation, the tag matrix, and journal
+ * balancing all live in each module's use cases, and the only ledger writer is LED's `PostingService`
+ * (CLAUDE.md "one posting layer"). Instead this script:
+ *   1. Seeds the small amount of ADDITIONAL master data these modules need that
  *      `seed-workflow-demo.ts` does not already provide — a second godown (for a stock TRANSFER demo),
  *      a "Labour" cost centre + a "Client Billing" purpose, `hr_account_config` role→account mappings
  *      (documented in the entity as "seeded at go-live" — not covered by any existing seed), project
@@ -384,6 +389,16 @@ async function main(): Promise<void> {
   const accountIdByCode = new Map<string, string>(accountRows.map((r: { id: string; code: string }) => [r.code, r.id]));
   await ensureHrAccountConfig(ds, companyId, accountIdByCode, labourCC);
 
+  const mustAccount = (code: string): string => {
+    const id = accountIdByCode.get(code);
+    if (!id) throw new Error(`Account code ${code} not found — run "npm run seed" first (Chart of Accounts).`);
+    return id;
+  };
+  const bankAccountId = mustAccount('1110'); // Bank Account
+  const cashAccountId = mustAccount('1100'); // Cash in Hand
+  const mobilizationAdvanceAccountId = mustAccount('2110'); // Mobilization Advance
+  const overheadsAccountId = mustAccount('6300'); // General Overheads
+
   const employeeIds: string[] = [];
   for (const e of EMPLOYEES) {
     employeeIds.push(await ensureEmployee(ds, companyId, projectId, e));
@@ -404,6 +419,10 @@ async function main(): Promise<void> {
     cementId: itemIds['CEMENT-OPC'],
     rebarId: itemIds['REBAR-12MM'],
     employeeIds,
+    bankAccountId,
+    cashAccountId,
+    mobilizationAdvanceAccountId,
+    overheadsAccountId,
   });
 }
 
@@ -420,6 +439,10 @@ interface Ids {
   cementId: string;
   rebarId: string;
   employeeIds: string[];
+  bankAccountId: string;
+  cashAccountId: string;
+  mobilizationAdvanceAccountId: string;
+  overheadsAccountId: string;
 }
 
 function printSamples(ids: Ids): void {
@@ -613,6 +636,89 @@ function printSamples(ids: Ids): void {
     periodStart: '2026-06-01',
     periodEnd: '2026-06-30',
     projectId: ids.projectId,
+  });
+
+  // ── 6) Receipt ────────────────────────────────────────────────────────────
+  section('6) Receipt — 2 receipts (POST /api/receipt, then …/{id}/post)');
+  log('IPC-linked — part collection against IPC #1 from section 1 above:');
+  payload('POST', '/api/receipt', {
+    receiptType: 'IPC_LINKED',
+    receiptDate: DEMO_DATE_2,
+    paymentMode: 'BANK_TRANSFER',
+    depositAccountId: ids.bankAccountId,
+    ipcId: '<ipc-1-id>',
+    projectId: ids.projectId,
+    costCentreId: ids.costCentreId,
+    purposeId: ids.billingPurposeId,
+    amountSettled: '500000.0000',
+    taxDeductedAtSource: '0.0000',
+    chequeTxnRef: 'TXN-2026-0099',
+    narration: 'IPC #1 part collection',
+  });
+  log('General — mobilization advance received from the customer (not tied to a specific IPC):');
+  payload('POST', '/api/receipt', {
+    receiptType: 'GENERAL',
+    receiptDate: DEMO_DATE_1,
+    paymentMode: 'BANK_TRANSFER',
+    depositAccountId: ids.bankAccountId,
+    partyId: ids.customerId,
+    generalTargetAccountId: ids.mobilizationAdvanceAccountId,
+    projectId: ids.projectId,
+    costCentreId: ids.costCentreId,
+    purposeId: ids.billingPurposeId,
+    amountSettled: '1000000.0000',
+    taxDeductedAtSource: '0.0000',
+    narration: 'Mobilization advance — project kickoff',
+  });
+
+  // ── 7) Payment ────────────────────────────────────────────────────────────
+  section('7) Payment — 2 payments (POST /api/payment, then …/{id}/post)');
+  log('Supplier payment — settles the Purchase Bill from section 2 above:');
+  payload('POST', '/api/payment', {
+    partyId: ids.supplierId,
+    paymentDate: DEMO_DATE_2,
+    paymentMode: 'BANK_TRANSFER',
+    paymentAccountId: ids.bankAccountId,
+    chequeTxnRef: 'TXN-2026-0142',
+    paymentAmount: '156000.0000',
+    narration: 'Part-payment — ABC Building Materials cement bill',
+    allocations: [{ payableType: 'PURCHASE_BILL', payableId: '<bill-1-id>', amountAllocated: '156000.0000' }],
+  });
+  log('Payroll settlement — pays the posted Salary sheet from section 5 above:');
+  payload('POST', '/api/payment', {
+    paymentDate: '2026-07-05',
+    paymentMode: 'BANK_TRANSFER',
+    paymentAccountId: ids.bankAccountId,
+    paymentAmount: '132000.0000',
+    narration: 'June 2026 salary run — bank disbursement',
+    allocations: [{ payableType: 'SALARY', payableId: '<salary-sheet-1-id>', amountAllocated: '132000.0000' }],
+  });
+
+  // ── 8) Contra / Journal ──────────────────────────────────────────────────
+  section('8) Contra & Journal — 2 samples (POST /api/contra or /api/journal, then …/{id}/post)');
+  log('Contra — cash withdrawn from bank for site petty cash (bank/cash accounts only, no dimensions):');
+  payload('POST', '/api/contra', {
+    voucherDate: DEMO_DATE_1,
+    narration: 'Cash withdrawal for site petty cash',
+    lines: [
+      { accountId: ids.bankAccountId, credit: '50000.0000' },
+      { accountId: ids.cashAccountId, debit: '50000.0000' },
+    ],
+  });
+  log('Journal — office overheads paid in cash (generic multi-line debit/credit journal):');
+  payload('POST', '/api/journal', {
+    voucherDate: DEMO_DATE_2,
+    narration: 'Site office electricity bill — June 2026',
+    lines: [
+      {
+        accountId: ids.overheadsAccountId,
+        projectId: ids.projectId,
+        costCentreId: ids.costCentreId,
+        purposeId: ids.purposeId,
+        debit: '8500.0000',
+      },
+      { accountId: ids.cashAccountId, credit: '8500.0000' },
+    ],
   });
 
   banner('Done');
