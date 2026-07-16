@@ -99,7 +99,7 @@ export class ReportsController {
   }
 
   /** The report catalog (FR-RPT-001) — the authoritative list of runnable reports. */
-  @Get()
+  @Get('catalog')
   @RequirePermission('reports', 'READ')
   catalog(): ReportDescriptor[] {
     return REPORT_CATALOG;
