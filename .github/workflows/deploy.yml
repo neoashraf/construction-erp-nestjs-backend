@@ -30,10 +30,10 @@ jobs:
       - run: npm test
 
   deploy-home:
-  name: Deploy to Home Server
-  if: github.ref == 'refs/heads/dev'
-  needs: test
-  runs-on: [self-hosted, ze-erp-home]
+    name: Deploy to Home Server
+    if: github.ref == 'refs/heads/dev'
+    needs: test
+    runs-on: [self-hosted, ze-erp-home]
 
     steps:
       - name: Checkout latest code
@@ -96,11 +96,11 @@ jobs:
         run: |
           docker image prune -f
 
-deploy-hostinger:
-  name: Deploy to Hostinger VPS
-  if: github.ref == 'refs/heads/main'
-  needs: test
-  runs-on: [self-hosted, zakir-erp-hostinger]
+  deploy-hostinger:
+    name: Deploy to Hostinger VPS
+    if: github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: [self-hosted, zakir-erp-hostinger]
 
     steps:
       - name: Checkout latest code
