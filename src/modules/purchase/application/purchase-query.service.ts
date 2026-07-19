@@ -103,11 +103,14 @@ export interface PurchaseOrderSummaryDto {
   projectId: string;
   supplierId: string;
   poDate: string;
+  /** Expected delivery date — surfaced in the list "Expected delivery" column (FR-PUR-001). */
+  expectedDeliveryDate: string | null;
+  /** Σ line amounts (orderedQty × rate) — the PO commitment value for the list/mobile card (FR-PUR-001). */
+  orderTotalAmount: string;
   status: string;
 }
 
 export interface PurchaseOrderDto extends PurchaseOrderSummaryDto {
-  expectedDeliveryDate: string | null;
   narration: string | null;
   approvedBy: string | null;
   approvedAt: string | null;
@@ -161,11 +164,26 @@ export interface PoMatchLineDto {
   receivedQty: string;
   openQty: string;
   matchStatus: MatchStatus;
+  /** Drill-down: a POSTED bill covering this PO line (its entryNo + id), else null (FR-PUR-018). */
+  billRef: string | null;
+  billId: string | null;
+  /** Drill-down: a POSTED GRN covering this PO line (its grnRefNo + id), else null (FR-PUR-018). */
+  grnRef: string | null;
+  grnId: string | null;
+}
+
+/** Per-status line counts for the match summary header (advisory; derived, never stored). */
+export interface PoMatchCountsDto {
+  matched: number;
+  underReceived: number;
+  overReceived: number;
+  pendingReceipt: number;
 }
 
 export interface PoMatchDto {
   poId: string;
   lines: PoMatchLineDto[];
+  counts: PoMatchCountsDto;
 }
 
 export interface PurchaseRegisterRowDto {
@@ -314,7 +332,28 @@ export class PurchaseQueryService {
       .skip(skip)
       .take(take)
       .getManyAndCount();
-    return new Paginated(rows.map(orderSummaryDto), page, pageSize, total);
+
+    // Σ line_amount per PO for the page, in one grouped query (the list "order total" —
+    // the PO commitment value; derived, never stored). Empty page → no aggregate query.
+    const totalsById = new Map<string, string>();
+    if (rows.length) {
+      const agg = await getManager(this.dataSource)
+        .getRepository(PurchaseOrderLineOrmEntity)
+        .createQueryBuilder('l')
+        .select('l.purchase_order_id', 'poId')
+        .addSelect('COALESCE(SUM(l.line_amount), 0)', 'total')
+        .where('l.purchase_order_id IN (:...ids)', { ids: rows.map((r) => r.id) })
+        .groupBy('l.purchase_order_id')
+        .getRawMany<{ poId: string; total: string }>();
+      for (const a of agg) totalsById.set(a.poId, new Decimal(a.total).toFixed(4));
+    }
+
+    return new Paginated(
+      rows.map((r) => orderSummaryDto(r, totalsById.get(r.id) ?? '0.0000')),
+      page,
+      pageSize,
+      total,
+    );
   }
 
   async getOrder(id: string, actor: Actor): Promise<PurchaseOrderDto | null> {
@@ -390,22 +429,31 @@ export class PurchaseQueryService {
     this.assertProjectVisible(actor, po.projectId);
 
     const rows = await this.registerRepo.poMatchRows(poId, actor.companyId);
-    return {
-      poId,
-      lines: rows.map((r) => {
-        const billed = new Decimal(r.billedQty);
-        const received = new Decimal(r.receivedQty);
-        return {
-          lineNo: r.lineNo,
-          itemId: r.itemId,
-          orderedQty: new Decimal(r.orderedQty).toFixed(4),
-          billedQty: billed.toFixed(4),
-          receivedQty: received.toFixed(4),
-          openQty: openQtyOf(billed, received).toFixed(4),
-          matchStatus: matchStatusOf(billed, received),
-        };
-      }),
+    const lines: PoMatchLineDto[] = rows.map((r) => {
+      const billed = new Decimal(r.billedQty);
+      const received = new Decimal(r.receivedQty);
+      return {
+        lineNo: r.lineNo,
+        itemId: r.itemId,
+        orderedQty: new Decimal(r.orderedQty).toFixed(4),
+        billedQty: billed.toFixed(4),
+        receivedQty: received.toFixed(4),
+        openQty: openQtyOf(billed, received).toFixed(4),
+        matchStatus: matchStatusOf(billed, received),
+        billRef: r.billRef ?? null,
+        billId: r.billId ?? null,
+        grnRef: r.grnRef ?? null,
+        grnId: r.grnId ?? null,
+      };
+    });
+    // Advisory per-status counts for the match summary header (derived, never stored).
+    const counts: PoMatchCountsDto = {
+      matched: lines.filter((l) => l.matchStatus === 'MATCHED').length,
+      underReceived: lines.filter((l) => l.matchStatus === 'UNDER_RECEIVED').length,
+      overReceived: lines.filter((l) => l.matchStatus === 'OVER_RECEIVED').length,
+      pendingReceipt: lines.filter((l) => l.matchStatus === 'PENDING_RECEIPT').length,
     };
+    return { poId, lines, counts };
   }
 
   // ---- supplier / project purchase registers (FR-PUR-020, FR-PUR-021) --------------------------------------
@@ -554,21 +602,23 @@ function billDto(
   };
 }
 
-function orderSummaryDto(r: PurchaseOrderOrmEntity): PurchaseOrderSummaryDto {
+function orderSummaryDto(r: PurchaseOrderOrmEntity, orderTotalAmount: string): PurchaseOrderSummaryDto {
   return {
     id: r.id,
     poRefNo: r.poRefNo,
     projectId: r.projectId,
     supplierId: r.supplierId,
     poDate: r.poDate,
+    expectedDeliveryDate: r.expectedDeliveryDate,
+    orderTotalAmount,
     status: r.status,
   };
 }
 
 function orderDto(r: PurchaseOrderOrmEntity, lines: PurchaseOrderLineOrmEntity[]): PurchaseOrderDto {
+  const total = lines.reduce((sum, l) => sum.plus(new Decimal(l.lineAmount)), new Decimal(0));
   return {
-    ...orderSummaryDto(r),
-    expectedDeliveryDate: r.expectedDeliveryDate,
+    ...orderSummaryDto(r, total.toFixed(4)),
     narration: r.narration,
     approvedBy: r.approvedBy,
     approvedAt: r.approvedAt ? r.approvedAt.toISOString() : null,
