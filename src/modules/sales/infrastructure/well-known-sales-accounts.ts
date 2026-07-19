@@ -10,9 +10,9 @@
  */
 export const WELL_KNOWN_SALES_ACCOUNTS = {
   accountsReceivableCode: '1200', // AR control (party owes us)
-  retentionReceivableCode: '1250', // Retention Receivable (asset)
-  mobilizationAdvanceCode: '2300', // Mobilization Advance from customer (liability)
-  aitRecoverableCode: '1270', // AIT / TDS Recoverable (asset)
+  retentionReceivableCode: '1210', // Retention Receivable (asset)
+  mobilizationAdvanceCode: '2110', // Mobilization Advance from customer (liability)
+  aitRecoverableCode: '1220', // AIT / TDS Recoverable (asset)
   revenueConstructionCode: '4100', // Revenue — Construction (income)
   outputVatPayableCode: '2200', // Output VAT Payable — Mushak (liability)
 } as const;
