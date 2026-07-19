@@ -1,8 +1,10 @@
-name: Deploy to Homelab (self-hosted)
+name: Deploy(self-hosted)
 
 on:
   push:
-    branches: [dev]
+    branches:
+      - dev
+      - main
   workflow_dispatch: {}
 
 concurrency:
@@ -27,10 +29,78 @@ jobs:
       - run: npm run lint
       - run: npm test
 
-  deploy:
-    name: Build and restart ze-erp-backend
+  deploy-home:
+    name: Deploy to Home Server
+    if: github.ref == 'refs/heads/dev'
     needs: test
     runs-on: [self-hosted, ze-erp-home]
+
+    steps:
+      - name: Checkout latest code
+        uses: actions/checkout@v4
+
+      - name: Load server env file
+        shell: bash
+        run: |
+          SERVER_ENV="/root/zakir-erp/ze-erp-nestjs-backend/.env"
+
+          if [ -f "$SERVER_ENV" ]; then
+            cp "$SERVER_ENV" .env
+            echo "Loaded server env file from $SERVER_ENV"
+          else
+            echo "Server env file not found at $SERVER_ENV"
+            exit 1
+          fi
+
+          echo "Env file present"
+
+      - name: Build and restart containers
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          docker compose up -d --build --remove-orphans
+
+      - name: Wait for health check
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          for attempt in $(seq 1 20); do
+            if curl -sf http://localhost:7001/health >/dev/null; then
+              echo "Application is healthy"
+              exit 0
+            fi
+
+            echo "Waiting for app... attempt ${attempt}/20"
+            sleep 3
+          done
+
+          echo "Health check failed"
+
+          docker compose ps || true
+          docker compose logs --tail=100 ze-erp-backend || true
+
+          exit 1
+
+      - name: Seed demo data
+        shell: bash
+        run: docker compose run --rm --build seed sh -c "npm run seed && npm run seed:workflow-demo && npm run seed:module-samples"
+
+      - name: Show running containers
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          docker compose ps
+
+      - name: Prune old images
+        shell: bash
+        run: |
+          docker image prune -f
+
+  deploy-hostinger:
+    name: Deploy to Hostinger VPS
+    if: github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: [self-hosted, zakir-erp-hostinger]
 
     steps:
       - name: Checkout latest code
