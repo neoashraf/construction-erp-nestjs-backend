@@ -83,7 +83,11 @@ jobs:
 
       - name: Seed demo data
         shell: bash
-        run: docker compose run --rm --build seed sh -c "npm run seed && npm run seed:workflow-demo && npm run seed:module-samples"
+        working-directory: ${{ github.workspace }}
+        run: |
+          docker compose run -T --rm --build seed npm run seed
+          docker compose run -T --rm seed npm run seed:workflow-demo
+          docker compose run -T --rm seed npm run seed:module-samples
 
       - name: Show running containers
         shell: bash
@@ -150,7 +154,13 @@ jobs:
 
       - name: Seed demo data
         shell: bash
-        run: docker compose run --rm --build seed sh -c "npm run seed && npm run seed:workflow-demo && npm run seed:module-samples && npm run seed:purchase-inventory-demo && npm run seed:reports-demo"
+        working-directory: ${{ github.workspace }}
+        run: |
+          docker compose run -T --rm --build seed npm run seed
+          docker compose run -T --rm seed npm run seed:workflow-demo
+          docker compose run -T --rm seed npm run seed:module-samples
+          docker compose run -T --rm seed npm run seed:purchase-inventory-demo
+          docker compose run -T --rm seed npm run seed:reports-demo
 
       - name: Show running containers
         shell: bash
