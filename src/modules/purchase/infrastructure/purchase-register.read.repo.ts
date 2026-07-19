@@ -24,6 +24,12 @@ export interface PoMatchRow {
   orderedQty: string;
   billedQty: string;
   receivedQty: string;
+  /** A representative POSTED bill covering this line's item (most recent), for drill-down. */
+  billId: string | null;
+  billRef: string | null;
+  /** A representative POSTED GRN covering this line's item (most recent), for drill-down. */
+  grnId: string | null;
+  grnRef: string | null;
 }
 
 export interface RegisterBillRow {
@@ -60,7 +66,11 @@ export class PurchaseRegisterReadRepo {
               pol.item_id                                   AS "itemId",
               pol.ordered_qty::text                         AS "orderedQty",
               COALESCE(b.billed, 0)::text                   AS "billedQty",
-              COALESCE(r.received, 0)::text                 AS "receivedQty"
+              COALESCE(r.received, 0)::text                 AS "receivedQty",
+              bref.bill_id                                  AS "billId",
+              bref.entry_no                                 AS "billRef",
+              gref.grn_id                                   AS "grnId",
+              gref.grn_ref_no                               AS "grnRef"
          FROM purchase_order_line pol
          JOIN purchase_order po ON po.id = pol.purchase_order_id
          LEFT JOIN LATERAL (
@@ -84,6 +94,31 @@ export class PurchaseRegisterReadRepo {
                         SELECT id FROM purchase_bill
                          WHERE purchase_order_id = po.id AND company_id = po.company_id))
          ) r ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT pb.id AS bill_id, pb.entry_no
+             FROM purchase_bill_line pbl
+             JOIN purchase_bill pb ON pb.id = pbl.purchase_bill_id
+            WHERE pb.purchase_order_id = po.id
+              AND pb.company_id = po.company_id
+              AND pb.status = 'POSTED'
+              AND pbl.item_id = pol.item_id
+            ORDER BY pb.bill_date DESC, pb.created_at DESC
+            LIMIT 1
+         ) bref ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT g.id AS grn_id, g.grn_ref_no
+             FROM grn_line gl
+             JOIN grn g ON g.id = gl.grn_id
+            WHERE g.company_id = po.company_id
+              AND g.status = 'POSTED'
+              AND gl.item_id = pol.item_id
+              AND (g.purchase_order_id = po.id
+                   OR g.purchase_bill_id IN (
+                        SELECT id FROM purchase_bill
+                         WHERE purchase_order_id = po.id AND company_id = po.company_id))
+            ORDER BY g.receipt_date DESC, g.created_at DESC
+            LIMIT 1
+         ) gref ON TRUE
         WHERE pol.purchase_order_id = $1 AND po.company_id = $2
         ORDER BY pol.line_no`,
       [poId, companyId],
