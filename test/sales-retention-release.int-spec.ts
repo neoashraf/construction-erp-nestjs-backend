@@ -94,9 +94,9 @@ const CUSTOMER_2 = '00000000-0000-0000-0000-00000000d205';
 
 const ACC = {
   ar: '00000000-0000-0000-0000-00000000a320', // 1200
-  retention: '00000000-0000-0000-0000-00000000a325', // 1250
-  advanceLiability: '00000000-0000-0000-0000-00000000a330', // 2300 (SAL's well-known mobilization advance)
-  aitRecoverable: '00000000-0000-0000-0000-00000000a327', // 1270
+  retention: '00000000-0000-0000-0000-00000000a325', // 1210 (SAL's well-known retention receivable)
+  advanceLiability: '00000000-0000-0000-0000-00000000a330', // 2110 (SAL's well-known mobilization advance)
+  aitRecoverable: '00000000-0000-0000-0000-00000000a327', // 1220 (SAL's well-known AIT/TDS recoverable)
   revenue: '00000000-0000-0000-0000-00000000a410', // 4100
   vat: '00000000-0000-0000-0000-00000000a420', // 2200
   bank: '00000000-0000-0000-0000-00000000a110',
@@ -189,9 +189,9 @@ describe('SAL retention release + per-IPC outstanding + project register (real P
         [id, CO, code, name, GROUP, type],
       );
     await acc(ACC.ar, '1200', 'Accounts Receivable', 'ASSET');
-    await acc(ACC.retention, '1250', 'Retention Receivable', 'ASSET');
-    await acc(ACC.advanceLiability, '2300', 'Mobilization Advance', 'LIABILITY');
-    await acc(ACC.aitRecoverable, '1270', 'AIT Recoverable', 'ASSET');
+    await acc(ACC.retention, '1210', 'Retention Receivable', 'ASSET');
+    await acc(ACC.advanceLiability, '2110', 'Mobilization Advance', 'LIABILITY');
+    await acc(ACC.aitRecoverable, '1220', 'AIT Recoverable', 'ASSET');
     await acc(ACC.revenue, '4100', 'Revenue — Construction', 'INCOME');
     await acc(ACC.vat, '2200', 'Output VAT Payable', 'LIABILITY');
     await acc(ACC.bank, '1110', 'Bank — Operating', 'ASSET');
