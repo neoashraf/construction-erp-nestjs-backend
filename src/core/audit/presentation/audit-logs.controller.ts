@@ -24,7 +24,7 @@ import { NoEnvelope } from '../../../infrastructure/http/no-envelope.decorator';
 
 /** Actions valid on the list/export filter (mirrors the domain AuditAction set minus EXPORT). */
 const VALID_FILTER_ACTIONS = new Set<string>([
-  'CREATE', 'UPDATE', 'DELETE', 'POST', 'CANCEL', 'APPROVE', 'REJECT', 'ACTIVATE', 'DEACTIVATE',
+  'CREATE', 'UPDATE', 'DELETE', 'POST', 'CANCEL', 'APPROVE', 'REJECT', 'ACTIVATE', 'DEACTIVATE', 'REACTIVATE',
 ]);
 
 function parseDate(raw: string, label: string): Date {
