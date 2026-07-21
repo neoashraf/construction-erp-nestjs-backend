@@ -75,9 +75,9 @@ const CUSTOMER = '00000000-0000-0000-0000-00000000d004';
 
 const ACC = {
   ar: '00000000-0000-0000-0000-00000000a120', // 1200
-  retention: '00000000-0000-0000-0000-00000000a125', // 1250
-  advance: '00000000-0000-0000-0000-00000000a230', // 2300
-  ait: '00000000-0000-0000-0000-00000000a127', // 1270
+  retention: '00000000-0000-0000-0000-00000000a125', // 1210 (SAL well-known retention receivable)
+  advance: '00000000-0000-0000-0000-00000000a230', // 2110 (SAL well-known mobilization advance)
+  ait: '00000000-0000-0000-0000-00000000a127', // 1220 (SAL well-known AIT/TDS recoverable)
   revenue: '00000000-0000-0000-0000-00000000a410', // 4100
   vat: '00000000-0000-0000-0000-00000000a220', // 2200
 };
@@ -172,9 +172,9 @@ describe('Sales / IPC (real Postgres + real PostingService)', () => {
         [id, CO, code, name, GROUP, type],
       );
     await acc(ACC.ar, '1200', 'Accounts Receivable', 'ASSET');
-    await acc(ACC.retention, '1250', 'Retention Receivable', 'ASSET');
-    await acc(ACC.advance, '2300', 'Mobilization Advance', 'LIABILITY');
-    await acc(ACC.ait, '1270', 'AIT Recoverable', 'ASSET');
+    await acc(ACC.retention, '1210', 'Retention Receivable', 'ASSET');
+    await acc(ACC.advance, '2110', 'Mobilization Advance', 'LIABILITY');
+    await acc(ACC.ait, '1220', 'AIT Recoverable', 'ASSET');
     await acc(ACC.revenue, '4100', 'Revenue — Construction', 'INCOME');
     await acc(ACC.vat, '2200', 'Output VAT Payable', 'LIABILITY');
 
