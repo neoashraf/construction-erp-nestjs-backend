@@ -19,6 +19,8 @@ services:
       target: builder
     env_file:
       - .env
+    environment:
+      - BASE_URL=http://ze-erp-backend:3000
     command: npm run seed
     profiles:
       - seed
