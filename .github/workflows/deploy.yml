@@ -191,9 +191,7 @@ jobs:
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
-          docker compose run -T --rm --build seed npm run seed
-          docker compose run -T --rm seed npm run seed:workflow-demo
-          docker compose run -T --rm seed npm run seed:module-samples
+          docker compose run -T --rm --build seed npm run seed:all
 
       - name: Show running containers
         shell: bash
