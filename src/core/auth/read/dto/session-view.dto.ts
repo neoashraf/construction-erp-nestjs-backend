@@ -16,6 +16,10 @@ export interface SessionUserDto {
   mustChangePassword: boolean;
   /** Cloudinary served URL of the profile photo; null when none (AUD profile slice, FR-AUD-039). */
   avatarUrl: string | null;
+  /** Display name of the user's company — shell chip / profile; null if unresolved. */
+  companyName: string | null;
+  /** Label of the user's default financial year (e.g. "FY 2025-26"); null if unresolved. */
+  financialYearLabel: string | null;
 }
 
 export type ProjectScopeDto =
