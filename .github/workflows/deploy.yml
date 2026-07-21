@@ -7,14 +7,19 @@ on:
       - main
   workflow_dispatch: {}
 
+# Scope concurrency per branch so a push to `main` never cancels an in-flight
+# `dev` run (and vice-versa); only a newer push to the SAME branch supersedes.
 concurrency:
-  group: ze-erp-backend-deploy
+  group: ze-erp-backend-deploy-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   test:
     name: Typecheck, lint & test
     runs-on: ubuntu-latest
+    # Guardrail: the Testcontainers int-specs are slow; fail fast on a genuine hang
+    # instead of running to a runner limit and reporting an ambiguous cancellation.
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
