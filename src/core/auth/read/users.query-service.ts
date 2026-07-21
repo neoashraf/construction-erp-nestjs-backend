@@ -6,6 +6,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { DATA_SOURCE } from '../../../database/database.module';
+import { Paginated } from '../../../infrastructure/http/pagination';
 
 @Injectable()
 export class UsersQueryService {
@@ -33,7 +34,12 @@ export class UsersQueryService {
       ),
       this.ds.query(`SELECT COUNT(*)::int AS total FROM "user" u WHERE ${where}`, params),
     ]);
-    return { items: rows, total: countRows[0]?.total ?? 0 };
+    // Return a Paginated so the ResponseEnvelopeInterceptor lifts the rows to `data`
+    // (array) and page info to `meta` — the central list envelope every other list
+    // endpoint uses, and the shape both the user-management screen and the project
+    // PM picker consume. A bare `{ items, total }` would be wrapped as
+    // `{ data: { items, total } }`, leaving the client's `data` a non-array (empty list).
+    return new Paginated<any>(rows, filters.page, filters.pageSize, countRows[0]?.total ?? 0);
   }
 
   async findById(id: string, companyId: string) {
