@@ -1,39 +1,146 @@
-name: Deploy(self-hosted)
+# ---------------------------------------------------------------------------
+# CI/CD — Build, test, and deploy backend (self-hosted)
+# dev  -> Home Server
+# main -> Hostinger VPS
+# ---------------------------------------------------------------------------
+
+name: CI/CD
 
 on:
   push:
     branches:
-      - dev
       - main
+      - dev
   workflow_dispatch: {}
 
 concurrency:
-  group: ze-erp-backend-deploy
-  cancel-in-progress: true
+  group: cicd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  test:
-    name: Typecheck, lint & test
+
+  # =========================================================================
+  # STAGE 1: CONTINUOUS INTEGRATION
+  # =========================================================================
+
+  build-and-test:
+    name: Build & Unit Tests
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 22
+          cache: npm
 
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm test
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify handlebars production dependency
+        run: |
+          echo "Checking package.json..."
+          node -e "
+            const p=require('./package.json');
+            const prod=p.dependencies?.handlebars;
+            const dev=p.devDependencies?.handlebars;
+            console.log('dependencies.handlebars:', prod);
+            console.log('devDependencies.handlebars:', dev);
+            if(!prod){ console.error('ERROR: handlebars is missing from dependencies.'); process.exit(1); }
+            if(dev){ console.error('ERROR: handlebars must not be in devDependencies.'); process.exit(1); }
+          "
+          echo "Checking package-lock.json..."
+          grep -n '"handlebars"' package-lock.json | head -20 || true
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
+
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: e_commerce_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: e_commerce_test
+      JWT_ACCESS_SECRET: test-access-secret
+      JWT_REFRESH_SECRET: test-refresh-secret
+      INTERNAL_SERVICE_TOKEN: test-internal-token
+      NOTIF_UNSUBSCRIBE_SECRET: test-unsubscribe-secret
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: E2E tests
+        run: npm run test:e2e
+
+  docker-build:
+    name: Docker Build Check
+    runs-on: ubuntu-latest
+    needs: [build-and-test, e2e]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image for CI check
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ecommerce-nestjs-backend:ci
+
+      - name: Verify handlebars inside Docker image
+        run: |
+          docker run --rm ecommerce-nestjs-backend:ci node -e "console.log(require.resolve('handlebars'))"
+
+  # =========================================================================
+  # STAGE 2: CONTINUOUS DEPLOYMENT (self-hosted runners)
+  # =========================================================================
 
   deploy-home:
     name: Deploy to Home Server
     if: github.ref == 'refs/heads/dev'
-    needs: test
-    runs-on: [self-hosted, ze-erp-home]
+    needs: [build-and-test, e2e, docker-build]
+    runs-on: [self-hosted, sports-ecommerce-home]
 
     steps:
       - name: Checkout latest code
@@ -42,7 +149,7 @@ jobs:
       - name: Load server env file
         shell: bash
         run: |
-          SERVER_ENV="/root/zakir-erp/ze-erp-nestjs-backend/.env"
+          SERVER_ENV="/root/sports-ecommerce/e-commerce-nestjs-backend/.env"
 
           if [ -f "$SERVER_ENV" ]; then
             cp "$SERVER_ENV" .env
@@ -51,8 +158,6 @@ jobs:
             echo "Server env file not found at $SERVER_ENV"
             exit 1
           fi
-
-          echo "Env file present"
 
       - name: Build and restart containers
         shell: bash
@@ -65,7 +170,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           for attempt in $(seq 1 20); do
-            if curl -sf http://localhost:7001/health >/dev/null; then
+            if curl -sf http://localhost:6001/api/v1/health >/dev/null; then
               echo "Application is healthy"
               exit 0
             fi
@@ -77,7 +182,8 @@ jobs:
           echo "Health check failed"
 
           docker compose ps || true
-          docker compose logs --tail=100 ze-erp-backend || true
+          docker compose logs --tail=100 api || true
+          docker compose logs --tail=100 migrate || true
 
           exit 1
 
@@ -85,26 +191,22 @@ jobs:
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
-          docker compose run -T --rm --build seed npm run seed
-          docker compose run -T --rm seed npm run seed:workflow-demo
-          docker compose run -T --rm seed npm run seed:module-samples
+          docker compose run -T --rm --build seed npm run seed:all
 
       - name: Show running containers
         shell: bash
         working-directory: ${{ github.workspace }}
-        run: |
-          docker compose ps
+        run: docker compose ps
 
       - name: Prune old images
         shell: bash
-        run: |
-          docker image prune -f
+        run: docker image prune -f
 
   deploy-hostinger:
     name: Deploy to Hostinger VPS
     if: github.ref == 'refs/heads/main'
-    needs: test
-    runs-on: [self-hosted, zakir-erp-hostinger]
+    needs: [build-and-test, e2e, docker-build]
+    runs-on: [self-hosted, sports-ecommerce-hostinger]
 
     steps:
       - name: Checkout latest code
@@ -113,7 +215,7 @@ jobs:
       - name: Load server env file
         shell: bash
         run: |
-          SERVER_ENV="/root/zakir-erp/ze-erp-nestjs-backend/.env"
+          SERVER_ENV="/root/sports-ecommerce/e-commerce-nestjs-backend/.env"
 
           if [ -f "$SERVER_ENV" ]; then
             cp "$SERVER_ENV" .env
@@ -122,8 +224,6 @@ jobs:
             echo "Server env file not found at $SERVER_ENV"
             exit 1
           fi
-
-          echo "Env file present"
 
       - name: Build and restart containers
         shell: bash
@@ -136,7 +236,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           for attempt in $(seq 1 20); do
-            if curl -sf http://localhost:7001/health >/dev/null; then
+            if curl -sf http://localhost:6001/api/v1/health >/dev/null; then
               echo "Application is healthy"
               exit 0
             fi
@@ -148,7 +248,8 @@ jobs:
           echo "Health check failed"
 
           docker compose ps || true
-          docker compose logs --tail=100 ze-erp-backend || true
+          docker compose logs --tail=100 api || true
+          docker compose logs --tail=100 migrate || true
 
           exit 1
 
@@ -156,19 +257,13 @@ jobs:
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
-          docker compose run -T --rm --build seed npm run seed
-          docker compose run -T --rm seed npm run seed:workflow-demo
-          docker compose run -T --rm seed npm run seed:module-samples
-          docker compose run -T --rm seed npm run seed:purchase-inventory-demo
-          docker compose run -T --rm seed npm run seed:reports-demo
+          docker compose run -T --rm --build seed npm run seed:all
 
       - name: Show running containers
         shell: bash
         working-directory: ${{ github.workspace }}
-        run: |
-          docker compose ps
+        run: docker compose ps
 
       - name: Prune old images
         shell: bash
-        run: |
-          docker image prune -f
+        run: docker image prune -f
