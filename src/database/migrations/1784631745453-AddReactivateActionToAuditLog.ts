@@ -10,8 +10,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * INSERT violated audit_log_action_check and rolled the whole reactivate back as a 500
  * INTERNAL_ERROR. Deactivate was unaffected because 'DEACTIVATE' was already allowed.
  */
-export class AddReactivateActionToAuditLog1700002600000 implements MigrationInterface {
-  name = 'AddReactivateActionToAuditLog1700002600000';
+export class AddReactivateActionToAuditLog1784631745453 implements MigrationInterface {
+  name = 'AddReactivateActionToAuditLog1784631745453';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "audit_log" DROP CONSTRAINT IF EXISTS "audit_log_action_check";`);
