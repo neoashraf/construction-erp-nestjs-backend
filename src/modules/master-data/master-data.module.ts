@@ -33,6 +33,7 @@ import { CostCentreQueryService } from './cost-centre/read/cost-centre.query-ser
 import { CostCentreController } from './cost-centre/presentation/cost-centre.controller';
 import { TypeOrmProjectRepository } from './project/infrastructure/typeorm-project.repository';
 import { CreateProjectUseCase, UpdateProjectUseCase, ChangeProjectStatusUseCase } from './project/application/project.use-cases';
+import { ProjectManagerAssignmentService } from './project/application/project-manager-assignment.service';
 import { ProjectQueryService } from './project/read/project.query-service';
 import { ProjectController } from './project/presentation/project.controller';
 import { TypeOrmProjectBudgetRepository } from './project-budget/infrastructure/typeorm-project-budget.repository';
@@ -111,6 +112,7 @@ import { ItemController } from './item/presentation/item.controller';
     CreateProjectUseCase,
     UpdateProjectUseCase,
     ChangeProjectStatusUseCase,
+    ProjectManagerAssignmentService,
     UpsertProjectBudgetUseCase,
     DeleteProjectBudgetUseCase,
     InlineCreatePurposeUseCase,
