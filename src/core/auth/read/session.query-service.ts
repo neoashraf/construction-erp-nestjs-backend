@@ -19,10 +19,14 @@ export class SessionQueryService {
   /** The caller's own session projection (identity from the token, not a lookup param). */
   async me(actor: Actor): Promise<SessionView> {
     const [userRow] = await this.ds.query(
-      `SELECT id, email, name, role, company_id AS "companyId", financial_year_id AS "financialYearId",
-              is_active AS "isActive", last_login_at AS "lastLoginAt", must_change_password AS "mustChangePassword",
-              avatar_url AS "avatarUrl"
-       FROM "user" WHERE id = $1 AND company_id = $2`,
+      `SELECT u.id, u.email, u.name, u.role, u.company_id AS "companyId", u.financial_year_id AS "financialYearId",
+              u.is_active AS "isActive", u.last_login_at AS "lastLoginAt", u.must_change_password AS "mustChangePassword",
+              u.avatar_url AS "avatarUrl",
+              c.name AS "companyName", fy.label AS "financialYearLabel"
+       FROM "user" u
+       LEFT JOIN "company" c ON c.id = u.company_id
+       LEFT JOIN "financial_year" fy ON fy.id = u.financial_year_id
+       WHERE u.id = $1 AND u.company_id = $2`,
       [actor.userId, actor.companyId],
     );
     // The caller is deactivated/unknown for this company — treat as no session (FR-AUD-009/027).
@@ -67,6 +71,8 @@ export class SessionQueryService {
         lastLoginAt: userRow.lastLoginAt ? new Date(userRow.lastLoginAt).toISOString() : null,
         mustChangePassword: userRow.mustChangePassword,
         avatarUrl: userRow.avatarUrl ?? null,
+        companyName: userRow.companyName ?? null,
+        financialYearLabel: userRow.financialYearLabel ?? null,
       },
       projectScope,
       approvalLimit: roleRow?.approvalLimit ?? null,
