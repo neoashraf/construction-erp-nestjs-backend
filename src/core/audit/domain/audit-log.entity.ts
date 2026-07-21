@@ -2,7 +2,7 @@
  * AuditLog domain entity (AUD audit — FR-AUD-020..027). PURE TypeScript. Append-only.
  * No updated_at/deleted_at/version — immutable once written (FR-AUD-023).
  */
-export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'POST' | 'CANCEL' | 'APPROVE' | 'REJECT' | 'ACTIVATE' | 'DEACTIVATE' | 'EXPORT';
+export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'POST' | 'CANCEL' | 'APPROVE' | 'REJECT' | 'ACTIVATE' | 'DEACTIVATE' | 'REACTIVATE' | 'EXPORT';
 
 export interface AuditLogProps {
   companyId: string;
