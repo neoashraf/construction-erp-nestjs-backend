@@ -5,7 +5,7 @@
  * NOTE: customer_id (Party) / project_manager_id (User) cross-company validation lands when those
  * masters exist (parties brief / AUD); referenced here by id only.
  */
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ImmutableProjectCodeError, NotFoundError } from '../../../../common/errors/domain-error';
 import { UNIT_OF_WORK, UnitOfWork } from '../../../../common/ports/unit-of-work.port';
 import { ID_GENERATOR, IdGenerator } from '../../../../common/ports/id-generator.port';
@@ -15,6 +15,7 @@ import { AUDIT_SERVICE, AuditService, AuditAction } from '../../../../core/audit
 import { assertVersion } from '../../application/optimistic-lock';
 import { Project, ProjectStatusAction } from '../domain/project';
 import { TypeOrmProjectRepository } from '../infrastructure/typeorm-project.repository';
+import { ProjectManagerAssignmentService } from './project-manager-assignment.service';
 
 export interface CreateProjectInput {
   projectCode: string;
@@ -33,12 +34,17 @@ export class CreateProjectUseCase {
     @Inject(AUDIT_SERVICE) private readonly audit: AuditService,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
     @Inject(ID_GENERATOR) private readonly ids: IdGenerator,
+    // Optional so manual test instantiations without the auth wiring still construct;
+    // in the app it's always provided and the assigned PM gains project visibility.
+    @Optional() private readonly pmAssignment?: ProjectManagerAssignmentService,
   ) {}
   async execute(input: CreateProjectInput, actor: Actor): Promise<{ id: string }> {
     const project = Project.create({ companyId: actor.companyId, ...input }, this.ids);
     await this.uow.run(async () => {
       await this.repo.insert(project);
       await rec(this.audit, 'CREATE', project.id, actor);
+      // Grant the named PM visibility of the project they manage (idempotent; scoped roles only).
+      await this.pmAssignment?.ensureAssigned(project.props.projectManagerId, project.id, actor);
     });
     return { id: project.id };
   }
@@ -59,6 +65,8 @@ export class UpdateProjectUseCase {
     private readonly repo: TypeOrmProjectRepository,
     @Inject(AUDIT_SERVICE) private readonly audit: AuditService,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
+    // Optional so manual test instantiations without the auth wiring still construct.
+    @Optional() private readonly pmAssignment?: ProjectManagerAssignmentService,
   ) {}
   async execute(id: string, input: UpdateProjectInput, version: number, actor: Actor): Promise<void> {
     await this.uow.run(async () => {
@@ -71,6 +79,11 @@ export class UpdateProjectUseCase {
       project.update(input);
       await this.repo.update(project, version);
       await rec(this.audit, 'UPDATE', id, actor);
+      // Reassigning the PM grants the new manager visibility of the project (idempotent no-op
+      // when the PM is unchanged or already assigned).
+      if (input.projectManagerId !== undefined) {
+        await this.pmAssignment?.ensureAssigned(input.projectManagerId, id, actor);
+      }
     });
   }
 }
