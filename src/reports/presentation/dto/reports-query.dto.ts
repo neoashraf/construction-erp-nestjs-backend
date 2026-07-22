@@ -25,6 +25,7 @@ class CommonReportQueryDto extends ReportPaging {
 
 export class TrialBalanceReportQueryDto extends CommonReportQueryDto {
   @IsOptional() @IsUUID() periodId?: string;
+  @IsOptional() @Matches(ISO) asOf?: string;
   @IsOptional() @Matches(ISO) dateFrom?: string;
   @IsOptional() @Matches(ISO) dateTo?: string;
   @IsOptional() @IsString() groupBy?: string;
