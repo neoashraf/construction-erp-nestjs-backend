@@ -18,6 +18,8 @@ const MEDIA_STORAGE_ERROR = 'MEDIA_STORAGE_ERROR';
 @Injectable()
 export class CloudinaryMediaStorage implements MediaStorage {
   private configured = false;
+  /** Top-level namespace every asset is stored under (e.g. `zakir-erp`). Set on first use. */
+  private rootFolder = '';
 
   constructor(@Inject(ConfigService) private readonly config: ConfigService) {}
 
@@ -29,7 +31,14 @@ export class CloudinaryMediaStorage implements MediaStorage {
       throw new ServiceUnavailableException(MEDIA_STORAGE_ERROR);
     }
     cloudinary.config({ cloud_name: c.cloudName, api_key: c.apiKey, api_secret: c.apiSecret, secure: true });
+    this.rootFolder = (c.rootFolder ?? '').replace(/^\/+|\/+$/g, '');
     this.configured = true;
+  }
+
+  /** Prefix the caller's folder with the project-wide root namespace (e.g. `zakir-erp/companies/<id>/avatars`). */
+  private scopedFolder(folder: string): string {
+    const clean = folder.replace(/^\/+|\/+$/g, '');
+    return this.rootFolder ? `${this.rootFolder}/${clean}` : clean;
   }
 
   async upload(input: MediaUploadInput): Promise<MediaUploadResult> {
@@ -37,7 +46,7 @@ export class CloudinaryMediaStorage implements MediaStorage {
     const dataUri = `data:${input.mimeType};base64,${input.buffer.toString('base64')}`;
     try {
       const res = await cloudinary.uploader.upload(dataUri, {
-        folder: input.folder,
+        folder: this.scopedFolder(input.folder),
         public_id: input.publicId,
         overwrite: true,
         invalidate: true,
