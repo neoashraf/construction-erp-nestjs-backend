@@ -32,6 +32,8 @@ export const envValidationSchema = Joi.object({
   CLOUDINARY_CLOUD_NAME: Joi.string().allow('').optional(),
   CLOUDINARY_API_KEY: Joi.string().allow('').optional(),
   CLOUDINARY_API_SECRET: Joi.string().allow('').optional(),
+  // Top-level Cloudinary folder every asset is namespaced under; defaults to `zakir-erp`.
+  CLOUDINARY_ROOT_FOLDER: Joi.string().allow('').optional(),
 })
   // Reject unknown keys would be too strict (CI injects extras); allow but don't expose them.
   .unknown(true);
