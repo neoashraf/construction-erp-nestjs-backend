@@ -31,6 +31,8 @@ export interface CloudinaryConfig {
   cloudName: string;
   apiKey: string;
   apiSecret: string;
+  /** Top-level folder every asset is namespaced under (e.g. `zakir-erp/companies/<id>/avatars`). */
+  rootFolder: string;
 }
 
 export const appConfig = registerAs(
@@ -70,6 +72,7 @@ export const cloudinaryConfig = registerAs(
     cloudName: process.env.CLOUDINARY_CLOUD_NAME ?? '',
     apiKey: process.env.CLOUDINARY_API_KEY ?? '',
     apiSecret: process.env.CLOUDINARY_API_SECRET ?? '',
+    rootFolder: process.env.CLOUDINARY_ROOT_FOLDER ?? 'zakir-erp',
   }),
 );
 

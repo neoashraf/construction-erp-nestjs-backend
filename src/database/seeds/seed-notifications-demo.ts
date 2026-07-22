@@ -36,6 +36,23 @@ const PARTIES = ['M/s Rahman Traders', 'Shah Cement Ltd.', 'Meghna Steel', 'ABC 
 const PEOPLE = ['Ashraf Uddin', 'ফারজানা আক্তার', 'Kamrul Hasan', 'Nusrat Jahan'];
 const AMOUNTS = ['৳ 42,00,000.00', '৳ 8,40,000.00', '৳ 12,40,000.00', '৳ 3,20,000.00', '৳ 9,45,000.00'];
 
+// Source module → a REAL frontend list route, so a seeded notification is clickable and
+// lands on an existing page (matches src/app/(app)/**). Kept to list routes (no fabricated
+// record ids); the click-through + auto-mark-read is what we exercise.
+const ROUTE_BY_MODULE: Record<string, string> = {
+  REQ: '/requisitions',
+  PUR: '/purchase/orders',
+  INV: '/inventory/stock-journals',
+  SAL: '/sales/ipcs',
+  REC: '/receipts',
+  PAY: '/payments',
+  CC: '/cost-control/budget-vs-actual',
+  PER: '/period',
+  HR: '/hr/salary-sheets',
+  AUD: '/audit/users',
+  LED: '/ledger',
+};
+
 function pick<T>(arr: T[], i: number): T {
   return arr[i % arr.length]!;
 }
@@ -107,11 +124,17 @@ async function main(): Promise<void> {
   if (!user) throw new Error(`User "${RECIPIENT_EMAIL}" not found in ${COMPANY_NAME}. Run "npm run seed" first.`);
 
   // Idempotent: clear this user's previous seed rows (leaves real notifications alone).
-  const del = (await ds.query(
-    `DELETE FROM notification WHERE recipient_user_id = $1 AND event_key LIKE 'seed-notif-%' RETURNING id`,
+  // Count first, then delete — TypeORM's DELETE result shape is driver-specific, so a
+  // separate count is the reliable way to report how many were cleared.
+  const [{ c: priorCount }] = (await ds.query(
+    `SELECT count(*)::int AS c FROM notification WHERE recipient_user_id = $1 AND event_key LIKE 'seed-notif-%'`,
     [user.id],
-  )) as Array<{ id: string }>;
-  process.stdout.write(`  Cleared ${del.length} prior seed notifications\n`);
+  )) as Array<{ c: number }>;
+  await ds.query(
+    `DELETE FROM notification WHERE recipient_user_id = $1 AND event_key LIKE 'seed-notif-%'`,
+    [user.id],
+  );
+  process.stdout.write(`  Cleared ${priorCount} prior seed notifications\n`);
 
   const now = Date.now();
   let unread = 0;
@@ -124,7 +147,10 @@ async function main(): Promise<void> {
     const isRead = i >= 25;
     if (!isRead) unread++;
     const readAt = isRead ? new Date(now - i * 90 * 60 * 1000 + 5 * 60 * 1000).toISOString() : null;
-    const deepLink = JSON.stringify({ route: `/${def.sourceModule.toLowerCase()}`, params: { ref: pad(i + 1) } });
+    // Clickable → real route (row navigates there + auto-marks read). Every ~9th row is
+    // informational (null deepLink) to exercise the non-clickable state too.
+    const informational = i % 9 === 8;
+    const deepLink = informational ? null : JSON.stringify({ route: ROUTE_BY_MODULE[def.sourceModule] ?? '/dashboard' });
 
     await ds.query(
       `INSERT INTO notification
