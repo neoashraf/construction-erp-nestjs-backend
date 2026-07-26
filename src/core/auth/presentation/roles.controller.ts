@@ -35,7 +35,11 @@ class PatchRoleDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsString() approvalLimit?: string | null;
   @IsOptional() @IsBoolean() isUnscoped?: boolean;
-  version!: number;
+  // @IsInt() is required, not just for type-checking: the global ValidationPipe runs
+  // with whitelist + forbidNonWhitelisted, so a property with NO validation decorator
+  // is treated as an unknown field and the request is rejected ("property version
+  // should not exist"). Mirrors ReplaceRolePermissionsDto.version below.
+  @IsInt() version!: number;
 }
 
 class ReplaceRolePermissionsDto {

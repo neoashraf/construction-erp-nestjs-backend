@@ -4,7 +4,8 @@
  * Account lockout: 5 consecutive failures → 15-min lock; uniform INVALID_CREDENTIALS in all failure
  * paths so email-enumeration and lockout are not disclosed (FR-AUD-001/009, §6 business rule).
  */
-import { Inject, Injectable, UnauthorizedException, ForbiddenException, Optional } from '@nestjs/common';
+import { Inject, Injectable, ForbiddenException, Optional } from '@nestjs/common';
+import { InvalidCredentialsError, ValidationError } from '../../../common/errors/domain-error';
 import { PasswordHasher, PASSWORD_HASHER } from '../domain/ports/password-hasher.port';
 import { TokenSigner, TOKEN_SIGNER, AccessClaims } from '../domain/ports/token-signer.port';
 import { RefreshTokenStore, REFRESH_TOKEN_STORE } from '../domain/ports/refresh-token-store.port';
@@ -34,7 +35,6 @@ export interface LoginResult extends TokenPair {
   };
 }
 
-const INVALID_CREDENTIALS = 'INVALID_CREDENTIALS';
 const ACCESS_TOKEN_TTL_SECONDS = 900; // 15 min
 
 @Injectable()
@@ -55,17 +55,17 @@ export class AuthService {
 
     // Generic failure for unknown email — same path as wrong-password/deactivated.
     if (!user) {
-      throw new UnauthorizedException(INVALID_CREDENTIALS);
+      throw new InvalidCredentialsError();
     }
 
     // Lockout check before anything else — not disclosed (FR-AUD-001, §16).
     if (user.isLockedOut(now)) {
-      throw new UnauthorizedException(INVALID_CREDENTIALS);
+      throw new InvalidCredentialsError();
     }
 
     // Deactivated user → uniform error (FR-AUD-009).
     if (!user.props.isActive) {
-      throw new UnauthorizedException(INVALID_CREDENTIALS);
+      throw new InvalidCredentialsError();
     }
 
     const valid = await this.hasher.verify(password, user.props.passwordHash);
@@ -77,7 +77,7 @@ export class AuthService {
       if (!wasLocked && user.isLockedOut(now)) {
         try { await this.events?.publish([AuthEvents.accountLockedOut(user.props.companyId, user.id)]); } catch { /* best-effort */ }
       }
-      throw new UnauthorizedException(INVALID_CREDENTIALS);
+      throw new InvalidCredentialsError();
     }
 
     // Success: reset lockout, stamp last_login_at (FR-AUD-008).
@@ -127,12 +127,12 @@ export class AuthService {
     try {
       claims = this.signer.verifyRefresh(refreshToken);
     } catch {
-      throw new UnauthorizedException(INVALID_CREDENTIALS);
+      throw new InvalidCredentialsError();
     }
 
     const live = await this.store.isLive(claims.jti);
     if (!live) {
-      throw new UnauthorizedException(INVALID_CREDENTIALS);
+      throw new InvalidCredentialsError();
     }
 
     const user = await this.users.findById(claims.sub);
@@ -164,13 +164,15 @@ export class AuthService {
   /** FR-AUD-006/002 — change password: verify current, re-hash new, revoke all sessions. */
   async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
     const user = await this.users.findById(userId);
-    if (!user) throw new UnauthorizedException(INVALID_CREDENTIALS);
+    if (!user) throw new InvalidCredentialsError();
 
     const valid = await this.hasher.verify(currentPassword, user.props.passwordHash);
-    if (!valid) throw new UnauthorizedException(INVALID_CREDENTIALS);
+    if (!valid) throw new InvalidCredentialsError();
 
     if (newPassword.length < 10) {
-      throw new Error('Password must be at least 10 characters');
+      throw new ValidationError('Password must include letters and numbers.', {
+        newPassword: ['Password must be at least 10 characters'],
+      });
     }
 
     const newHash = await this.hasher.hash(newPassword);

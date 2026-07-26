@@ -34,12 +34,12 @@ export class UsersQueryService {
       ),
       this.ds.query(`SELECT COUNT(*)::int AS total FROM "user" u WHERE ${where}`, params),
     ]);
-    // Return a Paginated so the ResponseEnvelopeInterceptor lifts the rows to `data`
-    // (array) and page info to `meta` — the central list envelope every other list
-    // endpoint uses, and the shape both the user-management screen and the project
-    // PM picker consume. A bare `{ items, total }` would be wrapped as
-    // `{ data: { items, total } }`, leaving the client's `data` a non-array (empty list).
-    return new Paginated<any>(rows, filters.page, filters.pageSize, countRows[0]?.total ?? 0);
+    // Return a `Paginated` INSTANCE (not a plain object) so the ResponseEnvelopeInterceptor lifts the
+    // rows to `data` (array) and the page info to `meta` per overview §6 — the central list envelope
+    // every other list endpoint uses, and the shape both the user-management screen and the project PM
+    // picker consume. A bare `{ items, total }` falls through as `{ data: { items, total } }`, leaving
+    // the client's `data` a non-array (renders as an empty list).
+    return new Paginated(rows, filters.page, filters.pageSize, countRows[0]?.total ?? 0);
   }
 
   async findById(id: string, companyId: string) {

@@ -2,7 +2,8 @@
  * AuthService unit tests — no DB, no NestJS DI. All auth use cases with fake ports.
  * Covers FR-AUD-001/002/004/005/006/008/009 and §16 lockout (5 attempts / 15-min window).
  */
-import { UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
+import { InvalidCredentialsError, ValidationError } from '../../../src/common/errors/domain-error';
 import { AuthService } from '../../../src/core/auth/application/auth.service';
 import { User } from '../../../src/core/auth/domain/user';
 import { PasswordHasher } from '../../../src/core/auth/domain/ports/password-hasher.port';
@@ -106,17 +107,17 @@ describe('AuthService', () => {
 
     it('returns INVALID_CREDENTIALS for wrong password (FR-AUD-001)', async () => {
       const svc = buildService(makeUser(), false);
-      await expect(svc.login('co-1', 'admin@test.com', 'wrong')).rejects.toThrow(UnauthorizedException);
+      await expect(svc.login('co-1', 'admin@test.com', 'wrong')).rejects.toThrow(InvalidCredentialsError);
     });
 
     it('returns INVALID_CREDENTIALS for unknown email — uniform error (FR-AUD-001)', async () => {
       const svc = buildService(null, false);
-      await expect(svc.login('co-1', 'unknown@test.com', 'pass')).rejects.toThrow(UnauthorizedException);
+      await expect(svc.login('co-1', 'unknown@test.com', 'pass')).rejects.toThrow(InvalidCredentialsError);
     });
 
     it('returns INVALID_CREDENTIALS for deactivated user — not disclosed (FR-AUD-009)', async () => {
       const svc = buildService(makeUser({ isActive: false }), true);
-      await expect(svc.login('co-1', 'admin@test.com', 'secret')).rejects.toThrow(UnauthorizedException);
+      await expect(svc.login('co-1', 'admin@test.com', 'secret')).rejects.toThrow(InvalidCredentialsError);
     });
 
     it('increments failed_login_attempts on wrong password', async () => {
@@ -125,7 +126,7 @@ describe('AuthService', () => {
       const savedCapture: User[] = [];
       (repo as any).save = async (u: User) => { savedCapture.push(u); };
       const svc = new AuthService(repo as any, makeHasher(false) as any, makeSigner() as any, makeStore() as any);
-      await expect(svc.login('co-1', 'admin@test.com', 'wrong')).rejects.toThrow(UnauthorizedException);
+      await expect(svc.login('co-1', 'admin@test.com', 'wrong')).rejects.toThrow(InvalidCredentialsError);
       expect(savedCapture[0]?.props.failedLoginAttempts).toBe(1);
     });
 
@@ -135,7 +136,7 @@ describe('AuthService', () => {
       const savedCapture: User[] = [];
       (repo as any).save = async (u: User) => { savedCapture.push(u); };
       const svc = new AuthService(repo as any, makeHasher(false) as any, makeSigner() as any, makeStore() as any);
-      await expect(svc.login('co-1', 'admin@test.com', 'wrong')).rejects.toThrow(UnauthorizedException);
+      await expect(svc.login('co-1', 'admin@test.com', 'wrong')).rejects.toThrow(InvalidCredentialsError);
       expect(savedCapture[0]?.props.failedLoginAttempts).toBe(5);
       expect(savedCapture[0]?.props.lockedUntil).not.toBeNull();
     });
@@ -144,7 +145,7 @@ describe('AuthService', () => {
       const lockedUntil = new Date(Date.now() + 60_000);
       const user = makeUser({ failedLoginAttempts: 5, lockedUntil });
       const svc = buildService(user, true); // correct password but locked
-      await expect(svc.login('co-1', 'admin@test.com', 'secret')).rejects.toThrow(UnauthorizedException);
+      await expect(svc.login('co-1', 'admin@test.com', 'secret')).rejects.toThrow(InvalidCredentialsError);
     });
 
     it('resets failed_login_attempts + lockedUntil on successful login after lockout window', async () => {
@@ -171,7 +172,7 @@ describe('AuthService', () => {
 
     it('rejects a revoked JTI — INVALID_CREDENTIALS (FR-AUD-004)', async () => {
       const svc = buildService(makeUser(), true, new Set()); // no live jtis
-      await expect(svc.refresh('refresh.jti-1')).rejects.toThrow(UnauthorizedException);
+      await expect(svc.refresh('refresh.jti-1')).rejects.toThrow(InvalidCredentialsError);
     });
 
     it('rejects an invalid refresh token string', async () => {
@@ -182,7 +183,7 @@ describe('AuthService', () => {
         { ...makeSigner(), verifyRefresh: () => { throw new Error('invalid'); } } as any,
         makeStore() as any,
       );
-      await expect(brokenSvc.refresh('garbage')).rejects.toThrow(UnauthorizedException);
+      await expect(brokenSvc.refresh('garbage')).rejects.toThrow(InvalidCredentialsError);
     });
 
     it('rejects refresh when user is now inactive (FR-AUD-009)', async () => {
@@ -226,12 +227,12 @@ describe('AuthService', () => {
 
     it('rejects when current password is wrong — INVALID_CREDENTIALS (FR-AUD-006)', async () => {
       const svc = buildService(makeUser(), false);
-      await expect(svc.changePassword('user-1', 'wrong', 'new-pass-10chars')).rejects.toThrow(UnauthorizedException);
+      await expect(svc.changePassword('user-1', 'wrong', 'new-pass-10chars')).rejects.toThrow(InvalidCredentialsError);
     });
 
-    it('rejects new password shorter than 10 chars', async () => {
+    it('rejects new password shorter than 10 chars — VALIDATION_ERROR', async () => {
       const svc = buildService(makeUser(), true);
-      await expect(svc.changePassword('user-1', 'current', 'short')).rejects.toThrow();
+      await expect(svc.changePassword('user-1', 'current', 'short')).rejects.toThrow(ValidationError);
     });
   });
 

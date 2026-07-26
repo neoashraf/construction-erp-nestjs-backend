@@ -161,8 +161,8 @@ describe('aud-rbac-followups (#43) — role fields + anti-lockout + batch grid s
   describe('user-read role fields', () => {
     it('findAll joins the role: roleId + roleIsSystem + roleIsUnscoped, role name retained, no password_hash', async () => {
       const { items } = await usersQuery.findAll(CO, { page: 1, pageSize: 25 });
-      const admin = items.find((u: any) => u.email === 'admin@ze.local');
-      const pm = items.find((u: any) => u.email === 'pm@ze.local');
+      const admin = items.find((u: any) => u.email === 'admin@ze.local') as any;
+      const pm = items.find((u: any) => u.email === 'pm@ze.local') as any;
 
       const [adminRole] = await ds.query(`SELECT id FROM "role" WHERE company_id=$1 AND name='ADMIN'`, [CO]);
       expect(admin.role).toBe('ADMIN');

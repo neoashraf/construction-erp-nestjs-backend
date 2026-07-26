@@ -99,5 +99,8 @@ export const DOMAIN_ERROR_STATUS: Record<DomainErrorCode, HttpStatus> = {
   [DomainErrorCode.APPEND_ONLY_VIOLATION]: HttpStatus.CONFLICT,
   [DomainErrorCode.NOT_FOUND]: HttpStatus.NOT_FOUND,
   [DomainErrorCode.UNAUTHORIZED]: HttpStatus.UNAUTHORIZED,
+  [DomainErrorCode.INVALID_CREDENTIALS]: HttpStatus.UNAUTHORIZED,
+  [DomainErrorCode.TOKEN_EXPIRED]: HttpStatus.UNAUTHORIZED,
+  [DomainErrorCode.UNAUTHENTICATED]: HttpStatus.UNAUTHORIZED,
   [DomainErrorCode.FORBIDDEN]: HttpStatus.FORBIDDEN,
 };

@@ -168,13 +168,16 @@ export class RoleUseCases {
       });
       Object.assign(before, patch.before); Object.assign(after, patch.after);
 
-      await this.roles.save(role);
+      // Bump the optimistic-lock version explicitly — the domain owns it now that the
+      // ORM column is plain (not @VersionColumn). A concurrent stale save then rejects.
+      const bumped = Role.rehydrate(role.id, { ...role.props, version: role.props.version + 1 });
+      await this.roles.save(bumped);
       await this.audit.record({
         action: 'UPDATE', entityType: 'Role', entityId: id,
         actorId: actor.userId, companyId: actor.companyId, before, after,
       });
-      const userCount = await this.roles.countUsers(actor.companyId, role.props.name);
-      return roleView(role, userCount);
+      const userCount = await this.roles.countUsers(actor.companyId, bumped.props.name);
+      return roleView(bumped, userCount);
     });
   }
 
@@ -383,14 +386,16 @@ export class PermissionUseCases {
       }
 
       const { before, after } = perm.patch(updates);
-      await this.permissions.save(perm);
+      // Bump the version explicitly — the domain owns it (plain column, not @VersionColumn).
+      const bumped = Permission.rehydrate(perm.id, { ...perm.props, version: perm.props.version + 1 });
+      await this.permissions.save(bumped);
       await this.audit.record({
         action: 'UPDATE', entityType: 'Permission', entityId: id,
         actorId: actor.userId, companyId: actor.companyId,
         before: before as Record<string, unknown>, after: after as Record<string, unknown>,
       });
-      const p = perm.props;
-      return { id: perm.id, resource: p.resource, action: p.action, projectScope: p.projectScope, valueLimit: p.valueLimit?.toFixed(4) ?? null };
+      const p = bumped.props;
+      return { id: bumped.id, resource: p.resource, action: p.action, projectScope: p.projectScope, valueLimit: p.valueLimit?.toFixed(4) ?? null };
     });
   }
 

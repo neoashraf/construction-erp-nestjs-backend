@@ -16,6 +16,9 @@ export enum DomainErrorCode {
   CONFLICT = 'CONFLICT',
   FORBIDDEN = 'FORBIDDEN',
   UNAUTHORIZED = 'UNAUTHORIZED',
+  INVALID_CREDENTIALS = 'INVALID_CREDENTIALS',
+  TOKEN_EXPIRED = 'TOKEN_EXPIRED',
+  UNAUTHENTICATED = 'UNAUTHENTICATED',
   // master data (MAS) / shared
   OPTIMISTIC_LOCK_CONFLICT = 'OPTIMISTIC_LOCK_CONFLICT',
   CROSS_COMPANY_REFERENCE = 'CROSS_COMPANY_REFERENCE',
@@ -139,6 +142,34 @@ export class ValidationError extends DomainError {
   readonly code = DomainErrorCode.VALIDATION;
   constructor(message: string, details?: Record<string, unknown>) {
     super(message, details);
+  }
+}
+
+/**
+ * Wrong current password, unknown email, deactivated account, or a locked-out account
+ * (FR-AUD-001/006/009, §16 lockout). Uniform across all these cases — never discloses
+ * which one — and across login/refresh/change-password. Maps to HTTP 401.
+ */
+export class InvalidCredentialsError extends DomainError {
+  readonly code = DomainErrorCode.INVALID_CREDENTIALS;
+  constructor(message = 'INVALID_CREDENTIALS') {
+    super(message);
+  }
+}
+
+/** The access token presented on a secured route has expired (FR-AUD-004/009). Maps to HTTP 401. */
+export class TokenExpiredError extends DomainError {
+  readonly code = DomainErrorCode.TOKEN_EXPIRED;
+  constructor(message = 'TOKEN_EXPIRED') {
+    super(message);
+  }
+}
+
+/** No / malformed access token on a secured route (FR-AUD-003/009). Maps to HTTP 401. */
+export class UnauthenticatedError extends DomainError {
+  readonly code = DomainErrorCode.UNAUTHENTICATED;
+  constructor(message = 'UNAUTHENTICATED') {
+    super(message);
   }
 }
 
