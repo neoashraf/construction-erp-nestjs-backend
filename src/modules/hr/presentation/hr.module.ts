@@ -36,13 +36,24 @@ import { HrAccountResolverAdapter } from '../infrastructure/hr-account-resolver.
 import { HrProjectStatusAdapter } from '../infrastructure/hr-project-status.adapter';
 import { PostingServiceAdapter } from '../infrastructure/posting-service.adapter';
 import { CsvBiometricImportAdapter } from '../infrastructure/biometric-import.adapter';
+import { AttendanceReportService } from '../attendance-reports/application/attendance-report.service';
+import { ATTENDANCE_REPORT_READ_PORT } from '../attendance-reports/domain/ports/attendance-report.read.port';
+import { AttendanceReportReadAdapter } from '../attendance-reports/infrastructure/attendance-report.read.adapter';
+import { AttendanceReportController } from '../attendance-reports/presentation/attendance-report.controller';
 import { EmployeeController } from './employee.controller';
 import { AttendanceController } from './attendance.controller';
 import { SalaryController } from './salary.controller';
 
 @Module({
   imports: [PostingModule, AuthModule, PaymentModule],
-  controllers: [EmployeeController, AttendanceController, SalaryController],
+  controllers: [
+    EmployeeController,
+    AttendanceController,
+    SalaryController,
+    // `/api/reports/{daily,range,summary}` — HR owns employee + attendance_record, so the attendance
+    // reports are wired here even though they share RPT's `/api/reports` path prefix.
+    AttendanceReportController,
+  ],
   providers: [
     // ports → adapters
     { provide: EMPLOYEE_REPOSITORY, useClass: TypeOrmEmployeeRepository },
@@ -53,6 +64,7 @@ import { SalaryController } from './salary.controller';
     { provide: HR_PROJECT_STATUS_PORT, useClass: HrProjectStatusAdapter },
     { provide: POSTING_SERVICE_PORT, useClass: PostingServiceAdapter },
     { provide: BIOMETRIC_IMPORT_PORT, useClass: CsvBiometricImportAdapter },
+    { provide: ATTENDANCE_REPORT_READ_PORT, useClass: AttendanceReportReadAdapter },
     // use cases
     EmployeeService,
     AttendanceService,
@@ -60,6 +72,7 @@ import { SalaryController } from './salary.controller';
     PayslipService,
     // read
     HrQueryService,
+    AttendanceReportService,
   ],
 })
 export class HrModule {}
