@@ -37,9 +37,29 @@ import { HrProjectStatusAdapter } from '../infrastructure/hr-project-status.adap
 import { PostingServiceAdapter } from '../infrastructure/posting-service.adapter';
 import { CsvBiometricImportAdapter } from '../infrastructure/biometric-import.adapter';
 import { AttendanceReportService } from '../attendance-reports/application/attendance-report.service';
+import { AttendanceSettingService } from '../attendance-reports/application/attendance-setting.service';
+import { HolidayService } from '../attendance-reports/application/holiday.service';
 import { ATTENDANCE_REPORT_READ_PORT } from '../attendance-reports/domain/ports/attendance-report.read.port';
+import { ATTENDANCE_CONFIG_REPOSITORY } from '../attendance-reports/domain/ports/attendance-config.repository';
+import { PUBLIC_HOLIDAY_API_PORT } from '../attendance-reports/domain/ports/public-holiday-api.port';
 import { AttendanceReportReadAdapter } from '../attendance-reports/infrastructure/attendance-report.read.adapter';
+import { TypeOrmAttendanceConfigRepository } from '../attendance-reports/infrastructure/typeorm-attendance-config.repository';
+import { NagerPublicHolidayAdapter } from '../attendance-reports/infrastructure/nager-public-holiday.adapter';
+import { AttendanceUserService } from '../attendance-reports/application/attendance-user.service';
+import { DeviceIngestionService } from '../attendance-reports/application/device-ingestion.service';
+import { DeviceStatusService } from '../attendance-reports/application/device-status.service';
+import { ATTENDANCE_USER_REPOSITORY } from '../attendance-reports/domain/ports/attendance-user.repository';
+import { PUNCH_INGESTION_REPOSITORY } from '../attendance-reports/domain/ports/punch-ingestion.repository';
+import { TypeOrmAttendanceUserRepository } from '../attendance-reports/infrastructure/typeorm-attendance-user.repository';
+import { TypeOrmPunchIngestionRepository } from '../attendance-reports/infrastructure/typeorm-punch-ingestion.repository';
 import { AttendanceReportController } from '../attendance-reports/presentation/attendance-report.controller';
+import { AttendanceSettingController } from '../attendance-reports/presentation/attendance-setting.controller';
+import { AttendanceUserController } from '../attendance-reports/presentation/attendance-user.controller';
+import {
+  DeviceIngestionController,
+  DeviceStatusController,
+} from '../attendance-reports/presentation/device.controller';
+import { HolidayController } from '../attendance-reports/presentation/holiday.controller';
 import { EmployeeController } from './employee.controller';
 import { AttendanceController } from './attendance.controller';
 import { SalaryController } from './salary.controller';
@@ -53,6 +73,15 @@ import { SalaryController } from './salary.controller';
     // `/api/reports/{daily,range,summary}` — HR owns employee + attendance_record, so the attendance
     // reports are wired here even though they share RPT's `/api/reports` path prefix.
     AttendanceReportController,
+    // The report CONFIGURATION surface: without these the late threshold and the holiday calendar can
+    // never be changed, and every weekend counts as a working day.
+    AttendanceSettingController,
+    HolidayController,
+    // Device→employee mapping the reports are built from (§7).
+    AttendanceUserController,
+    // Fingerprint device: UNAUTHENTICATED `/iclock/cdata` ingestion + guarded status/sync (§4, §5).
+    DeviceIngestionController,
+    DeviceStatusController,
   ],
   providers: [
     // ports → adapters
@@ -65,6 +94,10 @@ import { SalaryController } from './salary.controller';
     { provide: POSTING_SERVICE_PORT, useClass: PostingServiceAdapter },
     { provide: BIOMETRIC_IMPORT_PORT, useClass: CsvBiometricImportAdapter },
     { provide: ATTENDANCE_REPORT_READ_PORT, useClass: AttendanceReportReadAdapter },
+    { provide: ATTENDANCE_CONFIG_REPOSITORY, useClass: TypeOrmAttendanceConfigRepository },
+    { provide: PUBLIC_HOLIDAY_API_PORT, useClass: NagerPublicHolidayAdapter },
+    { provide: ATTENDANCE_USER_REPOSITORY, useClass: TypeOrmAttendanceUserRepository },
+    { provide: PUNCH_INGESTION_REPOSITORY, useClass: TypeOrmPunchIngestionRepository },
     // use cases
     EmployeeService,
     AttendanceService,
@@ -73,6 +106,12 @@ import { SalaryController } from './salary.controller';
     // read
     HrQueryService,
     AttendanceReportService,
+    AttendanceSettingService,
+    HolidayService,
+    AttendanceUserService,
+    DeviceIngestionService,
+    // Default (singleton) scope is REQUIRED — a request-scoped instance would forget the last heartbeat.
+    DeviceStatusService,
   ],
 })
 export class HrModule {}

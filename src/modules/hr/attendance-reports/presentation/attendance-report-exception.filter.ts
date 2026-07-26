@@ -50,6 +50,19 @@ export class AttendanceReportExceptionFilter implements ExceptionFilter {
       return { status: exception.statusCode, body: { error: exception.message } };
     }
 
+    // body-parser rejects an oversized body before any handler runs; it tags the error rather than
+    // throwing an HttpException, so it needs its own branch (SUPPORTING_APIS_GUIDE §1.2).
+    if (
+      typeof exception === 'object' &&
+      exception !== null &&
+      (exception as { type?: string }).type === 'entity.too.large'
+    ) {
+      return {
+        status: HttpStatus.PAYLOAD_TOO_LARGE,
+        body: { error: 'Payload too large' },
+      };
+    }
+
     // Guards (401/403) and the ValidationPipe (400 on an unknown query parameter).
     if (exception instanceof HttpException) {
       const status = exception.getStatus();

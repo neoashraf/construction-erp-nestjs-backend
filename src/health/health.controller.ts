@@ -22,4 +22,26 @@ export class HealthController {
   check() {
     return this.health.check([() => this.db.pingCheck('database')]);
   }
+
+  /**
+   * Liveness — "is the process up?". Answers without touching the database ON PURPOSE: a liveness probe
+   * that fails on a DB blip gets the container restarted, which does not fix a database. Readiness is
+   * what should react to that.
+   */
+  @Get('live')
+  live(): { status: 'live' } {
+    return { status: 'live' };
+  }
+
+  /**
+   * Readiness — "can this instance serve traffic?". Fails (503, via the Terminus check) while PostgreSQL
+   * is unreachable, so the load balancer takes the instance out of rotation instead of routing requests
+   * that are certain to fail.
+   */
+  @Get('ready')
+  @HealthCheck()
+  async ready(): Promise<{ status: 'ready' }> {
+    await this.health.check([() => this.db.pingCheck('database')]);
+    return { status: 'ready' };
+  }
 }

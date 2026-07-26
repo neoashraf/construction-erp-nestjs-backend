@@ -11,6 +11,7 @@ import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import express from 'express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
@@ -25,6 +26,13 @@ async function bootstrap(): Promise<void> {
   // NOTE: routes are already namespaced under /api by each @Controller('api/...')
   // (business controllers) — do NOT also call app.setGlobalPrefix('api') here or
   // every business route doubles to /api/api/... . Health/_diag live at /health, /_diag.
+
+  // Fingerprint-device ingestion (`/iclock/cdata`) needs the body as RAW TEXT: ZKTeco firmware POSTs a
+  // tab/comma-delimited payload with `text/plain` or no Content-Type at all, which the default JSON
+  // parser would reject or mangle. Scoped to the `/iclock` prefix ON PURPOSE — the source project applied
+  // `express.text({ type: () => true })` globally, which here would turn every JSON request body in the
+  // ERP into a string. Registered before the ValidationPipe so device payloads never reach it.
+  app.use('/iclock', express.text({ type: () => true, limit: '1mb' }));
 
   // Global validation (ADR-0002 §2.3): strip unknown fields, reject extras, coerce types.
   app.useGlobalPipes(

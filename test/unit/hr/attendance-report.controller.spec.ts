@@ -137,6 +137,15 @@ describe('AttendanceReportController', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ label: 'July 2026' });
     });
+
+    // §1.2 — attendance data changes as punches arrive, so a cached report is a wrong answer.
+    it('marks every response Cache-Control: no-store', async () => {
+      const json = await request(app.getHttpServer()).get('/api/reports/daily');
+      expect(json.headers['cache-control']).toBe('no-store');
+
+      const csv = await request(app.getHttpServer()).get('/api/reports/daily/export');
+      expect(csv.headers['cache-control']).toBe('no-store');
+    });
   });
 
   describe('error shape (§4.5)', () => {
@@ -158,6 +167,19 @@ describe('AttendanceReportController', () => {
 
       expect(res.status).toBe(500);
       expect(res.body).toEqual({ error: 'Internal server error' });
+    });
+
+    // body-parser tags an oversized body rather than throwing an HttpException, so it needs its own
+    // branch in the filter (§1.2).
+    it('maps an oversized body to 413 Payload too large', async () => {
+      service.getDailyReport.mockImplementationOnce(() => {
+        throw Object.assign(new Error('request entity too large'), { type: 'entity.too.large' });
+      });
+
+      const res = await request(app.getHttpServer()).get('/api/reports/daily');
+
+      expect(res.status).toBe(413);
+      expect(res.body).toEqual({ error: 'Payload too large' });
     });
   });
 

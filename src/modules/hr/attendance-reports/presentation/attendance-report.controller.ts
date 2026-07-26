@@ -21,7 +21,15 @@
  * which owns `employee` + `attendance_record`. Nest resolves route prefixes independently of module, and
  * none of the six paths collide with RPT's report names.
  */
-import { Controller, Get, Query, Res, UseFilters, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  Res,
+  UseFilters,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { Response } from 'express';
 import { ApiTags } from '@nestjs/swagger';
 import { Actor } from '../../../../core/tenancy/tenant-context';
@@ -34,6 +42,7 @@ import { AttendanceReportService } from '../application/attendance-report.servic
 import { DailyReport, RangeReport, SummaryReport } from '../domain/attendance-report.model';
 import { formatLocalDate } from '../domain/attendance-rules';
 import { AttendanceReportExceptionFilter } from './attendance-report-exception.filter';
+import { NoStoreInterceptor } from './no-store.interceptor';
 import { DailyReportQueryDto, RangeReportQueryDto } from './dto/attendance-report-query.dto';
 
 /** Excel only detects UTF-8 in a CSV when the file opens with a byte order mark. */
@@ -43,6 +52,7 @@ const UTF8_BOM = '﻿';
 @Controller('api/reports')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @UseFilters(AttendanceReportExceptionFilter)
+@UseInterceptors(NoStoreInterceptor)
 @NoEnvelope()
 export class AttendanceReportController {
   constructor(private readonly reports: AttendanceReportService) {}
