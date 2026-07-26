@@ -58,6 +58,16 @@ export interface PunchIngestionRepository {
     companyId: string,
   ): Promise<{ deviceTimestamp: string; receivedAt: Date } | null>;
 
+  /**
+   * Distinct (employee code, day) pairs that have punches in the window — the work list for a manual
+   * re-reconcile (`POST /api/sync`). Bounded by the caller's date range, never a full-table scan.
+   */
+  listPunchDays(
+    companyId: string,
+    dateFrom: string,
+    dateTo: string,
+  ): Promise<Array<{ userId: string; attendanceDate: string }>>;
+
   /** Record the heartbeat on the device row so liveness survives a restart. */
   touchDeviceLastSeen(deviceSn: string, seenAt: Date): Promise<void>;
 }

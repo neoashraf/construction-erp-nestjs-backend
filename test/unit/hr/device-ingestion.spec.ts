@@ -175,6 +175,12 @@ class FakePunchRepo implements PunchIngestionRepository {
     return Promise.resolve(null);
   }
 
+  punchDays: Array<{ userId: string; attendanceDate: string }> = [];
+
+  listPunchDays(): Promise<Array<{ userId: string; attendanceDate: string }>> {
+    return Promise.resolve(this.punchDays);
+  }
+
   touchDeviceLastSeen(deviceSn: string): Promise<void> {
     this.touched.push(deviceSn);
     return Promise.resolve();
@@ -234,6 +240,32 @@ describe('DeviceIngestionService', () => {
     expect(result.skipped).toEqual([
       { userId: '1042', attendanceDate: '2026-07-26', reason: 'NO_PROJECT' },
     ]);
+  });
+
+  it('re-reconciles stored punches on resync — the retry for days ingestion had to skip', async () => {
+    const repo = new FakePunchRepo({ companyId: 'co1', defaultProjectId: 'p1' });
+    repo.punchDays = [
+      { userId: '1042', attendanceDate: '2026-07-26' },
+      { userId: '1043', attendanceDate: '2026-07-26' },
+    ];
+    const svc = new DeviceIngestionService(repo, uow as never);
+
+    const result = await svc.resync('co1', '2026-07-01', '2026-07-31');
+
+    expect(result).toMatchObject({ days: 2, reconciled: 2 });
+    expect(repo.reconciledDays).toEqual(repo.punchDays);
+  });
+
+  it('resync is a no-op when the window holds no punches', async () => {
+    const repo = new FakePunchRepo({ companyId: 'co1', defaultProjectId: 'p1' });
+    const svc = new DeviceIngestionService(repo, uow as never);
+
+    expect(await svc.resync('co1', '2026-07-01', '2026-07-31')).toEqual({
+      days: 0,
+      reconciled: 0,
+      skipped: [],
+    });
+    expect(repo.reconciledDays).toHaveLength(0);
   });
 
   it('parses the timestamp into occurredAt while keeping the raw text', async () => {

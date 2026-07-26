@@ -126,4 +126,31 @@ export class DeviceIngestionService {
   findLatestPunch(companyId: string): Promise<{ deviceTimestamp: string; receivedAt: Date } | null> {
     return this.repo.findLatestPunch(companyId);
   }
+
+  /**
+   * Manual re-reconcile (`POST /api/sync`). In a PUSH architecture there is nothing to pull from the
+   * device — punches are already here — so the useful "sync" is re-folding stored punches into
+   * `attendance_record`.
+   *
+   * That is not a no-op: reconciliation at ingest time SKIPS days it cannot place (unknown employee
+   * code, no project on the employee or device, no financial year covering the date). Once an admin
+   * fixes the underlying data, those punches are still sitting in `checkin_log` with nothing to trigger
+   * a retry. This is that trigger.
+   *
+   * Idempotent — re-folding a day it already folded writes the same first/last punch back.
+   */
+  async resync(
+    companyId: string,
+    dateFrom: string,
+    dateTo: string,
+    defaultProjectId: string | null = null,
+  ): Promise<{ days: number; reconciled: number; skipped: ReconcileOutcome['skipped'] }> {
+    const days = await this.repo.listPunchDays(companyId, dateFrom, dateTo);
+    if (days.length === 0) return { days: 0, reconciled: 0, skipped: [] };
+
+    return this.uow.run(async () => {
+      const outcome = await this.repo.reconcileDays(companyId, defaultProjectId, days);
+      return { days: days.length, reconciled: outcome.reconciled, skipped: outcome.skipped };
+    });
+  }
 }

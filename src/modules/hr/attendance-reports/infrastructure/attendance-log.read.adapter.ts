@@ -1,0 +1,43 @@
+/**
+ * AttendanceLogReadAdapter (INFRASTRUCTURE) — raw punches for `GET /api/logs` (SUPPORTING_APIS_GUIDE §2).
+ *
+ * `device_timestamp` is zero-padded text, so the window filter is a plain lexicographic BETWEEN over
+ * `'YYYY-MM-DD 00:00:00'`..`'YYYY-MM-DD 23:59:59'` — chronological without a cast, and the
+ * `(company_id, user_id, device_timestamp)` index covers it.
+ *
+ * Unlike the reports adapter this does NOT aggregate: `/api/logs` reports per-punch ids and
+ * `punchCount`, so the service groups by day in Node. That is the source contract's shape, and the row
+ * count is bounded by the page of employees the caller asked for.
+ */
+import { Inject, Injectable } from '@nestjs/common';
+import { DataSource } from 'typeorm';
+import { DATA_SOURCE } from '../../../../database/database.module';
+import { getManager } from '../../../../infrastructure/unit-of-work/transaction-context';
+import { AttendanceLogReadPort, PunchRow } from '../domain/ports/attendance-log.read.port';
+
+@Injectable()
+export class AttendanceLogReadAdapter implements AttendanceLogReadPort {
+  constructor(@Inject(DATA_SOURCE) private readonly dataSource: DataSource) {}
+
+  async listPunches(
+    companyId: string,
+    employeeCodes: readonly string[],
+    dateFrom: string,
+    dateTo: string,
+  ): Promise<PunchRow[]> {
+    if (employeeCodes.length === 0) return [];
+
+    return getManager(this.dataSource).query(
+      `SELECT "id"::text          AS "id",
+              "user_id"           AS "userId",
+              "device_timestamp"  AS "deviceTimestamp",
+              "received_at"       AS "receivedAt"
+         FROM "checkin_log"
+        WHERE "company_id" = $1
+          AND "user_id" = ANY($2::varchar[])
+          AND "device_timestamp" >= $3 AND "device_timestamp" <= $4
+        ORDER BY "user_id" ASC, "device_timestamp" ASC`,
+      [companyId, [...employeeCodes], `${dateFrom} 00:00:00`, `${dateTo} 23:59:59`],
+    ) as Promise<PunchRow[]>;
+  }
+}

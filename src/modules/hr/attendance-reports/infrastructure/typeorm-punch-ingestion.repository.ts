@@ -192,6 +192,24 @@ export class TypeOrmPunchIngestionRepository implements PunchIngestionRepository
     return rows[0] ?? null;
   }
 
+  async listPunchDays(
+    companyId: string,
+    dateFrom: string,
+    dateTo: string,
+  ): Promise<Array<{ userId: string; attendanceDate: string }>> {
+    // device_timestamp is zero-padded text, so a lexicographic BETWEEN over the day boundaries is also
+    // a chronological range — no cast, and the (company, user, ts) index still applies.
+    return getManager(this.dataSource).query(
+      `SELECT DISTINCT "user_id" AS "userId",
+              substring("device_timestamp" from 1 for 10) AS "attendanceDate"
+         FROM "checkin_log"
+        WHERE "company_id" = $1
+          AND "device_timestamp" >= $2 AND "device_timestamp" <= $3
+        ORDER BY 1, 2`,
+      [companyId, `${dateFrom} 00:00:00`, `${dateTo} 23:59:59`],
+    ) as Promise<Array<{ userId: string; attendanceDate: string }>>;
+  }
+
   async touchDeviceLastSeen(deviceSn: string, seenAt: Date): Promise<void> {
     await getManager(this.dataSource).query(
       `UPDATE "attendance_device" SET "last_seen_at" = $2, "updated_at" = now() WHERE "device_sn" = $1`,

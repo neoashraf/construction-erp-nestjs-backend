@@ -39,6 +39,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { IsOptional, IsString } from 'class-validator';
 import type { Request } from 'express';
 import { Actor } from '../../../../core/tenancy/tenant-context';
 import { CurrentActor } from '../../../../core/auth/presentation/current-actor.decorator';
@@ -51,9 +52,16 @@ import {
   DeviceStatusDto,
   DeviceStatusService,
 } from '../application/device-status.service';
+import { assertDateText, badRequest, formatLocalDate } from '../domain/attendance-rules';
 import { AttendanceReportExceptionFilter } from './attendance-report-exception.filter';
 import { DevicePlainTextExceptionFilter } from './device-plaintext-exception.filter';
 import { NoStoreInterceptor } from './no-store.interceptor';
+
+/** Optional window for a manual re-reconcile; validated by `assertDateText` for the contract messages. */
+class SyncRequestDto {
+  @IsOptional() @IsString() dateFrom?: string;
+  @IsOptional() @IsString() dateTo?: string;
+}
 
 function remoteAddressOf(req: Request): string | null {
   return req.ip ?? req.socket?.remoteAddress ?? null;
@@ -170,13 +178,40 @@ export class DeviceStatusController {
   }
 
   /**
-   * 501 by design, not an omission: there is nothing to trigger. Punches arrive in real time because the
-   * device pushes them. Answering 200 here would promise a pull that never happens.
+   * Manual sync. This architecture is PUSH, so this does NOT dial out to the device — punches are
+   * already in `checkin_log`. What it does is RE-RECONCILE them into `attendance_record`.
+   *
+   * That is the operation that actually matters: ingestion skips any employee-day it cannot place
+   * (unknown employee code, no project on the employee or device, no financial year covering the date)
+   * and those punches then sit in `checkin_log` with nothing to retry them. After an admin fixes the
+   * employee or project, this is the button that brings them into the reports. Idempotent, so it is safe
+   * to press twice.
+   *
+   * Defaults to the last 30 days when no range is given.
    */
   @Post('sync')
-  @HttpCode(501)
-  @RequirePermission('hr.attendance', 'READ')
-  sync(): { error: string } {
-    return { error: 'Manual sync is not supported; the device pushes to /iclock/cdata' };
+  @HttpCode(200)
+  @RequirePermission('hr.attendance', 'UPDATE')
+  async sync(
+    @Body() body: SyncRequestDto,
+    @CurrentActor() actor: Actor,
+  ): Promise<{
+    mode: 'push';
+    dateFrom: string;
+    dateTo: string;
+    days: number;
+    reconciled: number;
+    skipped: Awaited<ReturnType<DeviceIngestionService['resync']>>['skipped'];
+  }> {
+    const today = new Date();
+    const dateTo = body.dateTo ? assertDateText(body.dateTo, 'dateTo') : formatLocalDate(today);
+    const dateFrom = body.dateFrom
+      ? assertDateText(body.dateFrom, 'dateFrom')
+      : formatLocalDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29));
+
+    if (dateFrom > dateTo) throw badRequest('dateFrom must not be after dateTo');
+
+    const result = await this.ingestion.resync(actor.companyId, dateFrom, dateTo);
+    return { mode: 'push', dateFrom, dateTo, ...result };
   }
 }
