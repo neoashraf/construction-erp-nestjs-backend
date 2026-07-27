@@ -35,6 +35,29 @@ export interface CloudinaryConfig {
   rootFolder: string;
 }
 
+/** Biometric attendance device — pull-sync target and push auto-registration tenant. */
+export interface DeviceConfig {
+  /** LAN address of the fingerprint device. Empty ⇒ pull-sync unavailable. */
+  ip: string;
+  port: number;
+  /** Port the device pushes from (ZK "in" port); reserved for real-time log subscription. */
+  inPort: number;
+  timeoutMs: number;
+  /** Company an unregistered serial auto-registers under. Empty ⇒ drop unknown serials. */
+  defaultCompanyId: string;
+}
+
+export const deviceConfig = registerAs(
+  'device',
+  (): DeviceConfig => ({
+    ip: process.env.DEVICE_IP ?? '',
+    port: parseInt(process.env.DEVICE_PORT ?? '4370', 10),
+    inPort: parseInt(process.env.DEVICE_IN_PORT ?? '5200', 10),
+    timeoutMs: parseInt(process.env.DEVICE_TIMEOUT_MS ?? '10000', 10),
+    defaultCompanyId: process.env.DEVICE_DEFAULT_COMPANY_ID ?? '',
+  }),
+);
+
 export const appConfig = registerAs(
   'app',
   (): AppConfig => ({
@@ -83,3 +106,5 @@ export const getAppConfig = (config: ConfigService): AppConfig =>
   config.getOrThrow<AppConfig>('app');
 export const getJwtConfig = (config: ConfigService): JwtConfig =>
   config.getOrThrow<JwtConfig>('jwt');
+export const getDeviceConfig = (config: ConfigService): DeviceConfig =>
+  config.getOrThrow<DeviceConfig>('device');

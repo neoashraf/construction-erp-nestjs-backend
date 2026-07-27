@@ -71,24 +71,33 @@ export class AttendanceReportReadAdapter implements AttendanceReportReadPort {
       checkOutAt: string | null;
       punchCount: number;
     }> = await getManager(this.dataSource).query(
-      // `check_in`/`check_out` are `time`; the cast to `interval` is explicit so the `to_char` overload
-      // resolves without relying on the implicit time→interval cast, and so any fractional seconds are
-      // truncated to the fixed `HH:mm:ss` width the report format expects.
-      `SELECT a.employee_id::text                       AS "employeeId",
-              to_char(a.attendance_date, 'YYYY-MM-DD')  AS "attendanceDate",
-              MIN(to_char(a.attendance_date, 'YYYY-MM-DD') || ' ' || to_char(a.check_in::interval, 'HH24:MI:SS'))
-                                                        AS "checkInAt",
-              MAX(to_char(a.attendance_date, 'YYYY-MM-DD') || ' ' || to_char(a.check_out::interval, 'HH24:MI:SS'))
-                                                        AS "checkOutAt",
-              SUM((a.check_in IS NOT NULL)::int + (a.check_out IS NOT NULL)::int)::int
-                                                        AS "punchCount"
-         FROM attendance_record a
-        WHERE a.company_id = $1
-          AND a.mode = 'OFFICE'
-          AND a.attendance_date BETWEEN $2::date AND $3::date
-          AND a.employee_id = ANY($4::uuid[])
-        GROUP BY a.employee_id, a.attendance_date`,
-      [companyId, startDateText, endDateText, [...employeeIds]],
+      // Reads `checkin_log` — the SAME source as `/api/logs` (attendance-log.read.adapter).
+      //
+      // This deliberately does NOT read `attendance_record`. That table is populated only by
+      // reconciliation, which skips any employee-day it cannot place (no project, no financial
+      // year covering the date, an already-confirmed row). Reading it here made the two views
+      // disagree over the very same window: the log view showed real Present/Late counts from
+      // the raw punches while the summary reported everyone Absent, because nothing had
+      // reconciled. Attendance *reporting* must reflect what the device actually recorded;
+      // `attendance_record` stays the ledger-facing projection used for payroll.
+      //
+      // `device_timestamp` is zero-padded text, so lexicographic MIN/MAX are chronological and
+      // `substring(...,1,10)` is the calendar date — no timezone conversion anywhere in SQL.
+      `SELECT e.id::text                                  AS "employeeId",
+              substring(c.device_timestamp from 1 for 10) AS "attendanceDate",
+              MIN(c.device_timestamp)                     AS "checkInAt",
+              MAX(c.device_timestamp)                     AS "checkOutAt",
+              COUNT(*)::int                               AS "punchCount"
+         FROM "checkin_log" c
+         JOIN "employee" e
+           ON e.company_id = c.company_id
+          AND e.employee_code = c.user_id
+          AND e.deleted_at IS NULL
+        WHERE c.company_id = $1
+          AND c.device_timestamp >= $2 AND c.device_timestamp <= $3
+          AND e.id = ANY($4::uuid[])
+        GROUP BY e.id, substring(c.device_timestamp from 1 for 10)`,
+      [companyId, `${startDateText} 00:00:00`, `${endDateText} 23:59:59`, [...employeeIds]],
     );
 
     return rows;

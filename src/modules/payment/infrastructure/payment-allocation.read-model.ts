@@ -71,6 +71,31 @@ export class PaymentAllocationReadModel {
     return result;
   }
 
+  /**
+   * Batch: Σ amount_allocated per PAYMENT id, for the list's derived `allocatedAmount`
+   * column (contract 13 § `GET /api/payment`). Unlike the per-payable reads above this
+   * is deliberately NOT filtered to `status = 'POSTED'` and does NOT exclude reversed
+   * entries: it reports a payment's OWN allocation total, which a DRAFT row must show
+   * too. Payment ids with no allocation rows are ABSENT from the map (caller treats as 0).
+   */
+  async allocatedForPayments(paymentIds: string[], companyId: string): Promise<Map<string, Decimal>> {
+    const result = new Map<string, Decimal>();
+    if (paymentIds.length === 0) return result;
+    const rows: Array<{ payment_voucher_id: string; allocated: string | null }> = await getManager(
+      this.dataSource,
+    ).query(
+      `SELECT pa.payment_voucher_id, COALESCE(SUM(pa.amount_allocated), 0)::text AS allocated
+         FROM payment_allocation pa
+         JOIN payment_voucher pv ON pv.id = pa.payment_voucher_id
+        WHERE pv.company_id = $1
+          AND pa.payment_voucher_id = ANY($2)
+        GROUP BY pa.payment_voucher_id`,
+      [companyId, paymentIds],
+    );
+    for (const r of rows) result.set(r.payment_voucher_id, new Decimal(r.allocated ?? '0'));
+    return result;
+  }
+
   /** The settlement trail: posted, non-reversed payments that settled this payable (ordered by date/entry). */
   async applicationsFor(
     payableType: PayableType,

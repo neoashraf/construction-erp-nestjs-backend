@@ -49,17 +49,61 @@ export class TypeOrmPunchIngestionRepository implements PunchIngestionRepository
     return rows[0] ?? null;
   }
 
+  async autoRegisterDevice(deviceSn: string, companyId: string): Promise<DeviceMapping | null> {
+    const manager = getManager(this.dataSource);
+
+    // Guard against a stale DEVICE_DEFAULT_COMPANY_ID creating an orphaned device row.
+    const company: Array<{ id: string }> = await manager.query(
+      `SELECT "id"::text AS "id" FROM "company" WHERE "id" = $1 LIMIT 1`,
+      [companyId],
+    );
+    if (!company[0]) return null;
+
+    // Concurrent first punches race here, so the insert must tolerate losing that race.
+    await manager.query(
+      `INSERT INTO "attendance_device"
+              ("id", "company_id", "device_sn", "label", "is_active", "created_at", "updated_at")
+       VALUES ($1, $2, $3, $4, true, now(), now())
+       ON CONFLICT ("device_sn") DO NOTHING`,
+      [this.ids.next(), companyId, deviceSn, `Auto-registered ${deviceSn}`],
+    );
+
+    // Re-read rather than trusting RETURNING: on a lost race DO NOTHING returns no row, but
+    // the mapping the winner created is the one we want.
+    return this.findDeviceMapping(deviceSn);
+  }
+
+  async findCompanyDefaultProject(companyId: string): Promise<string | null> {
+    const rows: Array<{ defaultProjectId: string | null }> = await getManager(this.dataSource).query(
+      `SELECT "default_project_id"::text AS "defaultProjectId"
+         FROM "attendance_device"
+        WHERE "company_id" = $1 AND "is_active" = true AND "default_project_id" IS NOT NULL
+        ORDER BY "created_at"
+        LIMIT 1`,
+      [companyId],
+    );
+    return rows[0]?.defaultProjectId ?? null;
+  }
+
   async insertPunches(companyId: string, punches: readonly PunchToStore[]): Promise<number> {
     if (punches.length === 0) return 0;
     const manager = getManager(this.dataSource);
     let inserted = 0;
     for (const punch of punches) {
-      const res: [unknown[], number] = await manager.query(
+      // `RETURNING id` is what makes the count real. TypeORM's `query()` resolves an INSERT to
+      // a bare `[]` — NOT the `[rows, rowCount]` tuple the pg driver exposes — so reading
+      // `res[1]` yielded `undefined` and every insert counted as zero. The effect was silent
+      // and cosmetic-looking but genuinely misleading: a sync that stored hundreds of new
+      // punches reported "0 new punches", making a working sync look like a no-op. With
+      // RETURNING, a real insert yields one row and a conflict-skip yields none, so the length
+      // IS the count.
+      const rows: Array<{ id: string }> = await manager.query(
         `INSERT INTO "checkin_log"
                 ("id", "company_id", "source_type", "user_id", "device_timestamp", "status",
                  "device_sn", "occurred_at")
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         ON CONFLICT ("company_id", "user_id", "device_timestamp") DO NOTHING`,
+         ON CONFLICT ("company_id", "user_id", "device_timestamp") DO NOTHING
+         RETURNING "id"`,
         [
           this.ids.next(),
           companyId,
@@ -71,7 +115,7 @@ export class TypeOrmPunchIngestionRepository implements PunchIngestionRepository
           punch.occurredAt,
         ],
       );
-      inserted += res[1] ?? 0;
+      inserted += rows.length;
     }
     return inserted;
   }

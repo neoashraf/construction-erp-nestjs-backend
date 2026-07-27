@@ -48,9 +48,13 @@ import { AttendanceLogReadAdapter } from '../attendance-reports/infrastructure/a
 import { AttendanceReportReadAdapter } from '../attendance-reports/infrastructure/attendance-report.read.adapter';
 import { TypeOrmAttendanceConfigRepository } from '../attendance-reports/infrastructure/typeorm-attendance-config.repository';
 import { NagerPublicHolidayAdapter } from '../attendance-reports/infrastructure/nager-public-holiday.adapter';
+import { AttendanceImportService } from '../attendance-reports/application/attendance-import.service';
 import { AttendanceUserService } from '../attendance-reports/application/attendance-user.service';
 import { DeviceIngestionService } from '../attendance-reports/application/device-ingestion.service';
 import { DeviceStatusService } from '../attendance-reports/application/device-status.service';
+import { DeviceSyncService } from '../attendance-reports/application/device-sync.service';
+import { DEVICE_PULLER } from '../attendance-reports/domain/ports/device-puller.port';
+import { ZkDevicePullerAdapter } from '../attendance-reports/infrastructure/zk-device-puller.adapter';
 import { ATTENDANCE_USER_REPOSITORY } from '../attendance-reports/domain/ports/attendance-user.repository';
 import { PUNCH_INGESTION_REPOSITORY } from '../attendance-reports/domain/ports/punch-ingestion.repository';
 import { TypeOrmAttendanceUserRepository } from '../attendance-reports/infrastructure/typeorm-attendance-user.repository';
@@ -105,6 +109,7 @@ import { SalaryController } from './salary.controller';
     { provide: PUBLIC_HOLIDAY_API_PORT, useClass: NagerPublicHolidayAdapter },
     { provide: ATTENDANCE_USER_REPOSITORY, useClass: TypeOrmAttendanceUserRepository },
     { provide: PUNCH_INGESTION_REPOSITORY, useClass: TypeOrmPunchIngestionRepository },
+    { provide: DEVICE_PULLER, useClass: ZkDevicePullerAdapter },
     // use cases
     EmployeeService,
     AttendanceService,
@@ -120,6 +125,10 @@ import { SalaryController } from './salary.controller';
     DeviceIngestionService,
     // Default (singleton) scope is REQUIRED — a request-scoped instance would forget the last heartbeat.
     DeviceStatusService,
+    // Singleton for the same reason, plus its in-progress flag: a request-scoped instance
+    // would give every caller a fresh flag, defeating the one-sync-at-a-time guard.
+    DeviceSyncService,
+    AttendanceImportService,
   ],
 })
 export class HrModule {}

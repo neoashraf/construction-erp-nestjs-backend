@@ -47,6 +47,7 @@ import {
   formatLocalDate,
   formatLocalTime,
   getWeekday,
+  countDaysInclusive,
   listDatesInclusive,
   resolveAttendanceStatus,
   toCsv,
@@ -124,7 +125,10 @@ function resolveWindow({
     throw badRequest('dateFrom must not be after dateTo');
   }
 
-  const dayCount = listDatesInclusive(start, end).length;
+  // Measure the REQUESTED span, not the clamped one: `listDatesInclusive` stops at today, so
+  // using it here would let a 400-day window ending in the future slip past the limit as "0
+  // days" and then run an unbounded query.
+  const dayCount = countDaysInclusive(start, end);
 
   if (dayCount > MAX_RANGE_DAYS) {
     throw badRequest(

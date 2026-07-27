@@ -30,6 +30,10 @@ export interface PaymentSummaryDto {
   paymentAccountId: string;
   paymentAmount: string;
   bankChargesAmount: string;
+  /** Derived read-only: `Σ amountAllocated` (FR-PAY-005). Present on list rows too — contract 13 § `GET /api/payment`. */
+  allocatedAmount: string;
+  /** Derived read-only: `paymentAmount − allocatedAmount`, the on-account remainder (FR-PAY-005). */
+  unallocatedAmount: string;
   status: string;
 }
 
@@ -55,8 +59,6 @@ export interface PaymentDto extends PaymentSummaryDto {
   journalEntryId: string | null;
   postedAt: string | null;
   postedBy: string | null;
-  allocatedAmount: string;
-  unallocatedAmount: string;
   allocations: PaymentAllocationDto[];
   version: number;
   /** Cancel/repost chain (FR-PAY-018/-019), derived from the ledger; null for a DRAFT payment. */
@@ -149,7 +151,18 @@ export class PaymentQueryService {
       .skip(skip)
       .take(take)
       .getManyAndCount();
-    return new Paginated(rows.map((r) => summaryDto(r)), page, pageSize, total);
+    // Derived allocated/unallocated for the list columns: ONE batched GROUP BY over the
+    // page's payments (contract 13 § `GET /api/payment`), not an N+1 per row.
+    const allocatedByPayment = await this.readModel.allocatedForPayments(
+      rows.map((r) => r.id),
+      actor.companyId,
+    );
+    return new Paginated(
+      rows.map((r) => summaryDto(r, allocatedByPayment.get(r.id) ?? new Decimal(0))),
+      page,
+      pageSize,
+      total,
+    );
   }
 
   async get(id: string, actor: Actor): Promise<PaymentDto | null> {
@@ -374,7 +387,14 @@ export class PaymentQueryService {
   }
 }
 
-function summaryDto(r: PaymentVoucherOrmEntity): PaymentSummaryDto {
+/**
+ * `allocated` is the payment's Σ amountAllocated — passed in because the list derives it
+ * from one batched GROUP BY while `get` sums the allocation rows it already loaded.
+ * Defaults to 0 so a payment with no allocations still renders `0.0000`, never `undefined`
+ * (a missing string here reaches the FE money formatter and throws — FR-PAY-005).
+ */
+function summaryDto(r: PaymentVoucherOrmEntity, allocated: Decimal = new Decimal(0)): PaymentSummaryDto {
+  const paymentAmount = new Decimal(r.paymentAmount);
   return {
     id: r.id,
     entryNo: r.entryNo,
@@ -382,8 +402,10 @@ function summaryDto(r: PaymentVoucherOrmEntity): PaymentSummaryDto {
     paymentMode: r.paymentMode,
     partyId: r.partyId,
     paymentAccountId: r.paymentAccountId,
-    paymentAmount: new Decimal(r.paymentAmount).toFixed(4),
+    paymentAmount: paymentAmount.toFixed(4),
     bankChargesAmount: new Decimal(r.bankChargesAmount).toFixed(4),
+    allocatedAmount: allocated.toFixed(4),
+    unallocatedAmount: paymentAmount.minus(allocated).toFixed(4),
     status: r.status,
   };
 }
@@ -394,9 +416,8 @@ function fullDto(
   linkage: VoucherLinkageDto | null,
 ): PaymentDto {
   const allocated = allocations.reduce((s, a) => s.plus(new Decimal(a.amountAllocated)), new Decimal(0));
-  const unallocated = new Decimal(r.paymentAmount).minus(allocated);
   return {
-    ...summaryDto(r),
+    ...summaryDto(r, allocated),
     financialYearId: r.financialYearId,
     chequeTxnRef: r.chequeTxnRef,
     bankChargesProjectId: r.bankChargesProjectId,
@@ -406,8 +427,6 @@ function fullDto(
     journalEntryId: r.journalEntryId,
     postedAt: r.postedAt ? r.postedAt.toISOString() : null,
     postedBy: r.postedBy,
-    allocatedAmount: allocated.toFixed(4),
-    unallocatedAmount: unallocated.toFixed(4),
     allocations: allocations
       .slice()
       .sort((x, y) => x.lineNo - y.lineNo)

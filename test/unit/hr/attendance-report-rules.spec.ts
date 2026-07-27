@@ -14,6 +14,7 @@ import {
   formatExcelText,
   formatLocalTime,
   getWeekday,
+  countDaysInclusive,
   listDatesInclusive,
   resolveAttendanceStatus,
   toCsv,
@@ -81,12 +82,58 @@ describe('holiday precedence (§3.3)', () => {
 
 describe('listDatesInclusive', () => {
   it('includes both ends and spans month boundaries', () => {
-    expect(listDatesInclusive('2026-06-29', '2026-07-02')).toEqual([
+    expect(listDatesInclusive('2026-06-29', '2026-07-02', new Date(2026, 6, 31))).toEqual([
       '2026-06-29',
       '2026-06-30',
       '2026-07-01',
       '2026-07-02',
     ]);
+  });
+
+  it('CLAMPS the end to today — future days are not working days', () => {
+    // A "July" filter on the 27th must measure 27 days, not 31. Counting the 4 remaining
+    // days would invent an absence per employee per day and sink every percentage.
+    const dates = listDatesInclusive('2026-07-01', '2026-07-31', new Date(2026, 6, 27));
+    expect(dates).toHaveLength(27);
+    expect(dates[dates.length - 1]).toBe('2026-07-27');
+  });
+
+  it('includes today itself', () => {
+    const dates = listDatesInclusive('2026-07-25', '2026-07-31', new Date(2026, 6, 27));
+    expect(dates).toEqual(['2026-07-25', '2026-07-26', '2026-07-27']);
+  });
+
+  it('ignores the clamp for a window entirely in the past', () => {
+    expect(listDatesInclusive('2026-06-01', '2026-06-03', new Date(2026, 6, 27))).toEqual([
+      '2026-06-01',
+      '2026-06-02',
+      '2026-06-03',
+    ]);
+  });
+
+  it('returns nothing for a window entirely in the future', () => {
+    expect(listDatesInclusive('2027-01-01', '2027-01-31', new Date(2026, 6, 27))).toEqual([]);
+  });
+
+  it('is unaffected by the time of day on `today`', () => {
+    // A late-evening `new Date()` must not let tomorrow slip in.
+    const lateToday = new Date(2026, 6, 27, 23, 59, 59);
+    const dates = listDatesInclusive('2026-07-26', '2026-07-31', lateToday);
+    expect(dates[dates.length - 1]).toBe('2026-07-27');
+  });
+});
+
+describe('countDaysInclusive', () => {
+  it('measures the REQUESTED span, ignoring the today-clamp', () => {
+    // Range-limit validation must judge what was asked for; otherwise a far-future window
+    // measures as 0 days and slips past the 366-day guard.
+    expect(countDaysInclusive('2027-01-01', '2027-12-31')).toBe(365);
+    expect(countDaysInclusive('2026-07-01', '2026-07-31')).toBe(31);
+  });
+
+  it('counts a single day as one and a reversed range as zero', () => {
+    expect(countDaysInclusive('2026-07-01', '2026-07-01')).toBe(1);
+    expect(countDaysInclusive('2026-07-31', '2026-07-01')).toBe(0);
   });
 });
 

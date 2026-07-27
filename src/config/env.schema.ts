@@ -26,6 +26,28 @@ export const envValidationSchema = Joi.object({
   JWT_ACCESS_TTL: Joi.string().default('900s'),
   JWT_REFRESH_TTL: Joi.string().default('7d'),
 
+  // Biometric attendance device — pull-sync (`POST /api/sync`) and push auto-registration.
+  //
+  // All OPTIONAL so the app boots without a device attached. `DEVICE_IP` empty ⇒ pull-sync is
+  // unavailable and `POST /api/sync` falls back to re-reconciling stored punches; push
+  // ingestion is unaffected either way, since the device dials in on its own.
+  //
+  // NOTE: pull-sync opens a socket to the device on the LAN, so the server must reach
+  // `DEVICE_IP` directly — it cannot traverse NAT. A cloud-hosted backend can only use push.
+  DEVICE_IP: Joi.string().allow('').optional(),
+  DEVICE_PORT: Joi.number().port().default(4370),
+  DEVICE_IN_PORT: Joi.number().port().default(5200),
+  DEVICE_TIMEOUT_MS: Joi.number().integer().min(1000).max(120000).default(10000),
+  /**
+   * Company that punches from an UNREGISTERED device serial are attributed to.
+   *
+   * Without this, an unknown serial has its punches dropped (the safe default — guessing a
+   * company would be a cross-tenant leak). Setting it explicitly opts into auto-registration:
+   * a first-contact serial creates its own `attendance_device` row against THIS company, so
+   * real attendance is never silently lost while a device is being commissioned.
+   */
+  DEVICE_DEFAULT_COMPANY_ID: Joi.string().uuid().allow('').optional(),
+
   // Cloudinary — profile-avatar image store (AUD profile slice, FR-AUD-038..043).
   // OPTIONAL so the app boots in dev/test/CI without it; the MediaStorage adapter fails at
   // call time (MEDIA_STORAGE_ERROR) if an avatar upload is attempted while unconfigured.

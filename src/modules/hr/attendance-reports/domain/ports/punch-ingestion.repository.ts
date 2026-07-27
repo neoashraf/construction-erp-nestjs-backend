@@ -43,6 +43,48 @@ export interface PunchIngestionRepository {
   /** Resolve the tenant from the device serial. Null when the serial is not registered. */
   findDeviceMapping(deviceSn: string | null): Promise<DeviceMapping | null>;
 
+  /**
+   * Register a first-contact serial against an EXPLICITLY configured company
+   * (`DEVICE_DEFAULT_COMPANY_ID`) and return its mapping.
+   *
+   * The company is never inferred from the data — guessing would attribute one tenant's
+   * attendance to another. This exists so a device being commissioned does not silently
+   * discard real punches while an admin gets around to registering it; the caller logs a
+   * warning so the operator still assigns the right company/project.
+   *
+   * Returns null when the configured company does not exist, so a stale env var cannot
+   * create orphaned device rows.
+   */
+  autoRegisterDevice(deviceSn: string, companyId: string): Promise<DeviceMapping | null>;
+
+  /**
+   * Default project from any registered device in the company, for a PULL sync — which has no
+   * serial to resolve, since the server dialled the device rather than the reverse. Null when
+   * no device carries one; reconciliation then falls back to each employee's own project.
+   */
+  findCompanyDefaultProject(companyId: string): Promise<string | null>;
+
+  /**
+   * Register a first-contact serial against an EXPLICITLY configured company
+   * (`DEVICE_DEFAULT_COMPANY_ID`) and return its mapping.
+   *
+   * The company is never inferred from the data — guessing would attribute one tenant's
+   * attendance to another. This exists so that a device being commissioned does not silently
+   * discard real punches while an admin gets around to registering it; the caller logs a
+   * warning so the operator still knows to assign the right company/project.
+   *
+   * Returns null when the configured company does not exist, so a stale env var cannot
+   * create orphaned device rows.
+   */
+  autoRegisterDevice(deviceSn: string, companyId: string): Promise<DeviceMapping | null>;
+
+  /**
+   * Default project from any registered device in the company, for a PULL sync — which has no
+   * serial to resolve, since the server dialled the device rather than the reverse. Null when
+   * no device carries one; reconciliation then falls back to each employee's own project.
+   */
+  findCompanyDefaultProject(companyId: string): Promise<string | null>;
+
   /** Append raw punches; duplicates (same company + user + timestamp) are silently skipped. */
   insertPunches(companyId: string, punches: readonly PunchToStore[]): Promise<number>;
 

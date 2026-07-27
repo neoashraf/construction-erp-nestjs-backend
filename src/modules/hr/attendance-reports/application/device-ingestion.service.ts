@@ -13,6 +13,8 @@
  * line drops that line, not the batch; a reconciliation skip is reported, not raised.
  */
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { getDeviceConfig, type DeviceConfig } from '../../../../config/app-config';
 import { UNIT_OF_WORK, UnitOfWork } from '../../../../common/ports/unit-of-work.port';
 import {
   parseAttendancePayload,
@@ -20,6 +22,7 @@ import {
   punchDayKey,
 } from '../domain/punch-payload.parser';
 import {
+  DeviceMapping,
   PUNCH_INGESTION_REPOSITORY,
   PunchIngestionRepository,
   PunchToStore,
@@ -48,10 +51,72 @@ const EMPTY: IngestResult = {
 export class DeviceIngestionService {
   private readonly logger = new Logger(DeviceIngestionService.name);
 
+  private readonly deviceConfig: DeviceConfig;
+
   constructor(
     @Inject(PUNCH_INGESTION_REPOSITORY) private readonly repo: PunchIngestionRepository,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
-  ) {}
+    @Inject(ConfigService) configService: ConfigService,
+  ) {
+    this.deviceConfig = getDeviceConfig(configService);
+  }
+
+  /**
+   * Resolve the tenant for a serial, auto-registering a first-contact device when — and only
+   * when — `DEVICE_DEFAULT_COMPANY_ID` names one explicitly.
+   *
+   * Unregistered serials were previously dropped outright. That is the right *security*
+   * default (attributing punches to a guessed company is a cross-tenant leak) but it loses
+   * real attendance silently, since the endpoint must still answer the device `OK`. An
+   * explicitly configured company resolves both: nothing is guessed, and nothing is lost
+   * while a device is being commissioned. Every auto-registration is logged as a warning so
+   * the operator still assigns the correct company/project afterwards.
+   */
+  private async resolveMapping(
+    deviceSn: string | null,
+    punchCount: number,
+  ): Promise<DeviceMapping | null> {
+    const existing = await this.repo.findDeviceMapping(deviceSn);
+    if (existing) return existing;
+
+    const fallbackCompanyId = this.deviceConfig.defaultCompanyId.trim();
+    if (!deviceSn || !fallbackCompanyId) {
+      this.logger.error(
+        `Device serial '${deviceSn ?? 'unknown'}' is not registered in attendance_device — ` +
+          `${punchCount} punch(es) dropped. Register the device, or set ` +
+          `DEVICE_DEFAULT_COMPANY_ID to auto-register first-contact devices.`,
+      );
+      return null;
+    }
+
+    const registered = await this.repo.autoRegisterDevice(deviceSn, fallbackCompanyId);
+    if (!registered) {
+      this.logger.error(
+        `Device serial '${deviceSn}' is unregistered and DEVICE_DEFAULT_COMPANY_ID ` +
+          `'${fallbackCompanyId}' does not match a company — ${punchCount} punch(es) dropped.`,
+      );
+      return null;
+    }
+
+    this.logger.warn(
+      `Device serial '${deviceSn}' auto-registered to company ${fallbackCompanyId}. ` +
+        `Assign its company and default project in the portal — punches are being attributed ` +
+        `to the configured fallback until then.`,
+    );
+    return registered;
+  }
+
+  /**
+   * The default project a pull-sync should attribute punches to.
+   *
+   * A pull has no serial to resolve (we dialled the device, it didn't announce itself), so the
+   * project comes from any registered device row for the company. Null is acceptable —
+   * reconciliation then falls back to the employee's own default project and reports
+   * `NO_PROJECT` for anyone lacking one.
+   */
+  async findDefaultProject(companyId: string): Promise<string | null> {
+    return this.repo.findCompanyDefaultProject(companyId);
+  }
 
   async ingest(rawBody: string, deviceSn: string | null): Promise<IngestResult> {
     const { records, ignoredLines } = parseAttendancePayload(rawBody);
@@ -66,12 +131,8 @@ export class DeviceIngestionService {
       return { ...EMPTY, ignoredLines: ignoredLines.length };
     }
 
-    const mapping = await this.repo.findDeviceMapping(deviceSn);
+    const mapping = await this.resolveMapping(deviceSn, records.length);
     if (!mapping) {
-      this.logger.error(
-        `Device serial '${deviceSn ?? 'unknown'}' is not registered in attendance_device — ` +
-          `${records.length} punch(es) dropped. Register the device to attribute them to a company.`,
-      );
       return {
         ...EMPTY,
         parsed: records.length,

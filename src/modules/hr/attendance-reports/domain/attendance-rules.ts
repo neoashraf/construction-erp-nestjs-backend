@@ -143,10 +143,30 @@ export function assertDateText(value: unknown, label: string): string {
   return text;
 }
 
-export function listDatesInclusive(startDateText: string, endDateText: string): string[] {
+/**
+ * Every date from `start` to `end`, with the end CLAMPED TO TODAY.
+ *
+ * The clamp is load-bearing, not a nicety. A month filter runs to the last day of the month,
+ * but days that have not happened yet cannot be worked, so counting them inflates
+ * `workingDays` and — because a day with no punch is Absent — invents absences for every
+ * employee. On 27 July a "July" view would otherwise report 31 working days and 4 phantom
+ * absences each, dragging every attendance percentage down.
+ *
+ * A window entirely in the future yields an empty list rather than a negative range.
+ */
+export function listDatesInclusive(
+  startDateText: string,
+  endDateText: string,
+  today: Date = new Date(),
+): string[] {
   const dates: string[] = [];
   const current = startOfLocalDate(startDateText);
-  const end = startOfLocalDate(endDateText);
+  const requestedEnd = startOfLocalDate(endDateText);
+
+  // Compare local calendar days — `today` carries a time component that would otherwise
+  // push the comparison past midnight and let tomorrow slip in.
+  const todayStart = startOfLocalDate(formatLocalDate(today));
+  const end = requestedEnd > todayStart ? todayStart : requestedEnd;
 
   while (current <= end) {
     dates.push(formatLocalDate(current));
@@ -154,6 +174,21 @@ export function listDatesInclusive(startDateText: string, endDateText: string): 
   }
 
   return dates;
+}
+
+/**
+ * Number of calendar days from `start` to `end` inclusive, WITHOUT clamping to today.
+ *
+ * This is the span the caller asked for, which is what range-limit validation must judge —
+ * a future-dated window still costs the same to query even though none of it is measurable.
+ */
+export function countDaysInclusive(startDateText: string, endDateText: string): number {
+  const start = startOfLocalDate(startDateText);
+  const end = startOfLocalDate(endDateText);
+  if (end < start) return 0;
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  // Round: DST transitions make some local "days" 23 or 25 hours long.
+  return Math.round((end.getTime() - start.getTime()) / MS_PER_DAY) + 1;
 }
 
 export function getWeekday(dateText: string): number {

@@ -33,6 +33,23 @@ import {
 const ACTOR = { companyId: 'co1', userId: 'u1' } as Actor;
 const uow = { run: <T>(fn: () => Promise<T> | T): Promise<T> => Promise.resolve(fn()) };
 
+/**
+ * Minimal ConfigService stand-in for the `device` namespace. `defaultCompanyId` empty by
+ * default, which is the safe production posture: an unregistered serial is DROPPED rather
+ * than auto-registered. Pass an id to exercise the auto-registration path.
+ */
+function deviceConfigService(defaultCompanyId = '') {
+  return {
+    getOrThrow: () => ({
+      ip: '',
+      port: 4370,
+      inPort: 5200,
+      timeoutMs: 10000,
+      defaultCompanyId,
+    }),
+  } as never;
+}
+
 // ── §5.3 payload parser ──────────────────────────────────────────────────────────────────────────
 
 describe('parseAttendancePayload', () => {
@@ -157,6 +174,20 @@ class FakePunchRepo implements PunchIngestionRepository {
     return Promise.resolve(this.mapping);
   }
 
+  /** Serials this fake was asked to auto-register, so tests can assert it did NOT happen. */
+  autoRegistered: Array<{ deviceSn: string; companyId: string }> = [];
+  /** Mapping auto-registration yields; null models a bad DEVICE_DEFAULT_COMPANY_ID. */
+  autoRegisterResult: DeviceMapping | null = null;
+
+  autoRegisterDevice(deviceSn: string, companyId: string): Promise<DeviceMapping | null> {
+    this.autoRegistered.push({ deviceSn, companyId });
+    return Promise.resolve(this.autoRegisterResult);
+  }
+
+  findCompanyDefaultProject(): Promise<string | null> {
+    return Promise.resolve(null);
+  }
+
   insertPunches(_companyId: string, punches: readonly PunchToStore[]): Promise<number> {
     this.stored.push(...punches);
     return Promise.resolve(punches.length);
@@ -196,7 +227,7 @@ describe('DeviceIngestionService', () => {
 
   it('stores every punch and reconciles one day per employee', async () => {
     const repo = new FakePunchRepo({ companyId: 'co1', defaultProjectId: 'p1' });
-    const svc = new DeviceIngestionService(repo, uow as never);
+    const svc = new DeviceIngestionService(repo, uow as never, deviceConfigService());
 
     const result = await svc.ingest(payload, 'ABC123');
 
@@ -211,7 +242,7 @@ describe('DeviceIngestionService', () => {
 
   it('DROPS punches from an unregistered device serial instead of guessing a company', async () => {
     const repo = new FakePunchRepo(null);
-    const svc = new DeviceIngestionService(repo, uow as never);
+    const svc = new DeviceIngestionService(repo, uow as never, deviceConfigService());
 
     const result = await svc.ingest(payload, 'UNKNOWN-SN');
 
@@ -223,7 +254,7 @@ describe('DeviceIngestionService', () => {
 
   it('is a no-op for an empty or all-garbage payload', async () => {
     const repo = new FakePunchRepo({ companyId: 'co1', defaultProjectId: null });
-    const svc = new DeviceIngestionService(repo, uow as never);
+    const svc = new DeviceIngestionService(repo, uow as never, deviceConfigService());
 
     expect(await svc.ingest('', 'ABC123')).toMatchObject({ parsed: 0, stored: 0 });
     expect((await svc.ingest('%%%\n###', 'ABC123')).ignoredLines).toBe(2);
@@ -233,7 +264,7 @@ describe('DeviceIngestionService', () => {
   it('reports reconciliation skips instead of throwing', async () => {
     const repo = new FakePunchRepo({ companyId: 'co1', defaultProjectId: null });
     repo.skip = [{ userId: '1042', attendanceDate: '2026-07-26', reason: 'NO_PROJECT' }];
-    const svc = new DeviceIngestionService(repo, uow as never);
+    const svc = new DeviceIngestionService(repo, uow as never, deviceConfigService());
 
     const result = await svc.ingest('1042,2026-07-26 09:12:04,0', 'ABC123');
 
@@ -248,7 +279,7 @@ describe('DeviceIngestionService', () => {
       { userId: '1042', attendanceDate: '2026-07-26' },
       { userId: '1043', attendanceDate: '2026-07-26' },
     ];
-    const svc = new DeviceIngestionService(repo, uow as never);
+    const svc = new DeviceIngestionService(repo, uow as never, deviceConfigService());
 
     const result = await svc.resync('co1', '2026-07-01', '2026-07-31');
 
@@ -258,7 +289,7 @@ describe('DeviceIngestionService', () => {
 
   it('resync is a no-op when the window holds no punches', async () => {
     const repo = new FakePunchRepo({ companyId: 'co1', defaultProjectId: 'p1' });
-    const svc = new DeviceIngestionService(repo, uow as never);
+    const svc = new DeviceIngestionService(repo, uow as never, deviceConfigService());
 
     expect(await svc.resync('co1', '2026-07-01', '2026-07-31')).toEqual({
       days: 0,
@@ -270,7 +301,7 @@ describe('DeviceIngestionService', () => {
 
   it('parses the timestamp into occurredAt while keeping the raw text', async () => {
     const repo = new FakePunchRepo({ companyId: 'co1', defaultProjectId: 'p1' });
-    const svc = new DeviceIngestionService(repo, uow as never);
+    const svc = new DeviceIngestionService(repo, uow as never, deviceConfigService());
 
     await svc.ingest('1042,2026-07-26 09:12:04,0', 'ABC123');
 
