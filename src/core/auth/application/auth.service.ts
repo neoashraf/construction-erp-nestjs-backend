@@ -32,6 +32,14 @@ export interface LoginResult extends TokenPair {
     isActive: boolean;
     lastLoginAt: Date | null;
     mustChangePassword: boolean;
+    /**
+     * Profile-photo CDN URL, or null when none (FR-AUD-038; contract 05 login response).
+     * Returned at login so a client caching the safe `user` paints the shell avatar on
+     * first render instead of flashing initials until `GET /api/auth/me` resolves. The
+     * asset's `avatarPublicId` is NEVER exposed (FR-AUD-043), and this is read-only —
+     * the avatar is set only via POST/DELETE /api/profile/image.
+     */
+    avatarUrl: string | null;
   };
 }
 
@@ -117,6 +125,7 @@ export class AuthService {
         isActive: user.props.isActive,
         lastLoginAt: user.props.lastLoginAt,
         mustChangePassword: user.props.mustChangePassword,
+        avatarUrl: user.props.avatarUrl,
       },
     };
   }

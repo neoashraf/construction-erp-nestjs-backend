@@ -17,19 +17,21 @@ function makeUser(overrides?: Partial<{
   isActive: boolean;
   failedLoginAttempts: number;
   lockedUntil: Date | null;
+  avatarUrl: string | null;
+  name: string;
 }>): User {
   return User.rehydrate('user-1', {
     companyId: 'co-1',
     financialYearId: 'fy-1',
     email: 'admin@test.com',
     passwordHash: 'hashed-secret',
-    name: 'Test User',
+    name: overrides?.name ?? 'Test User',
     role: 'ADMIN',
     isActive: overrides?.isActive ?? true,
     mustChangePassword: false,
     lastLoginAt: null,
     phone: null,
-    avatarUrl: null,
+    avatarUrl: overrides?.avatarUrl ?? null,
     avatarPublicId: null,
     failedLoginAttempts: overrides?.failedLoginAttempts ?? 0,
     lockedUntil: overrides?.lockedUntil ?? null,
@@ -103,6 +105,30 @@ describe('AuthService', () => {
       expect(result.expiresIn).toBe(900);
       expect(result.user.lastLoginAt).not.toBeNull();
       expect(result.user.id).toBe('user-1');
+    });
+
+    // The shell's sidebar avatar paints from the cached safe `user` before
+    // GET /api/auth/me resolves, so login must carry avatarUrl (FR-AUD-038,
+    // contract 05). Omitting it flashed initials on every login.
+    it('returns the caller avatarUrl on success (FR-AUD-038)', async () => {
+      const url = 'https://res.cloudinary.com/zakir-erp/image/upload/v1/companies/co-1/avatars/user-1.webp';
+      const svc = buildService(makeUser({ avatarUrl: url }), true);
+      const result = await svc.login('co-1', 'admin@test.com', 'secret');
+      expect(result.user.avatarUrl).toBe(url);
+    });
+
+    it('returns avatarUrl null when the caller has no photo (FR-AUD-038)', async () => {
+      const svc = buildService(makeUser(), true);
+      const result = await svc.login('co-1', 'admin@test.com', 'secret');
+      expect(result.user.avatarUrl).toBeNull();
+    });
+
+    // FR-AUD-043 — the Cloudinary asset handle never leaves the server.
+    it('never exposes avatarPublicId in the login response (FR-AUD-043)', async () => {
+      const svc = buildService(makeUser({ avatarUrl: 'https://cdn.example/a.webp' }), true);
+      const result = await svc.login('co-1', 'admin@test.com', 'secret');
+      expect(result.user).not.toHaveProperty('avatarPublicId');
+      expect(JSON.stringify(result)).not.toContain('avatarPublicId');
     });
 
     it('returns INVALID_CREDENTIALS for wrong password (FR-AUD-001)', async () => {
