@@ -113,7 +113,26 @@ export class DeviceIngestionController {
     private readonly status: DeviceStatusService,
   ) {}
 
-  /** Handshake. The device hits this on boot to register itself. */
+  /**
+   * Handshake — the device asks, on boot and periodically, HOW it should talk to us.
+   *
+   * Answering a bare `OK` here is what silently disables push. The device sends
+   * `?options=all&PushOptionsFlag=1` meaning "give me my upload configuration"; with no
+   * configuration it defaults to uploading NOTHING, then politely polls `/iclock/getrequest`
+   * forever. The symptom is maddening precisely because nothing errors: the unit looks online,
+   * its own punch counter climbs, and not a single punch is ever POSTed.
+   *
+   * The reply is the ADMS key=value block, `\n`-separated, and the keys that actually matter:
+   *   Stamp / OpStamp   — the "everything after this marker is unsent" watermark. `0` asks for
+   *                       the full backlog; the device advances it as we ack each upload.
+   *   TransFlag         — bitmask-ish list of WHAT to upload. Without `AttLog` the device
+   *                       never sends attendance, which is the whole point of this endpoint.
+   *   TransInterval     — minutes between batch uploads.
+   *   Realtime=1        — also POST immediately on each punch, rather than only on the interval.
+   *   ErrorDelay/Delay  — retry/poll backoff in seconds.
+   *   TimeZone          — device-side offset; 6 = Asia/Dhaka, matching the server so pushed and
+   *                       pulled timestamps describe the same instant.
+   */
   @Get('cdata')
   @Header('Content-Type', 'text/plain')
   handshake(@Req() req: Request, @Query('SN') sn?: string): string {
@@ -124,7 +143,26 @@ export class DeviceIngestionController {
       deviceSn: sn ?? null,
     });
     this.logger.log(`Fingerprint device CONNECTED (sn=${sn ?? 'unknown'}, ip=${remoteAddressOf(req)})`);
-    return 'OK';
+
+    // Stamp liveness on the DEVICE ROW too, not just the in-memory status. `last_seen_at` was
+    // previously written only by a successful punch ingest, so a unit that was plugged in and
+    // handshaking every few seconds still showed "Idle · 2 hr ago" in Company settings — the
+    // column tracked LAST PUNCH, not last contact, which is the opposite of what it is read as.
+    if (sn) void this.ingestion.touchLastSeen(sn);
+
+    return [
+      `GET OPTION FROM: ${sn ?? 'unknown'}`,
+      'Stamp=0',
+      'OpStamp=0',
+      'ErrorDelay=30',
+      'Delay=10',
+      'TransTimes=00:00;12:00',
+      'TransInterval=1',
+      'TransFlag=TransData AttLog OpLog AttPhoto EnrollUser ChgFP EnrollPhoto ChgUser FPImag',
+      'TimeZone=6',
+      'Realtime=1',
+      'Encrypt=0',
+    ].join('\n');
   }
 
   /**
@@ -139,9 +177,22 @@ export class DeviceIngestionController {
    * went Live when somebody scanned a finger and fell back to Offline two minutes later, even
    * though the unit was plugged in and polling the whole time.
    *
-   * The reply must be plain text. `getrequest` answers EMPTY — that is the protocol's "no
-   * commands queued", and this system never pushes commands down to the device; `ping`
-   * answers `OK`. Returning the wrong one makes some firmwares log an error and back off.
+   * The reply must be plain text. `ping` answers `OK`; `getrequest` answers either EMPTY ("no
+   * commands queued") or a command line. Returning the wrong shape makes some firmwares log an
+   * error and back off.
+   *
+   * ── Why a command is issued at all ──────────────────────────────────────────────────────────
+   * Some firmware (observed here: MB460 / ZMM220, `iClock Proxy/1.09`) never uploads
+   * spontaneously no matter how its ADMS options are set — it reports its backlog in the `INFO`
+   * query string on every poll and then waits to be ASKED. Left unanswered it polls forever
+   * while punches accumulate on the device, with nothing failing anywhere.
+   *
+   * `DATA QUERY ATTLOG` is the protocol's "upload your attendance log now". It is issued at most
+   * once per `COMMAND_COOLDOWN_MS` per serial, because the device re-polls every few seconds and
+   * an unthrottled command would restart the transfer before the previous one finished.
+   *
+   * The `C:<id>:` prefix is required — the device echoes that id back in its `/iclock/devicecmd`
+   * ack, and firmware ignores a command line without one.
    */
   @Get(['getrequest', 'ping'])
   @Header('Content-Type', 'text/plain')
@@ -152,10 +203,63 @@ export class DeviceIngestionController {
       remoteAddress: remoteAddressOf(req),
       deviceSn: sn ?? null,
     });
+    if (sn) void this.ingestion.touchLastSeen(sn);
     // Deliberately NOT logged at `log` level: this fires every 30–60s per device and would
     // bury everything else. The heartbeat is observable via `GET /api/device/status`.
     this.logger.debug(`Device poll (sn=${sn ?? 'unknown'}, ip=${remoteAddressOf(req)})`);
-    return req.path.endsWith('/ping') ? 'OK' : '';
+    if (req.path.endsWith('/ping')) return 'OK';
+
+    const command = sn ? this.nextCommandFor(sn) : null;
+    if (command) {
+      this.logger.log(`Device ${sn}: issuing '${command}'`);
+      return command;
+    }
+    return '';
+  }
+
+  /** Minimum gap between ATTLOG requests for one serial — see `poll`. */
+  private static readonly COMMAND_COOLDOWN_MS = 60_000;
+  private readonly lastCommandAt = new Map<string, number>();
+  private commandSeq = 0;
+
+  /**
+   * The next command to hand this device, or null while it is still within the cooldown.
+   *
+   * Kept in memory on purpose: a missed command costs one poll cycle, and the device re-asks
+   * seconds later. Persisting it would buy nothing and add a write to the hot path.
+   */
+  private nextCommandFor(sn: string): string | null {
+    const now = Date.now();
+    const last = this.lastCommandAt.get(sn) ?? 0;
+    if (now - last < DeviceIngestionController.COMMAND_COOLDOWN_MS) return null;
+
+    this.lastCommandAt.set(sn, now);
+    this.commandSeq += 1;
+    return `C:${this.commandSeq}:DATA QUERY ATTLOG StartTime=2000-01-01 00:00:00\tEndTime=2099-12-31 23:59:59`;
+  }
+
+  /**
+   * Command acknowledgement. The device POSTs here after running a command from `getrequest`,
+   * with a body like `ID=1&Return=0&CMD=DATA`.
+   *
+   * Without this route the device gets a 404 for every ack and several firmwares then stop
+   * processing commands entirely — so the ATTLOG request issued above would work exactly once.
+   * The body is logged rather than parsed: `Return=0` means success and anything else is a
+   * device-side error worth seeing, but nothing here depends on it.
+   */
+  @Post('devicecmd')
+  @HttpCode(200)
+  @Header('Content-Type', 'text/plain')
+  deviceCmd(@Req() req: Request, @Body() body: unknown, @Query('SN') sn?: string): string {
+    this.status.markSeen({
+      method: req.method,
+      path: req.originalUrl,
+      remoteAddress: remoteAddressOf(req),
+      deviceSn: sn ?? null,
+    });
+    const raw = rawBodyOf(body).trim();
+    if (raw) this.logger.log(`Device ${sn ?? 'unknown'} cmd ack: ${raw.replace(/\s+/g, ' ')}`);
+    return 'OK';
   }
 
   /** Punch upload. Always answers `OK`; see the file header for why failures are swallowed. */

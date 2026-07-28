@@ -39,6 +39,14 @@ export const envValidationSchema = Joi.object({
   DEVICE_IN_PORT: Joi.number().port().default(5200),
   DEVICE_TIMEOUT_MS: Joi.number().integer().min(1000).max(120000).default(10000),
   /**
+   * Minutes between unattended pulls (`DeviceAutoSyncService`). 0 disables the job.
+   *
+   * Exists because push cannot be relied on alone: a ZKTeco unit only pushes if its firmware is
+   * configured to, and some stop once a pull has marked their records read — punches then sit on
+   * the device with nothing failing anywhere. Requires `DEVICE_IP`; dormant without it.
+   */
+  DEVICE_SYNC_INTERVAL_MINUTES: Joi.number().integer().min(0).max(1440).default(3),
+  /**
    * Company that punches from an UNREGISTERED device serial are attributed to.
    *
    * Without this, an unknown serial has its punches dropped (the safe default — guessing a

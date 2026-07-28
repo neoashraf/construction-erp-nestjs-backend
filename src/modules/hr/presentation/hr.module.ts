@@ -50,19 +50,24 @@ import { TypeOrmAttendanceConfigRepository } from '../attendance-reports/infrast
 import { NagerPublicHolidayAdapter } from '../attendance-reports/infrastructure/nager-public-holiday.adapter';
 import { AttendanceImportService } from '../attendance-reports/application/attendance-import.service';
 import { AttendanceUserService } from '../attendance-reports/application/attendance-user.service';
+import { AttendanceDeviceService } from '../attendance-reports/application/attendance-device.service';
+import { DeviceAutoSyncService } from '../attendance-reports/application/device-auto-sync.service';
 import { DeviceIngestionService } from '../attendance-reports/application/device-ingestion.service';
 import { DeviceStatusService } from '../attendance-reports/application/device-status.service';
 import { DeviceSyncService } from '../attendance-reports/application/device-sync.service';
 import { DEVICE_PULLER } from '../attendance-reports/domain/ports/device-puller.port';
 import { ZkDevicePullerAdapter } from '../attendance-reports/infrastructure/zk-device-puller.adapter';
 import { ATTENDANCE_USER_REPOSITORY } from '../attendance-reports/domain/ports/attendance-user.repository';
+import { ATTENDANCE_DEVICE_REPOSITORY } from '../attendance-reports/domain/ports/attendance-device.repository';
 import { PUNCH_INGESTION_REPOSITORY } from '../attendance-reports/domain/ports/punch-ingestion.repository';
 import { TypeOrmAttendanceUserRepository } from '../attendance-reports/infrastructure/typeorm-attendance-user.repository';
+import { TypeOrmAttendanceDeviceRepository } from '../attendance-reports/infrastructure/typeorm-attendance-device.repository';
 import { TypeOrmPunchIngestionRepository } from '../attendance-reports/infrastructure/typeorm-punch-ingestion.repository';
 import { AttendanceLogController } from '../attendance-reports/presentation/attendance-log.controller';
 import { AttendanceReportController } from '../attendance-reports/presentation/attendance-report.controller';
 import { AttendanceSettingController } from '../attendance-reports/presentation/attendance-setting.controller';
 import { AttendanceUserController } from '../attendance-reports/presentation/attendance-user.controller';
+import { AttendanceDeviceController } from '../attendance-reports/presentation/attendance-device.controller';
 import {
   DeviceIngestionController,
   DeviceStatusController,
@@ -89,6 +94,7 @@ import { SalaryController } from './salary.controller';
     HolidayController,
     // Device→employee mapping the reports are built from (§7).
     AttendanceUserController,
+    AttendanceDeviceController,
     // Fingerprint device: UNAUTHENTICATED `/iclock/cdata` ingestion + guarded status/sync (§4, §5).
     DeviceIngestionController,
     DeviceStatusController,
@@ -108,6 +114,7 @@ import { SalaryController } from './salary.controller';
     { provide: ATTENDANCE_CONFIG_REPOSITORY, useClass: TypeOrmAttendanceConfigRepository },
     { provide: PUBLIC_HOLIDAY_API_PORT, useClass: NagerPublicHolidayAdapter },
     { provide: ATTENDANCE_USER_REPOSITORY, useClass: TypeOrmAttendanceUserRepository },
+    { provide: ATTENDANCE_DEVICE_REPOSITORY, useClass: TypeOrmAttendanceDeviceRepository },
     { provide: PUNCH_INGESTION_REPOSITORY, useClass: TypeOrmPunchIngestionRepository },
     { provide: DEVICE_PULLER, useClass: ZkDevicePullerAdapter },
     // use cases
@@ -122,6 +129,8 @@ import { SalaryController } from './salary.controller';
     AttendanceSettingService,
     HolidayService,
     AttendanceUserService,
+    AttendanceDeviceService,
+    DeviceAutoSyncService,
     DeviceIngestionService,
     // Default (singleton) scope is REQUIRED — a request-scoped instance would forget the last heartbeat.
     DeviceStatusService,

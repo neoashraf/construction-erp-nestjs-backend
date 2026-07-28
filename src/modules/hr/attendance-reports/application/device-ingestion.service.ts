@@ -189,6 +189,23 @@ export class DeviceIngestionService {
   }
 
   /**
+   * Stamp `last_seen_at` from a handshake/poll — contact, not punches.
+   *
+   * Fire-and-forget by design: this runs on the device-facing hot path, which must answer fast
+   * and must never fail because of a bookkeeping write. A lost stamp only delays the liveness
+   * badge by one poll.
+   */
+  async touchLastSeen(deviceSn: string): Promise<void> {
+    try {
+      await this.repo.touchDeviceLastSeen(deviceSn, new Date());
+    } catch (error) {
+      this.logger.debug(
+        `Could not stamp last_seen for '${deviceSn}': ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
    * Manual re-reconcile (`POST /api/sync`). In a PUSH architecture there is nothing to pull from the
    * device — punches are already here — so the useful "sync" is re-folding stored punches into
    * `attendance_record`.
