@@ -21,6 +21,7 @@ import { EmployeeOrmEntity } from '../infrastructure/employee.orm-entity';
 import { AttendanceRecordOrmEntity } from '../infrastructure/attendance-record.orm-entity';
 import { EmployeeAssignmentOrmEntity } from '../infrastructure/employee-assignment.orm-entity';
 import { SalarySheetOrmEntity } from '../infrastructure/salary-sheet.orm-entity';
+import { PrePostWarnings } from '../domain/salary-sheet';
 import { SalarySheetLineOrmEntity } from '../infrastructure/salary-sheet-line.orm-entity';
 import { LabourPayableOrmEntity } from '../infrastructure/labour-payable.orm-entity';
 import {
@@ -95,6 +96,12 @@ export interface SalarySheetLineDto {
   advanceRecovery: string;
   otherDeductions: string;
   netAmount: string;
+  /** FR-HR-013a day figures, stored on the line and served verbatim (never recomputed). */
+  standardDays: string;
+  unpaidDays: string;
+  lateCount: number;
+  latePenaltyDays: string;
+  latePenaltyAmount: string;
 }
 
 export interface SalarySheetDto {
@@ -110,6 +117,15 @@ export interface SalarySheetDto {
   totalNet: string;
   version: number;
   lines?: SalarySheetLineDto[];
+  /**
+   * The generate-time warnings, re-served from storage (FR-HR-013a).
+   *
+   * A DETAIL-read field: the list endpoint deliberately omits it. Served here because the person who
+   * posts a sheet is frequently not the one who generated it, and warnings that lived only in the
+   * generate response would let an ordinary two-person handoff walk straight past the guard.
+   * `null` on a sheet generated before the rule existed.
+   */
+  warnings?: PrePostWarnings | null;
 }
 
 /** A payable's settlement summary, computed from PAY's applied projection (NOT a stored rollup). */
@@ -286,6 +302,8 @@ export class HrQueryService {
       totalNet: totalNet.toFixed(4),
       version: row.version,
       lines: includeLines ? lineRows.map(salarySheetLineDto) : undefined,
+      // Detail-read only, alongside `lines`: the LIST endpoint stays without warnings (API contract).
+      warnings: includeLines ? row.prePostWarnings ?? null : undefined,
     };
   }
 
@@ -415,5 +433,10 @@ function salarySheetLineDto(r: SalarySheetLineOrmEntity): SalarySheetLineDto {
     advanceRecovery: new Decimal(r.advanceRecovery).toFixed(4),
     otherDeductions: new Decimal(r.otherDeductions).toFixed(4),
     netAmount: new Decimal(r.netAmount).toFixed(4),
+    standardDays: new Decimal(r.standardDays ?? 0).toFixed(4),
+    unpaidDays: new Decimal(r.unpaidDays ?? 0).toFixed(4),
+    lateCount: r.lateCount ?? 0,
+    latePenaltyDays: new Decimal(r.latePenaltyDays ?? 0).toFixed(4),
+    latePenaltyAmount: new Decimal(r.latePenaltyAmount ?? 0).toFixed(4),
   };
 }

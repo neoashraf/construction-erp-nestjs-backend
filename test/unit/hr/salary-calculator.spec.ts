@@ -161,3 +161,64 @@ describe('applyComponents — net = gross + allowances − deductions', () => {
     expect(amounts.allowances.toFixed()).toBe('101.0000'); // …99995 -> 101.0000 half-up
   });
 });
+
+// ── the late penalty (FR-HR-013a, FR-HR-008c) ────────────────────────────────────────────────────
+
+describe('calcGross — late penalty', () => {
+  it('reduces MONTHLY gross by the penalty days, exact to 4dp', () => {
+    // 31,000 × (31 − 2) / 31. Computed in decimal.js: a float would drift here.
+    const gross = calcGross(
+      { wageType: 'MONTHLY', wageAmount: Money.of('31000') },
+      { paidDays: '31', standardDays: '31', attendedDays: '26', penaltyDays: '2' },
+    );
+
+    expect(gross.toFixed()).toBe('29000.0000');
+  });
+
+  it('pays the full month when there is no penalty — the corrected baseline', () => {
+    // The defect this brief fixes: this used to be 26/31 ≈ 84% for someone present every working day.
+    const gross = calcGross(
+      { wageType: 'MONTHLY', wageAmount: Money.of('31000') },
+      { paidDays: '31', standardDays: '31', attendedDays: '26', penaltyDays: '0' },
+    );
+
+    expect(gross.toFixed()).toBe('31000.0000');
+  });
+
+  it('treats an omitted penaltyDays as zero, so an older caller is unaffected', () => {
+    const gross = calcGross(
+      { wageType: 'MONTHLY', wageAmount: Money.of('31000') },
+      { paidDays: '31', standardDays: '31', attendedDays: '26' },
+    );
+
+    expect(gross.toFixed()).toBe('31000.0000');
+  });
+
+  it('never applies a late penalty to a DAILY-wage employee', () => {
+    // FR-HR-013a's final clause: the holiday baseline and the penalty are MONTHLY-only.
+    const gross = calcGross(
+      { wageType: 'DAILY', wageAmount: Money.of('800') },
+      { paidDays: '31', standardDays: '31', attendedDays: '20', penaltyDays: '5' },
+    );
+
+    expect(gross.toFixed()).toBe('16000.0000');
+  });
+
+  it('floors gross at zero rather than paying a negative salary', () => {
+    const gross = calcGross(
+      { wageType: 'MONTHLY', wageAmount: Money.of('31000') },
+      { paidDays: '2', standardDays: '31', attendedDays: '2', penaltyDays: '9' },
+    );
+
+    expect(gross.toFixed()).toBe('0.0000');
+  });
+
+  it('rejects a negative penaltyDays', () => {
+    expect(() =>
+      calcGross(
+        { wageType: 'MONTHLY', wageAmount: Money.of('31000') },
+        { paidDays: '31', standardDays: '31', attendedDays: '26', penaltyDays: '-1' },
+      ),
+    ).toThrow(/penaltyDays must be >= 0/);
+  });
+});

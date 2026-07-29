@@ -20,6 +20,18 @@ export interface Payslip {
   designation: string;
   periodLabel: string;
   paidDays: string;
+  /**
+   * The FR-HR-013a day figures, read from the STORED line — never recomputed from attendance at
+   * render time, which would re-read a period that may have changed since the sheet was posted.
+   *
+   * A run posted BEFORE FR-HR-013a has no such values; those lines carry the column defaults, so a
+   * `latePenaltyDays` of 0 there means "no penalty was computed", not "we checked and found none".
+   */
+  standardDays: string;
+  unpaidDays: string;
+  lateCount: number;
+  latePenaltyDays: string;
+  latePenaltyAmount: string;
   grossAmount: string;
   allowances: string;
   deductions: {
@@ -59,6 +71,11 @@ export class PayslipService {
         designation: emp?.props.designation ?? '',
         periodLabel: sheet.props.periodLabel,
         paidDays: p.paidDays.toFixed(),
+        standardDays: p.standardDays.toFixed(),
+        unpaidDays: p.unpaidDays.toFixed(),
+        lateCount: p.lateCount,
+        latePenaltyDays: p.latePenaltyDays.toFixed(),
+        latePenaltyAmount: p.latePenaltyAmount.toFixed(),
         grossAmount: p.grossAmount.toFixed(),
         allowances: p.allowances.toFixed(),
         deductions: {

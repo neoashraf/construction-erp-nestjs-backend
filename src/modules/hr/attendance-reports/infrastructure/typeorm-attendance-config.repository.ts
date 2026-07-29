@@ -28,16 +28,16 @@ export class TypeOrmAttendanceConfigRepository implements AttendanceConfigReposi
   ) {}
 
   async findSetting(companyId: string): Promise<StoredAttendanceSetting | null> {
-    const rows: Array<{ lateAfterHour: number; lateAfterMinute: number; updatedAt: Date }> =
-      await getManager(this.dataSource).query(
-        `SELECT "late_after_hour"::int   AS "lateAfterHour",
-                "late_after_minute"::int AS "lateAfterMinute",
-                "updated_at"             AS "updatedAt"
-           FROM "attendance_setting"
-          WHERE "company_id" = $1
-          LIMIT 1`,
-        [companyId],
-      );
+    const rows: StoredAttendanceSetting[] = await getManager(this.dataSource).query(
+      `SELECT "late_after_hour"::int        AS "lateAfterHour",
+              "late_after_minute"::int      AS "lateAfterMinute",
+              "lates_per_deducted_day"::int AS "latesPerDeductedDay",
+              "updated_at"                  AS "updatedAt"
+         FROM "attendance_setting"
+        WHERE "company_id" = $1
+        LIMIT 1`,
+      [companyId],
+    );
     return rows[0] ?? null;
   }
 
@@ -45,20 +45,26 @@ export class TypeOrmAttendanceConfigRepository implements AttendanceConfigReposi
     companyId: string,
     lateAfterHour: number,
     lateAfterMinute: number,
+    latesPerDeductedDay?: number,
   ): Promise<StoredAttendanceSetting> {
-    const rows: Array<{ lateAfterHour: number; lateAfterMinute: number; updatedAt: Date }> =
-      await getManager(this.dataSource).query(
-        `INSERT INTO "attendance_setting" ("id", "company_id", "late_after_hour", "late_after_minute")
-              VALUES ($1, $2, $3, $4)
-         ON CONFLICT ("company_id") DO UPDATE
-                SET "late_after_hour"   = EXCLUDED."late_after_hour",
-                    "late_after_minute" = EXCLUDED."late_after_minute",
-                    "updated_at"        = now()
-           RETURNING "late_after_hour"::int   AS "lateAfterHour",
-                     "late_after_minute"::int AS "lateAfterMinute",
-                     "updated_at"             AS "updatedAt"`,
-        [this.ids.next(), companyId, lateAfterHour, lateAfterMinute],
-      );
+    // PARTIAL upsert: an omitted `latesPerDeductedDay` keeps the stored value rather than resetting
+    // it to the default — the endpoint is documented as partial, and silently reverting a company's
+    // penalty rule because a caller only wanted to move the threshold would change everyone's pay.
+    const rows: StoredAttendanceSetting[] = await getManager(this.dataSource).query(
+      `INSERT INTO "attendance_setting"
+              ("id", "company_id", "late_after_hour", "late_after_minute", "lates_per_deducted_day")
+            VALUES ($1, $2, $3, $4, COALESCE($5::int, 3))
+       ON CONFLICT ("company_id") DO UPDATE
+              SET "late_after_hour"        = EXCLUDED."late_after_hour",
+                  "late_after_minute"      = EXCLUDED."late_after_minute",
+                  "lates_per_deducted_day" = COALESCE($5::int, "attendance_setting"."lates_per_deducted_day"),
+                  "updated_at"             = now()
+         RETURNING "late_after_hour"::int        AS "lateAfterHour",
+                   "late_after_minute"::int      AS "lateAfterMinute",
+                   "lates_per_deducted_day"::int AS "latesPerDeductedDay",
+                   "updated_at"                  AS "updatedAt"`,
+      [this.ids.next(), companyId, lateAfterHour, lateAfterMinute, latesPerDeductedDay ?? null],
+    );
     return rows[0] as StoredAttendanceSetting;
   }
 

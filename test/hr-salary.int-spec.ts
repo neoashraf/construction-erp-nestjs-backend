@@ -48,6 +48,8 @@ import { CreateRbacAndAudit1700000800000 } from '../src/database/migrations/1700
 import { RbacV2ResourcePermissions1700002300000 } from '../src/database/migrations/1700002300000-RbacV2ResourcePermissions';
 import { CreateHrEmployeeAttendance1700001300000 } from '../src/database/migrations/1700001300000-CreateHrEmployeeAttendance';
 import { CreateHrSalary1700001800000 } from '../src/database/migrations/1700001800000-CreateHrSalary';
+import { CreateAttendanceReportConfig1784700000000 } from '../src/database/migrations/1784700000000-CreateAttendanceReportConfig';
+import { AddLatePenalty1785000000000 } from '../src/database/migrations/1785000000000-AddLatePenalty';
 
 import { TypeOrmJournalEntryRepository } from '../src/core/posting/infrastructure/typeorm-journal-entry.repository';
 import { TypeOrmNumberingService } from '../src/core/numbering/infrastructure/typeorm-numbering.service';
@@ -65,6 +67,7 @@ import { Actor } from '../src/core/tenancy/tenant-context';
 
 import { TypeOrmEmployeeRepository } from '../src/modules/hr/infrastructure/typeorm-employee.repository';
 import { TypeOrmAttendanceRepository } from '../src/modules/hr/infrastructure/typeorm-attendance.repository';
+import { TypeOrmAttendanceConfigRepository } from '../src/modules/hr/attendance-reports/infrastructure/typeorm-attendance-config.repository';
 import { TypeOrmSalarySheetRepository } from '../src/modules/hr/infrastructure/typeorm-salary-sheet.repository';
 import { HrAccountResolverAdapter } from '../src/modules/hr/infrastructure/hr-account-resolver.adapter';
 import { HrProjectStatusAdapter } from '../src/modules/hr/infrastructure/hr-project-status.adapter';
@@ -124,6 +127,8 @@ describe('HR salary sheet & SALARY posting (real Postgres + real PostingService)
   let salary: SalaryService;
   let employees: EmployeeService;
   let payslips: PayslipService;
+  /** Exposed so a test can re-READ a sheet and prove the warnings survive the mapper round-trip. */
+  let sheetRepo: TypeOrmSalarySheetRepository;
   let rolesGuard: RolesGuard;
   let jwtAuthGuard: JwtAuthGuard;
 
@@ -170,6 +175,8 @@ describe('HR salary sheet & SALARY posting (real Postgres + real PostingService)
         RbacV2ResourcePermissions1700002300000,
         CreateHrEmployeeAttendance1700001300000,
         CreateHrSalary1700001800000,
+        CreateAttendanceReportConfig1784700000000,
+        AddLatePenalty1785000000000,
       ],
     });
     await ds.initialize();
@@ -258,6 +265,7 @@ describe('HR salary sheet & SALARY posting (real Postgres + real PostingService)
     const employeeRepo = new TypeOrmEmployeeRepository(ds);
     const attendanceRepo = new TypeOrmAttendanceRepository(ds, ids);
     const salaryRepo = new TypeOrmSalarySheetRepository(ds);
+    sheetRepo = salaryRepo;
     const accountResolver = new HrAccountResolverAdapter(ds);
     const projectStatus = new HrProjectStatusAdapter(ds);
     const postingAdapter = new PostingServiceAdapter(posting);
@@ -269,6 +277,7 @@ describe('HR salary sheet & SALARY posting (real Postgres + real PostingService)
       accountResolver,
       projectStatus,
       postingAdapter,
+      new TypeOrmAttendanceConfigRepository(ds, ids),
       audit as never,
       uow,
       ids,
@@ -517,12 +526,102 @@ describe('HR salary sheet & SALARY posting (real Postgres + real PostingService)
     expect(slips[0].employeeCode).toBe('EMP-100');
   });
 
+  it('AC9: generate persists EXACTLY the four contracted warning keys as jsonb', async () => {
+    // `pre_post_warnings` is jsonb, so NOTHING in the schema fails if a key is renamed — the column
+    // accepts it, and the UI quietly stops rendering a warning that exists in the data. The key set
+    // is contractual (api-contracts/12-hr-payroll.md, SRS §8 SalarySheet); this is what pins it.
+    const empId = await createEmployee('EMP-KEYS', 'ACTIVE', false);
+    await officeAttendance(empId, 30);
+    const { id, warnings } = await salary.generate(
+      {
+        financialYearId: FY1,
+        periodLabel: '2026-06-keys',
+        periodStart: '2026-06-01',
+        periodEnd: '2026-06-30',
+        purposeId: PURPOSE,
+      },
+      actor,
+    );
+
+    const [row] = await ds.query(
+      `SELECT "pre_post_warnings" AS w FROM "salary_sheet" WHERE "id" = $1::uuid`,
+      [id],
+    );
+
+    expect(Object.keys(row.w).sort()).toEqual([
+      'daysWithNoRecords',
+      'employeeAbsences',
+      'noWeeklyHolidaysConfigured',
+      'skippedEmployees',
+    ]);
+    expect(row.w).toEqual(warnings);
+  });
+
+  it('AC9: GET re-serves the STORED warnings, so the poster cannot bypass them', async () => {
+    // The generator is frequently not the poster. Warnings returned only in the generate response
+    // would let an ordinary two-person handoff walk straight past the guard.
+    const empId = await createEmployee('EMP-SERVED', 'ACTIVE', false);
+    await officeAttendance(empId, 30);
+    const { id, warnings } = await salary.generate(
+      {
+        financialYearId: FY1,
+        periodLabel: '2026-06-served',
+        periodStart: '2026-06-01',
+        periodEnd: '2026-06-30',
+        purposeId: PURPOSE,
+      },
+      actor,
+    );
+
+    // Re-read from the database, not from the generate response.
+    const reread = await sheetRepo.findById(id, CO);
+
+    expect(reread?.props.prePostWarnings).toEqual(warnings);
+  });
+
+  it('AC1: a full working month pays 100% and stores its day figures on the line', async () => {
+    // ⭐ Against a REAL database: 30 calendar days, no weekly holidays configured for this company,
+    // present every day -> standardDays 30, unpaidDays 0, paidDays 30, full salary. Before the
+    // corrected rule the same employee was paid a fraction of this.
+    const empId = await createEmployee('EMP-FULL', 'ACTIVE', false);
+    await officeAttendance(empId, 30);
+    const { id } = await salary.generate(
+      {
+        financialYearId: FY1,
+        periodLabel: '2026-06-full',
+        periodStart: '2026-06-01',
+        periodEnd: '2026-06-30',
+        purposeId: PURPOSE,
+      },
+      actor,
+    );
+
+    const [line] = await ds.query(
+      `SELECT "standard_days"::text AS "standardDays", "unpaid_days"::text AS "unpaidDays",
+              "paid_days"::text AS "paidDays", "late_count" AS "lateCount",
+              "late_penalty_days"::text AS "latePenaltyDays", "gross_amount"::text AS "gross"
+         FROM "salary_sheet_line" l
+         JOIN "employee" e ON e."id" = l."employee_id"
+        WHERE l."salary_sheet_id" = $1::uuid AND e."employee_code" = 'EMP-FULL'`,
+      [id],
+    );
+
+    expect(line.standardDays).toBe('30.0000');
+    expect(line.unpaidDays).toBe('0.0000');
+    expect(line.paidDays).toBe('30.0000');
+    expect(line.lateCount).toBe(0);
+    expect(line.latePenaltyDays).toBe('0.0000');
+    // wage 45,000 x 30/30 — the FULL month, not 30/31 or a working-day fraction.
+    expect(line.gross).toBe('45000.0000');
+  });
+
   it('AC12: atomic post — a forced failure after the journal write rolls back the sheet + NUM counter', async () => {
     const sheetId = await draftWorkedSheet();
     // Force the transaction to fail AFTER PostingService.post has written the entry but before commit, by
     // wrapping the sheet repo's save() to throw — the whole uow.run rolls back (entry, lines, NUM counter,
     // and the sheet state change together).
     const salaryRepo = new TypeOrmSalarySheetRepository(ds);
+    sheetRepo = salaryRepo;
     const failingRepo: typeof salaryRepo = Object.create(salaryRepo);
     failingRepo.save = async () => {
       throw new Error('forced failure post-journal-write');
@@ -548,6 +647,7 @@ describe('HR salary sheet & SALARY posting (real Postgres + real PostingService)
       new HrAccountResolverAdapter(ds),
       new HrProjectStatusAdapter(ds),
       new PostingServiceAdapter(posting),
+      new TypeOrmAttendanceConfigRepository(ds, ids),
       audit as never,
       uow,
       ids,

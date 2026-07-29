@@ -30,10 +30,12 @@ import { UNIT_OF_WORK, UnitOfWork } from '../../../common/ports/unit-of-work.por
 import { Actor } from '../../../core/tenancy/tenant-context';
 import { AUDIT_SERVICE, AuditService } from '../../../core/audit/application/audit.port';
 import { AttendanceSummary, calcGross, EmployeePayInfo } from '../domain/salary-calculator';
+import { computePayrollDays, penaltyDays } from '../domain/payroll-days';
 import {
   BulkApplyComponents,
   EditSalaryLineComponents,
   NewSalarySheet,
+  PrePostWarnings,
   SALARY_SHEET_SOURCE_TYPE,
   SalarySheet,
   SalarySheetLine,
@@ -49,6 +51,18 @@ import {
 } from '../domain/ports/hr-account-resolver.port';
 import { HR_PROJECT_STATUS_PORT, HrProjectStatusPort } from '../domain/ports/project-status.port';
 import { POSTING_SERVICE_PORT, PostingServicePort } from '../domain/ports/posting.service.port';
+import {
+  ATTENDANCE_CONFIG_REPOSITORY,
+  AttendanceConfigRepository,
+} from '../attendance-reports/domain/ports/attendance-config.repository';
+import { buildWeeklyHolidayDateSet } from '../attendance-reports/domain/attendance-rules';
+
+/**
+ * Used when the company has no `attendance_setting` row. Mirrors the reports' fallback exactly — if
+ * these ever diverged, a report and a salary sheet would disagree about which days were late for an
+ * un-configured company (FR-HR-008c).
+ */
+const DEFAULT_LATE_THRESHOLD = { lateAfterHour: 9, lateAfterMinute: 30, latesPerDeductedDay: 3 };
 
 export interface GenerateSalaryInput {
   financialYearId: string;
@@ -63,6 +77,16 @@ export interface GenerateSalaryInput {
    * Additive to the API contract's documented generate body (backward compatible — optional).
    */
   purposeId: string;
+}
+
+/**
+ * `generate` returns the warnings as well as the id, because the FR-HR-013a guard is only useful
+ * before posting. They are ALSO persisted on the sheet — the generator is frequently not the poster,
+ * and warnings that live only in this response let a two-person handoff bypass the guard entirely.
+ */
+export interface GenerateSalaryResult {
+  id: string;
+  warnings: PrePostWarnings;
 }
 
 export interface PostSalaryResult {
@@ -88,6 +112,7 @@ export class SalaryService {
     @Inject(HR_ACCOUNT_RESOLVER_PORT) private readonly accounts: HrAccountResolverPort,
     @Inject(HR_PROJECT_STATUS_PORT) private readonly projectStatus: HrProjectStatusPort,
     @Inject(POSTING_SERVICE_PORT) private readonly posting: PostingServicePort,
+    @Inject(ATTENDANCE_CONFIG_REPOSITORY) private readonly attendanceConfig: AttendanceConfigRepository,
     @Inject(AUDIT_SERVICE) private readonly audit: AuditService,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
     @Inject(ID_GENERATOR) private readonly ids: IdGenerator,
@@ -100,7 +125,7 @@ export class SalaryService {
    * DRAFT already existing for the same (financialYearId, periodLabel) is rejected — edit it instead
    * (edge §12.4). No ledger impact — pure calculation only.
    */
-  async generate(input: GenerateSalaryInput, actor: Actor): Promise<{ id: string }> {
+  async generate(input: GenerateSalaryInput, actor: Actor): Promise<GenerateSalaryResult> {
     return this.uow.run(async () => {
       if (await this.repo.existsDraftForPeriod(actor.companyId, input.financialYearId, input.periodLabel)) {
         throw new DuplicateDraftSheetError(input.financialYearId, input.periodLabel);
@@ -109,7 +134,29 @@ export class SalaryService {
       const employees = await this.employees.activeForCompany(actor.companyId, input.projectId);
       const salaryCostCentreId = await this.resolveLabourCostCentre(actor.companyId);
 
+      // Config is loaded ONCE per generate, not per employee: the holiday calendar and the threshold
+      // are company-wide, and re-reading them per employee would be N round-trips for one answer.
+      const setting = await this.attendanceConfig.findSetting(actor.companyId);
+      const lateThreshold = {
+        lateAfterHour: setting?.lateAfterHour ?? DEFAULT_LATE_THRESHOLD.lateAfterHour,
+        lateAfterMinute: setting?.lateAfterMinute ?? DEFAULT_LATE_THRESHOLD.lateAfterMinute,
+      };
+      const latesPerDeductedDay =
+        setting?.latesPerDeductedDay ?? DEFAULT_LATE_THRESHOLD.latesPerDeductedDay;
+
+      const weeklyHolidayWeekdays = await this.attendanceConfig.listWeeklyHolidays(actor.companyId);
+      const holidayDates = await this.resolveHolidayDates(
+        actor.companyId,
+        input.periodStart,
+        input.periodEnd,
+        weeklyHolidayWeekdays,
+      );
+
       const lines: SalarySheetLine[] = [];
+      const skippedEmployees: Array<{ employeeId: string; reason: string }> = [];
+      const employeeAbsences: Array<{ employeeId: string; unpaidDays: number }> = [];
+      const missingByDate = new Map<string, number>();
+
       for (const emp of employees) {
         const summary = await this.attendance.summarizeOffice(
           actor.companyId,
@@ -117,17 +164,56 @@ export class SalaryService {
           input.periodStart,
           input.periodEnd,
         );
+        const days = await this.attendance.listOfficeDays(
+          actor.companyId,
+          emp.id,
+          input.periodStart,
+          input.periodEnd,
+        );
+
+        const payrollDays = computePayrollDays({
+          periodStart: input.periodStart,
+          periodEnd: input.periodEnd,
+          employmentStart: emp.props.joiningDate,
+          // `Employee` has no exit date — a leaver is INACTIVE, and `activeForCompany` already
+          // excludes INACTIVE employees from generation (FR-HR-003). So there is no end to clip to.
+          employmentEnd: null,
+          days,
+          holidayDates,
+          lateThreshold,
+        });
+
+        const forfeited = penaltyDays(payrollDays.lateDays, latesPerDeductedDay);
         const payInfo: EmployeePayInfo = { wageType: emp.props.wageType, wageAmount: emp.props.wageAmount };
-        const standardDays = daysInPeriod(input.periodStart, input.periodEnd);
         const attSummary: AttendanceSummary = {
-          paidDays: summary.paidDays,
-          standardDays: String(standardDays),
-          attendedDays: summary.attendedDays,
+          paidDays: String(payrollDays.paidDays),
+          standardDays: String(payrollDays.standardDays),
+          attendedDays: String(payrollDays.attendedDays),
           overtimeAmount: '0', // overtime HOURS are captured; Phase-1 rate config is pending client (design §10)
+          penaltyDays: String(forfeited),
         };
         const gross = calcGross(payInfo, attSummary);
+
+        // What the penalty cost, so the payslip explains itself without re-deriving from the rate.
+        // Zero for DAILY, whose gross ignores the penalty entirely (FR-HR-013a's final clause).
+        const latePenaltyAmount =
+          emp.props.wageType === 'MONTHLY' && forfeited > 0
+            ? calcGross(payInfo, { ...attSummary, penaltyDays: '0' }).minus(gross)
+            : Money.zero();
+
         const projectId = summary.primaryProjectId ?? emp.props.defaultProjectId;
-        if (!projectId) continue; // no attendance and no default project — nothing to tag this line with; skip
+        if (!projectId) {
+          // Was a bare `continue`: an employee with no attendance and no default project simply
+          // vanished from the sheet and was not paid, with no error anywhere. Still skipped — the
+          // line has nothing to tag — but now VISIBLE (FR-HR-013a, design §8.2(d)).
+          skippedEmployees.push({ employeeId: emp.id, reason: 'NO_PROJECT' });
+          continue;
+        }
+
+        for (const date of payrollDays.missingDays) {
+          missingByDate.set(date, (missingByDate.get(date) ?? 0) + 1);
+        }
+        employeeAbsences.push({ employeeId: emp.id, unpaidDays: payrollDays.unpaidDays });
 
         lines.push(
           SalarySheetLine.create(this.ids.next(), {
@@ -135,11 +221,34 @@ export class SalaryService {
             projectId,
             costCentreId: salaryCostCentreId,
             purposeId: input.purposeId,
-            paidDays: summary.paidDays,
+            paidDays: String(payrollDays.paidDays),
             gross,
+            standardDays: String(payrollDays.standardDays),
+            unpaidDays: String(payrollDays.unpaidDays),
+            lateCount: payrollDays.lateDays,
+            latePenaltyDays: String(forfeited),
+            latePenaltyAmount,
           }),
         );
       }
+
+      // A day is a COMPANY-WIDE gap only when every employee on the sheet reports it missing — one
+      // person's absence is not a device outage, and conflating the two would cry wolf every month.
+      const generatedCount = lines.length;
+      const daysWithNoRecords = [...missingByDate.entries()]
+        .filter(([, count]) => generatedCount > 0 && count === generatedCount)
+        .map(([date]) => date)
+        .sort();
+
+      const warnings: PrePostWarnings = {
+        daysWithNoRecords,
+        skippedEmployees,
+        employeeAbsences,
+        // The one payroll defect the report-vs-payroll cross-check CANNOT catch: both sides read the
+        // same empty config and therefore agree, while every employee is docked for every weekend.
+        // A brand-new tenant lands here without touching a setting.
+        noWeeklyHolidaysConfigured: weeklyHolidayWeekdays.length === 0,
+      };
 
       const sheet = SalarySheet.generate(
         this.ids.next(),
@@ -151,6 +260,7 @@ export class SalaryService {
           periodEnd: input.periodEnd,
         } as NewSalarySheet,
         lines,
+        warnings,
       );
       await this.repo.insert(sheet);
       await this.audit.record({
@@ -160,7 +270,7 @@ export class SalaryService {
         actorId: actor.userId,
         companyId: actor.companyId,
       });
-      return { id: sheet.id };
+      return { id: sheet.id, warnings };
     });
   }
 
@@ -294,6 +404,41 @@ export class SalaryService {
     });
   }
 
+  /**
+   * Weekly + government holidays for the period, merged into one date set.
+   *
+   * Merged into a Set on purpose: a government holiday falling on a weekly holiday must count ONCE,
+   * or the baseline would lose a day and everyone would be short-paid for it. A period spanning a
+   * year boundary needs both calendar years, since `listGovernmentHolidays` is per-year.
+   */
+  private async resolveHolidayDates(
+    companyId: string,
+    periodStart: string,
+    periodEnd: string,
+    weeklyHolidayWeekdays: readonly number[],
+  ): Promise<Set<string>> {
+    const dates: string[] = [];
+    const cursor = new Date(`${periodStart}T00:00:00Z`);
+    const last = new Date(`${periodEnd}T00:00:00Z`);
+    while (cursor <= last) {
+      dates.push(cursor.toISOString().slice(0, 10));
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+
+    const years = [...new Set([periodStart.slice(0, 4), periodEnd.slice(0, 4)])];
+    const government: string[] = [];
+    for (const year of years) {
+      const rows = await this.attendanceConfig.listGovernmentHolidays(companyId, Number(year));
+      government.push(...rows.map((row) => row.date));
+    }
+
+    const inPeriod = new Set(dates);
+    return new Set([
+      ...buildWeeklyHolidayDateSet(dates, weeklyHolidayWeekdays),
+      ...government.filter((date) => inPeriod.has(date)),
+    ]);
+  }
+
   private async resolveLabourCostCentre(companyId: string): Promise<string> {
     const accts = await this.accounts.salaryAccounts(companyId);
     return accts.labourCostCentreId;
@@ -317,9 +462,4 @@ export class SalaryService {
 }
 
 /** Inclusive calendar-day count between two 'YYYY-MM-DD' dates (the period's standard working-day basis). */
-function daysInPeriod(periodStart: string, periodEnd: string): number {
-  const start = new Date(`${periodStart}T00:00:00Z`);
-  const end = new Date(`${periodEnd}T00:00:00Z`);
-  const diff = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
-  return Math.max(1, diff);
-}
+

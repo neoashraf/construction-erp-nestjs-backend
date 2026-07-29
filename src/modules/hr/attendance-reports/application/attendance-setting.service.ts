@@ -11,6 +11,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { UNIT_OF_WORK, UnitOfWork } from '../../../../common/ports/unit-of-work.port';
 import { Actor } from '../../../../core/tenancy/tenant-context';
+import { badRequest } from '../domain/attendance-rules';
 import { formatLateAfter, normalizeTimeUnit } from '../domain/holiday-rules';
 import {
   ATTENDANCE_CONFIG_REPOSITORY,
@@ -18,12 +19,15 @@ import {
 } from '../domain/ports/attendance-config.repository';
 
 /** Used when the company has no `attendance_setting` row. Mirrors the read adapter's fallback. */
-const DEFAULT_THRESHOLD = { lateAfterHour: 9, lateAfterMinute: 30 };
+const DEFAULT_THRESHOLD = { lateAfterHour: 9, lateAfterMinute: 30, latesPerDeductedDay: 3 };
 
 export interface AttendanceSettingDto {
   lateAfterHour: number;
   lateAfterMinute: number;
   lateAfter: string;
+  /** N lates cost one day's pay (FR-HR-013a). Same row as the threshold, so the report and the
+   *  salary sheet can never disagree about it (FR-HR-008c). */
+  latesPerDeductedDay: number;
   updatedAt: Date | null;
 }
 
@@ -37,29 +41,51 @@ export class AttendanceSettingService {
   async get(actor: Actor): Promise<AttendanceSettingDto> {
     const row = await this.repo.findSetting(actor.companyId);
     const setting = row ?? { ...DEFAULT_THRESHOLD, updatedAt: null };
-    return this.toDto(setting.lateAfterHour, setting.lateAfterMinute, setting.updatedAt);
+    return this.toDto(setting);
   }
 
   /** Validation throws the guide's exact 400 messages before anything is written. */
   async set(
-    input: { lateAfterHour?: unknown; lateAfterMinute?: unknown },
+    input: { lateAfterHour?: unknown; lateAfterMinute?: unknown; latesPerDeductedDay?: unknown },
     actor: Actor,
   ): Promise<AttendanceSettingDto> {
     const hour = normalizeTimeUnit(input.lateAfterHour, 23, 'lateAfterHour');
     const minute = normalizeTimeUnit(input.lateAfterMinute, 59, 'lateAfterMinute');
+    // Undefined means "leave it alone" — the endpoint is partial. 0 is rejected rather than
+    // defaulted: it would divide by zero in `penaltyDays`, and silently substituting 3 would change
+    // everyone's pay without the caller asking.
+    const lates =
+      input.latesPerDeductedDay === undefined || input.latesPerDeductedDay === null
+        ? undefined
+        : normalizeLatesPerDay(input.latesPerDeductedDay);
 
     return this.uow.run(async () => {
-      const saved = await this.repo.upsertSetting(actor.companyId, hour, minute);
-      return this.toDto(saved.lateAfterHour, saved.lateAfterMinute, saved.updatedAt);
+      const saved = await this.repo.upsertSetting(actor.companyId, hour, minute, lates);
+      return this.toDto(saved);
     });
   }
 
-  private toDto(hour: number, minute: number, updatedAt: Date | null): AttendanceSettingDto {
+  private toDto(setting: {
+    lateAfterHour: number;
+    lateAfterMinute: number;
+    latesPerDeductedDay?: number;
+    updatedAt: Date | null;
+  }): AttendanceSettingDto {
     return {
-      lateAfterHour: hour,
-      lateAfterMinute: minute,
-      lateAfter: formatLateAfter(hour, minute),
-      updatedAt,
+      lateAfterHour: setting.lateAfterHour,
+      lateAfterMinute: setting.lateAfterMinute,
+      lateAfter: formatLateAfter(setting.lateAfterHour, setting.lateAfterMinute),
+      latesPerDeductedDay: setting.latesPerDeductedDay ?? DEFAULT_THRESHOLD.latesPerDeductedDay,
+      updatedAt: setting.updatedAt,
     };
   }
+}
+
+/** An integer >= 1. Zero would divide by zero in `penaltyDays`; a fraction is meaningless. */
+function normalizeLatesPerDay(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1) {
+    throw badRequest('latesPerDeductedDay must be an integer greater than or equal to 1');
+  }
+  return n;
 }

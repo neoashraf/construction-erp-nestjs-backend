@@ -4,6 +4,7 @@
  * `salary_entry_id` FK → journal_entry, null while DRAFT, set at post. The draft-unique partial index
  * (`UNIQUE (company_id, financial_year_id, period_label) WHERE status='DRAFT'`) lives in the migration.
  */
+import { PrePostWarnings } from '../domain/salary-sheet';
 import {
   Column,
   CreateDateColumn,
@@ -27,6 +28,11 @@ export class SalarySheetOrmEntity {
   @Column({ name: 'salary_entry_id', type: 'uuid', nullable: true }) salaryEntryId!: string | null;
   @Column({ name: 'posted_at', type: 'timestamptz', nullable: true }) postedAt!: Date | null;
   @Column({ name: 'posted_by', type: 'uuid', nullable: true }) postedBy!: string | null;
+  // jsonb: display-only evidence read back WHOLE with the sheet — never queried, aggregated or
+  // joined across sheets, so child tables would buy queryability nothing needs and cost four joins
+  // on every read. Nullable because a sheet generated before FR-HR-013a genuinely has none.
+  @Column({ name: 'pre_post_warnings', type: 'jsonb', nullable: true })
+  prePostWarnings!: PrePostWarnings | null;
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' }) updatedAt!: Date;
   @Column({ name: 'created_by', type: 'uuid', nullable: true }) createdBy!: string | null;

@@ -22,6 +22,7 @@ export const SalarySheetMapper = {
     row.salaryEntryId = p.salaryEntryId;
     row.postedAt = p.postedAt;
     row.postedBy = p.postedBy;
+    row.prePostWarnings = p.prePostWarnings;
     return row;
   },
 
@@ -42,6 +43,11 @@ export const SalarySheetMapper = {
     row.advanceRecovery = p.advanceRecovery.amount;
     row.otherDeductions = p.otherDeductions.amount;
     row.netAmount = p.netAmount.amount;
+    row.standardDays = p.standardDays.amount;
+    row.unpaidDays = p.unpaidDays.amount;
+    row.lateCount = p.lateCount;
+    row.latePenaltyDays = p.latePenaltyDays.amount;
+    row.latePenaltyAmount = p.latePenaltyAmount.amount;
     return row;
   },
 
@@ -58,6 +64,7 @@ export const SalarySheetMapper = {
         salaryEntryId: row.salaryEntryId,
         postedAt: row.postedAt,
         postedBy: row.postedBy,
+        prePostWarnings: row.prePostWarnings ?? null,
         version: row.version,
       },
       lineRows.map((r) => SalarySheetMapper.lineToDomain(r)),
@@ -78,6 +85,14 @@ export const SalarySheetMapper = {
       advanceRecovery: Money.of(new Decimal(r.advanceRecovery)),
       otherDeductions: Money.of(new Decimal(r.otherDeductions)),
       netAmount: Money.of(new Decimal(r.netAmount)),
+      // `?? 0`: a row written before the AddLatePenalty migration has these as the column default,
+      // but a partial SELECT in a read path can still hand us undefined — zero says "no penalty was
+      // computed", which is true, rather than crashing on a Decimal of undefined.
+      standardDays: Money.of(new Decimal(r.standardDays ?? 0)),
+      unpaidDays: Money.of(new Decimal(r.unpaidDays ?? 0)),
+      lateCount: r.lateCount ?? 0,
+      latePenaltyDays: Money.of(new Decimal(r.latePenaltyDays ?? 0)),
+      latePenaltyAmount: Money.of(new Decimal(r.latePenaltyAmount ?? 0)),
       version: r.version,
     });
   },

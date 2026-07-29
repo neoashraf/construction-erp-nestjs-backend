@@ -27,6 +27,28 @@ import { SalaryNotDraftError } from './errors';
 
 export const SALARY_SHEET_SOURCE_TYPE = 'SalarySheet';
 
+/**
+ * Evidence gathered at GENERATE that the poster must see before committing payroll (FR-HR-013a).
+ *
+ * The four key names are CONTRACTUAL. `pre_post_warnings` is `jsonb`, so nothing in the schema fails
+ * if one is renamed — the column happily accepts it, the UI quietly stops rendering a warning that
+ * exists in the data, and nobody notices. A test pins the key set for exactly that reason.
+ *
+ * Stored rather than recomputed, because the person who generates a sheet is frequently not the
+ * person who posts it: warnings returned only in the generate response let an ordinary two-person
+ * handoff bypass the guard entirely.
+ */
+export interface PrePostWarnings {
+  /** Working days on which NO generated employee has a record — a device outage or unsent log. */
+  daysWithNoRecords: string[];
+  /** Employees left off the sheet, with why. Replaces a silent `continue` that simply stopped paying them. */
+  skippedEmployees: Array<{ employeeId: string; reason: string }>;
+  /** Per-employee unpaid-day counts, so an outlier is visible at a glance. */
+  employeeAbsences: Array<{ employeeId: string; unpaidDays: number }>;
+  /** True when `weekly_holiday` is empty — every calendar day is being treated as a working day. */
+  noWeeklyHolidaysConfigured: boolean;
+}
+
 /** Stored status — DRAFT while editable, POSTED once the SALARY entry exists. REVERSED is derived, never stored. */
 export type SalarySheetStatus = 'DRAFT' | 'POSTED';
 export const SALARY_SHEET_STATUSES: readonly SalarySheetStatus[] = ['DRAFT', 'POSTED'] as const;
@@ -39,6 +61,19 @@ export interface NewSalarySheetLine {
   paidDays: Money | string | number;
   gross: Money;
   components?: PayComponents;
+  /**
+   * The FR-HR-013a day figures, STORED on the line rather than recomputed at render.
+   *
+   * A payslip must explain its own deduction, and recomputing from attendance at render time
+   * re-reads a period that may have changed since the sheet was posted. Optional so a caller that
+   * predates the rule still constructs a valid line (they default to 0), and so a DAILY-wage line —
+   * which has no baseline and no penalty — need not invent them.
+   */
+  standardDays?: Money | string | number | null;
+  unpaidDays?: Money | string | number | null;
+  lateCount?: number | null;
+  latePenaltyDays?: Money | string | number | null;
+  latePenaltyAmount?: Money | string | number | null;
 }
 
 export interface SalarySheetLineProps {
@@ -54,6 +89,13 @@ export interface SalarySheetLineProps {
   advanceRecovery: Money;
   otherDeductions: Money;
   netAmount: Money;
+  /** The paid baseline this line was computed against (FR-HR-013a). */
+  standardDays: Money;
+  unpaidDays: Money;
+  lateCount: number;
+  latePenaltyDays: Money;
+  /** What the penalty cost in money, so the payslip need not re-derive it from the rate. */
+  latePenaltyAmount: Money;
   version: number;
 }
 
@@ -100,6 +142,11 @@ export class SalarySheetLine extends AggregateRoot<string> {
       advanceRecovery: amounts.advanceRecovery,
       otherDeductions: amounts.other,
       netAmount: amounts.net,
+      standardDays: nonNegDays(input.standardDays, 'standardDays'),
+      unpaidDays: nonNegDays(input.unpaidDays, 'unpaidDays'),
+      lateCount: Math.max(0, Math.trunc(input.lateCount ?? 0)),
+      latePenaltyDays: nonNegDays(input.latePenaltyDays, 'latePenaltyDays'),
+      latePenaltyAmount: nonNegDays(input.latePenaltyAmount, 'latePenaltyAmount'),
       version: 1,
     });
   }
@@ -169,6 +216,8 @@ export interface SalarySheetProps {
   salaryEntryId: string | null;
   postedAt: Date | null;
   postedBy: string | null;
+  /** Null on a sheet generated before FR-HR-013a — genuinely "no warnings recorded", not "none found". */
+  prePostWarnings: PrePostWarnings | null;
   version: number;
 }
 
@@ -187,6 +236,7 @@ export class SalarySheet extends AggregateRoot<string> {
     companyId: string,
     input: NewSalarySheet,
     lines: SalarySheetLine[],
+    prePostWarnings: PrePostWarnings | null = null,
   ): SalarySheet {
     if (input.periodEnd < input.periodStart) {
       throw new ValidationError('periodEnd must be >= periodStart', {
@@ -206,6 +256,7 @@ export class SalarySheet extends AggregateRoot<string> {
         salaryEntryId: null,
         postedAt: null,
         postedBy: null,
+        prePostWarnings,
         version: 1,
       },
       lines,
@@ -279,6 +330,20 @@ export class SalarySheet extends AggregateRoot<string> {
   get version(): number {
     return this._props.version;
   }
+}
+
+/**
+ * A non-negative day/amount figure, defaulting to zero when the caller supplies none.
+ *
+ * Zero is the honest default for a line generated before FR-HR-013a existed, or for a DAILY-wage
+ * line that has no baseline: it says "no penalty was computed", which is true, rather than
+ * fabricating one.
+ */
+function nonNegDays(value: Money | string | number | null | undefined, field: string): Money {
+  if (value === null || value === undefined) return Money.zero();
+  const money = value instanceof Money ? value : Money.of(value);
+  if (money.isNegative()) throw new ValidationError(`${field} must be >= 0`, { field });
+  return money;
 }
 
 function req(v: string, field: string): string {
