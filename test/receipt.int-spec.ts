@@ -64,7 +64,10 @@ import { VoucherLinkageReader } from '../src/core/posting/read/voucher-linkage';
 import { OverApplicationError } from '../src/modules/receipt/domain/errors';
 
 // RolesGuard smoke test deps (mandatory per skill §13 — proves the controller's guard wiring is real).
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+// JwtAuthGuard raises DOMAIN errors, not Nest exceptions — the domain layer must not
+// import from @nestjs/common (nestjs-author §9); the global filter maps this to 401.
+import { UnauthenticatedError } from '../src/common/errors/domain-error';
 import { Reflector } from '@nestjs/core';
 import { RoleOrmEntity } from '../src/core/auth/infrastructure/role.orm-entity';
 import { PermissionOrmEntity } from '../src/core/auth/infrastructure/permission.orm-entity';
@@ -646,8 +649,8 @@ describe('Receipts (real Postgres + real PostingService + a real posted SAL IPC)
     });
 
     it('401: no/invalid token', () => {
-      expect(() => jwtAuthGuard.handleRequest(null, false, null)).toThrow(UnauthorizedException);
-      expect(() => jwtAuthGuard.handleRequest(new Error('jwt malformed'), false, null)).toThrow(UnauthorizedException);
+      expect(() => jwtAuthGuard.handleRequest(null, false, null)).toThrow(UnauthenticatedError);
+      expect(() => jwtAuthGuard.handleRequest(new Error('jwt malformed'), false, null)).toThrow(UnauthenticatedError);
     });
 
     it.each([

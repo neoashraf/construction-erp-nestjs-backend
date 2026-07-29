@@ -20,6 +20,11 @@ import { BcryptPasswordHasher } from '../src/core/auth/infrastructure/bcrypt-pas
 import { JwtTokenSigner } from '../src/core/auth/infrastructure/jwt-token-signer';
 import { AuthService } from '../src/core/auth/application/auth.service';
 import { User } from '../src/core/auth/domain/user';
+// AuthService raises DOMAIN errors, never Nest exceptions — the application layer must not
+// import from @nestjs/common (nestjs-author §9). The global filter maps this to 401
+// INVALID_CREDENTIALS, and it is deliberately the SAME error for a wrong password, an unknown
+// email and a locked account, so the response never discloses which.
+import { InvalidCredentialsError } from '../src/common/errors/domain-error';
 
 jest.setTimeout(240_000);
 
@@ -123,9 +128,8 @@ describe('Auth — JWT login/refresh/logout/change-password (real Postgres)', ()
     expect(result.user.email).toBe('admin@testco.com');
   });
 
-  it('login wrong password → UnauthorizedException with generic message (FR-AUD-001)', async () => {
-    const { UnauthorizedException } = await import('@nestjs/common');
-    await expect(svc.login(companyId, 'admin@testco.com', 'WRONG')).rejects.toThrow(UnauthorizedException);
+  it('login wrong password → InvalidCredentialsError with generic message (FR-AUD-001)', async () => {
+    await expect(svc.login(companyId, 'admin@testco.com', 'WRONG')).rejects.toThrow(InvalidCredentialsError);
   });
 
   it('refresh with valid token → new access token (FR-AUD-004)', async () => {
@@ -135,10 +139,9 @@ describe('Auth — JWT login/refresh/logout/change-password (real Postgres)', ()
   });
 
   it('logout revokes JTI; subsequent refresh fails (FR-AUD-005, edge case 11)', async () => {
-    const { UnauthorizedException } = await import('@nestjs/common');
     const { refreshToken } = await svc.login(companyId, 'admin@testco.com', 'Password@123');
     await svc.logout(refreshToken);
-    await expect(svc.refresh(refreshToken)).rejects.toThrow(UnauthorizedException);
+    await expect(svc.refresh(refreshToken)).rejects.toThrow(InvalidCredentialsError);
   });
 
   it('logout is idempotent — second logout does not throw (FR-AUD-005)', async () => {
@@ -148,14 +151,13 @@ describe('Auth — JWT login/refresh/logout/change-password (real Postgres)', ()
   });
 
   it('change-password re-hashes and revokes all sessions (FR-AUD-006/002)', async () => {
-    const { UnauthorizedException } = await import('@nestjs/common');
     const login1 = await svc.login(companyId, 'admin@testco.com', 'Password@123');
     const login2 = await svc.login(companyId, 'admin@testco.com', 'Password@123');
     // Change password
     await svc.changePassword(login1.user.id, 'Password@123', 'NewPassword@123');
     // Both refresh tokens should now be revoked
-    await expect(svc.refresh(login1.refreshToken)).rejects.toThrow(UnauthorizedException);
-    await expect(svc.refresh(login2.refreshToken)).rejects.toThrow(UnauthorizedException);
+    await expect(svc.refresh(login1.refreshToken)).rejects.toThrow(InvalidCredentialsError);
+    await expect(svc.refresh(login2.refreshToken)).rejects.toThrow(InvalidCredentialsError);
     // Login with new password works
     await expect(svc.login(companyId, 'admin@testco.com', 'NewPassword@123')).resolves.toBeDefined();
     // Restore for subsequent tests
@@ -167,7 +169,6 @@ describe('Auth — JWT login/refresh/logout/change-password (real Postgres)', ()
   });
 
   it('account lockout: 5 failed attempts lock for 15 min — correct password fails during window (§16)', async () => {
-    const { UnauthorizedException } = await import('@nestjs/common');
     const lockEmail = 'locktest@testco.com';
     const hasher = new BcryptPasswordHasher();
     const hash = await hasher.hash('Password@123');
@@ -184,9 +185,9 @@ describe('Auth — JWT login/refresh/logout/change-password (real Postgres)', ()
 
     // 5 failed attempts
     for (let i = 0; i < 5; i++) {
-      await expect(svc.login(companyId, lockEmail, 'WRONG')).rejects.toThrow(UnauthorizedException);
+      await expect(svc.login(companyId, lockEmail, 'WRONG')).rejects.toThrow(InvalidCredentialsError);
     }
     // Now even with correct password → INVALID_CREDENTIALS (lockout not disclosed)
-    await expect(svc.login(companyId, lockEmail, 'Password@123')).rejects.toThrow(UnauthorizedException);
+    await expect(svc.login(companyId, lockEmail, 'Password@123')).rejects.toThrow(InvalidCredentialsError);
   });
 });

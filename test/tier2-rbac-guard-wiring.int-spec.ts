@@ -37,7 +37,10 @@
  */
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { DataSource } from 'typeorm';
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+// JwtAuthGuard raises DOMAIN errors, not Nest exceptions — the domain layer must not
+// import from @nestjs/common (nestjs-author §9); the global filter maps this to 401.
+import { UnauthenticatedError } from '../src/common/errors/domain-error';
 import { Reflector } from '@nestjs/core';
 import { RoleOrmEntity } from '../src/core/auth/infrastructure/role.orm-entity';
 import { PermissionOrmEntity } from '../src/core/auth/infrastructure/permission.orm-entity';
@@ -312,12 +315,12 @@ describe('tier2-rbac-guard-wiring (#36) — real RolesGuard against every GEN/IN
 
   // ── 401: no/invalid token ────────────────────────────────────────────────
   describe('JwtAuthGuard — no/invalid token (401)', () => {
-    it('handleRequest throws UnauthorizedException when passport found no user (missing/invalid/expired token)', () => {
-      expect(() => jwtAuthGuard.handleRequest(null, false, null)).toThrow(UnauthorizedException);
+    it('handleRequest throws UnauthenticatedError (mapped to 401) when passport found no user (missing/invalid/expired token)', () => {
+      expect(() => jwtAuthGuard.handleRequest(null, false, null)).toThrow(UnauthenticatedError);
     });
 
-    it('handleRequest throws UnauthorizedException on a passport error (malformed token)', () => {
-      expect(() => jwtAuthGuard.handleRequest(new Error('jwt malformed'), false, null)).toThrow(UnauthorizedException);
+    it('handleRequest throws UnauthenticatedError (mapped to 401) on a passport error (malformed token)', () => {
+      expect(() => jwtAuthGuard.handleRequest(new Error('jwt malformed'), false, null)).toThrow(UnauthenticatedError);
     });
   });
 
