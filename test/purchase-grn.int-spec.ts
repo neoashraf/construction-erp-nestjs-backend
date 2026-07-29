@@ -98,7 +98,10 @@ import { PurchaseQueryService } from '../src/modules/purchase/application/purcha
 import { NewPurchaseBill } from '../src/modules/purchase/domain/purchase-bill';
 
 // RolesGuard smoke test deps (mandatory per skill §13).
-import { ExecutionContext, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ExecutionContext, ForbiddenException, NotFoundException } from '@nestjs/common';
+// JwtAuthGuard raises DOMAIN errors, not Nest exceptions — the domain layer must not
+// import from @nestjs/common (nestjs-author §9); the global filter maps this to 401.
+import { UnauthenticatedError } from '../src/common/errors/domain-error';
 import { Reflector } from '@nestjs/core';
 import { RoleOrmEntity } from '../src/core/auth/infrastructure/role.orm-entity';
 import { PermissionOrmEntity } from '../src/core/auth/infrastructure/permission.orm-entity';
@@ -686,8 +689,8 @@ describe('PUR GRN + match + registers (real Postgres; §10 Q4 option (a) — inf
     afterEach(() => jest.restoreAllMocks());
 
     it('401: no/invalid token', () => {
-      expect(() => jwtAuthGuard.handleRequest(null, false, null)).toThrow(UnauthorizedException);
-      expect(() => jwtAuthGuard.handleRequest(new Error('jwt malformed'), false, null)).toThrow(UnauthorizedException);
+      expect(() => jwtAuthGuard.handleRequest(null, false, null)).toThrow(UnauthenticatedError);
+      expect(() => jwtAuthGuard.handleRequest(new Error('jwt malformed'), false, null)).toThrow(UnauthenticatedError);
     });
 
     it.each([
