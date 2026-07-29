@@ -8,6 +8,7 @@
  * AttendanceSummary inputs (paidDays, attendedDays, overtimeAmount) for salary generation (design §5.2).
  */
 import { AttendanceRecord } from '../attendance-record';
+import { OfficeDayRow } from '../payroll-days';
 
 export interface AttendanceListFilter {
   mode?: string;
@@ -63,6 +64,20 @@ export interface AttendanceRepository {
     projectId: string,
     fields: { dayStatus: string; overtimeHours: string },
   ): Promise<void>;
+  /**
+   * One employee's OFFICE days in the period, unaggregated (FR-HR-013a).
+   *
+   * `summarizeOffice` cannot serve the corrected payroll rule: that rule needs to know WHICH dates
+   * carry a row, so a working day with no record can be told apart from a holiday and reported as a
+   * data gap. A count cannot express that. `summarizeOffice` is KEPT for `primaryProjectId` and
+   * `overtimeHours`, which are genuinely aggregates.
+   */
+  listOfficeDays(
+    companyId: string,
+    employeeId: string,
+    periodStart: string,
+    periodEnd: string,
+  ): Promise<OfficeDayRow[]>;
   /** Roll up one employee's OFFICE attendance over [periodStart, periodEnd] for salary generation. */
   summarizeOffice(
     companyId: string,

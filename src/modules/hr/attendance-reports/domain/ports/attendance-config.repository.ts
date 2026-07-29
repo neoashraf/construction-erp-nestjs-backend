@@ -10,6 +10,15 @@ import { GovernmentHolidayDto, HolidaySource } from '../holiday-rules';
 export interface StoredAttendanceSetting {
   lateAfterHour: number;
   lateAfterMinute: number;
+  /**
+   * N lates cost one day's pay: `penaltyDays = floor(lateDays / latesPerDeductedDay)` (FR-HR-013a).
+   * Integer >= 1 — 0 would divide by zero. Default 3.
+   *
+   * It lives on the SAME row as the late threshold on purpose: the attendance report and the salary
+   * sheet then read one source and can never disagree about which days were late, or about how many
+   * lates cost a day (FR-HR-008c).
+   */
+  latesPerDeductedDay: number;
   updatedAt: Date | null;
 }
 
@@ -30,6 +39,7 @@ export interface AttendanceConfigRepository {
     companyId: string,
     lateAfterHour: number,
     lateAfterMinute: number,
+    latesPerDeductedDay?: number,
   ): Promise<StoredAttendanceSetting>;
 
   listWeeklyHolidays(companyId: string): Promise<number[]>;

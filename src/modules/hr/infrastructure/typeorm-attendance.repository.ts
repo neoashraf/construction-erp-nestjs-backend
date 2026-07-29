@@ -14,6 +14,7 @@ import { OptimisticLockConflictError } from '../../../common/errors/domain-error
 import { getManager } from '../../../infrastructure/unit-of-work/transaction-context';
 import { AttendanceRecord } from '../domain/attendance-record';
 import { AttendanceRepository, OfficeAttendanceSummary } from '../domain/ports/attendance.repository';
+import { OfficeDayRow } from '../domain/payroll-days';
 import { AttendanceRecordMapper } from './attendance-record.mapper';
 import { AttendanceRecordOrmEntity } from './attendance-record.orm-entity';
 
@@ -170,6 +171,28 @@ export class TypeOrmAttendanceRepository implements AttendanceRepository {
         fields.overtimeHours,
       ],
     );
+  }
+
+  async listOfficeDays(
+    companyId: string,
+    employeeId: string,
+    periodStart: string,
+    periodEnd: string,
+  ): Promise<OfficeDayRow[]> {
+    // `check_in` comes back as 'HH:mm:ss' text and `attendance_date` as 'YYYY-MM-DD' — the shapes
+    // `computePayrollDays` compares against, so nothing downstream has to parse a Date.
+    return getManager(this.dataSource).query(
+      `SELECT to_char("attendance_date",'YYYY-MM-DD') AS "attendanceDate",
+              "day_status"                            AS "dayStatus",
+              to_char("check_in",'HH24:MI:SS')        AS "checkIn",
+              "project_id"::text                      AS "projectId",
+              COALESCE("overtime_hours",0)::text      AS "overtimeHours"
+         FROM "attendance_record"
+        WHERE "company_id" = $1 AND "employee_id" = $2::uuid AND "mode" = 'OFFICE'
+          AND "attendance_date" BETWEEN $3::date AND $4::date
+        ORDER BY "attendance_date"`,
+      [companyId, employeeId, periodStart, periodEnd],
+    ) as Promise<OfficeDayRow[]>;
   }
 
   async summarizeOffice(

@@ -42,6 +42,17 @@ export class SalarySheetLineOrmEntity {
   otherDeductions!: Decimal;
   @Column({ name: 'net_amount', type: 'numeric', precision: 18, scale: 4, transformer: moneyTransformer })
   netAmount!: Decimal;
+  // The FR-HR-013a day figures. STORED, never recomputed at payslip render: recomputing re-reads a
+  // period that may have changed since the sheet was posted, so the line must be self-contained.
+  @Column({ name: 'standard_days', type: 'numeric', precision: 18, scale: 4, transformer: moneyTransformer })
+  standardDays!: Decimal;
+  @Column({ name: 'unpaid_days', type: 'numeric', precision: 18, scale: 4, transformer: moneyTransformer })
+  unpaidDays!: Decimal;
+  @Column({ name: 'late_count', type: 'int' }) lateCount!: number;
+  @Column({ name: 'late_penalty_days', type: 'numeric', precision: 18, scale: 4, transformer: moneyTransformer })
+  latePenaltyDays!: Decimal;
+  @Column({ name: 'late_penalty_amount', type: 'numeric', precision: 18, scale: 4, transformer: moneyTransformer })
+  latePenaltyAmount!: Decimal;
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' }) updatedAt!: Date;
   @Column({ name: 'created_by', type: 'uuid', nullable: true }) createdBy!: string | null;

@@ -52,6 +52,11 @@ import { CreateStockJournal1700001500000 } from '../src/database/migrations/1700
 import { CreateReceipt1700001600000 } from '../src/database/migrations/1700001600000-CreateReceipt';
 import { CreateRetentionRelease1700001700000 } from '../src/database/migrations/1700001700000-CreateRetentionRelease';
 import { CreateHrSalary1700001800000 } from '../src/database/migrations/1700001800000-CreateHrSalary';
+// AddLatePenalty ALTERs attendance_setting, so its creating migration has to run first even though
+// this spec never reads attendance config — SalarySheetOrmEntity now maps pre_post_warnings, and a
+// DataSource whose schema lacks the column fails every SELECT through the entity.
+import { CreateAttendanceReportConfig1784700000000 } from '../src/database/migrations/1784700000000-CreateAttendanceReportConfig';
+import { AddLatePenalty1785000000000 } from '../src/database/migrations/1785000000000-AddLatePenalty';
 import { CreateRequisitionIssue1700001900000 } from '../src/database/migrations/1700001900000-CreateRequisitionIssue';
 import { CreatePurchasePoBill1700002000000 } from '../src/database/migrations/1700002000000-CreatePurchasePoBill';
 import { CreatePurchaseGrn1700002100000 } from '../src/database/migrations/1700002100000-CreatePurchaseGrn';
@@ -185,6 +190,8 @@ describe('Payments (real Postgres + real PostingService + real posted PUR/HR fix
         CreateReceipt1700001600000,
         CreateRetentionRelease1700001700000,
         CreateHrSalary1700001800000,
+        CreateAttendanceReportConfig1784700000000,
+        AddLatePenalty1785000000000,
         CreateRequisitionIssue1700001900000,
         CreatePurchasePoBill1700002000000,
         CreatePurchaseGrn1700002100000,

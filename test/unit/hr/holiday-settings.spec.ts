@@ -43,8 +43,15 @@ class FakeConfigRepo implements AttendanceConfigRepository {
     _companyId: string,
     lateAfterHour: number,
     lateAfterMinute: number,
+    latesPerDeductedDay?: number,
   ): Promise<StoredAttendanceSetting> {
-    this.setting = { lateAfterHour, lateAfterMinute, updatedAt: new Date('2026-07-20T06:11:03Z') };
+    // Partial, like the real adapter: an omitted value keeps what is stored (default 3).
+    this.setting = {
+      lateAfterHour,
+      lateAfterMinute,
+      latesPerDeductedDay: latesPerDeductedDay ?? this.setting?.latesPerDeductedDay ?? 3,
+      updatedAt: new Date('2026-07-20T06:11:03Z'),
+    };
     return Promise.resolve(this.setting);
   }
 
@@ -142,6 +149,9 @@ describe('AttendanceSettingService', () => {
       lateAfterHour: 9,
       lateAfterMinute: 30,
       lateAfter: '09:30',
+      // The FR-HR-013a default travels with the threshold: an un-configured company still has a
+      // well-defined penalty rule rather than none, so payroll never divides by an absent value.
+      latesPerDeductedDay: 3,
       updatedAt: null,
     });
   });

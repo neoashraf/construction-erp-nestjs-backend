@@ -11,6 +11,13 @@ import Decimal from 'decimal.js';
 import { ValidationError } from '../../../common/errors/domain-error';
 import { Money } from '../../../common/money';
 
+/**
+ * Re-exported so callers that think in terms of PAY can reach it without importing the day module.
+ * It is defined in `payroll-days` because it is a computation over days, and lives in exactly one
+ * place so the report and the sheet can never round a partial group differently (FR-HR-008c).
+ */
+export { penaltyDays } from './payroll-days';
+
 export type WageType = 'MONTHLY' | 'DAILY';
 
 /** The employee facts the gross calculation needs (a thin projection of the Employee master). */
@@ -22,14 +29,22 @@ export interface EmployeePayInfo {
 
 /** The period's attendance summary for one employee, pre-aggregated from AttendanceRecord rows. */
 export interface AttendanceSummary {
-  /** MONTHLY: days paid (present + paid leave) this period. */
+  /** MONTHLY: `standardDays − unpaidDays` (FR-HR-013a). Holidays are inside it — they are paid. */
   paidDays: Money | string | number;
-  /** MONTHLY: the period's standard working days (company/period config; typically the calendar days). */
+  /** MONTHLY: the period's calendar days — the paid BASELINE, clipped to the employment period. */
   standardDays: Money | string | number;
   /** DAILY: days actually attended this period. */
   attendedDays: Money | string | number;
   /** Overtime pay already computed in money terms (hours × rate), both wage types. Defaults to 0. */
   overtimeAmount?: Money | string | number | null;
+  /**
+   * MONTHLY only: days forfeited to the late penalty, `floor(lateDays / latesPerDeductedDay)`.
+   *
+   * It reduces the numerator rather than posting as a separate deduction line: a post-gross deduction
+   * would need a GL account to credit, and none exists — you simply do not owe that money
+   * (design §8.3). Ignored entirely for DAILY.
+   */
+  penaltyDays?: Money | string | number | null;
 }
 
 /** Configurable allowance/deduction lines applied on top of gross (FR-HR-014). All default to 0. */
@@ -67,7 +82,17 @@ export function calcGross(emp: EmployeePayInfo, att: AttendanceSummary): Money {
     }
     const paidDays = toDecimal(att.paidDays, 'paidDays');
     if (paidDays.isNegative()) throw new ValidationError('paidDays must be >= 0', { field: 'paidDays' });
-    const prorated = emp.wageAmount.amount.times(paidDays).dividedBy(standardDays);
+
+    // The late penalty reduces the NUMERATOR, never the divisor: the baseline month is unchanged,
+    // the employee is simply paid for fewer of its days. Floored at 0 so a pathological penalty
+    // cannot produce negative pay.
+    const penalty = toDecimal(att.penaltyDays ?? '0', 'penaltyDays');
+    if (penalty.isNegative()) {
+      throw new ValidationError('penaltyDays must be >= 0', { field: 'penaltyDays' });
+    }
+    const payable = Decimal.max(paidDays.minus(penalty), 0);
+
+    const prorated = emp.wageAmount.amount.times(payable).dividedBy(standardDays);
     return Money.of(prorated).round().plus(overtime.round());
   }
 

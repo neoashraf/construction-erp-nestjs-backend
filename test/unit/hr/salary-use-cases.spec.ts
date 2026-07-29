@@ -113,6 +113,9 @@ function makeService(overrides: Partial<Record<string, unknown>> = {}) {
   };
   const attendance = {
     summarizeOffice: async () => attendanceSummary,
+    // The corrected rule reads the DAYS, not a rollup — a count cannot tell a working day with no
+    // record apart from a holiday, which is the distinction the whole rule turns on.
+    listOfficeDays: async () => [],
     ...((overrides.attendance as object) ?? {}),
   };
   const accounts = {
@@ -136,6 +139,14 @@ function makeService(overrides: Partial<Record<string, unknown>> = {}) {
     accounts as never,
     projectStatus as never,
     posting as never,
+    // Attendance config: no `attendance_setting` row and no weekly holidays, so these tests exercise
+    // the documented fallback (09:30 threshold, 3 lates per deducted day).
+    ({
+      findSetting: async () => null,
+      listWeeklyHolidays: async () => [],
+      listGovernmentHolidays: async () => [],
+      ...((overrides.attendanceConfig as object) ?? {}),
+    }) as never,
     audit as never,
     uow as never,
     idGen() as never,
