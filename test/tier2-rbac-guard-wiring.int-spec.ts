@@ -58,7 +58,8 @@ import { TypeOrmPermissionRepository } from '../src/core/auth/infrastructure/typ
 import { RolesGuard } from '../src/core/auth/presentation/roles.guard';
 import { JwtAuthGuard } from '../src/core/auth/presentation/jwt-auth.guard';
 import { Actor } from '../src/core/tenancy/tenant-context';
-import { PermissionRequirement } from '../src/core/auth/presentation/require-permission.decorator';
+import { PermissionRequirement, PERMISSION_KEY } from '../src/core/auth/presentation/require-permission.decorator';
+import { HolidayController } from '../src/modules/hr/attendance-reports/presentation/holiday.controller';
 
 jest.setTimeout(180_000);
 
@@ -427,5 +428,37 @@ describe('tier2-rbac-guard-wiring (#36) — real RolesGuard against every GEN/IN
   it('HR_MANAGER is FORBIDDEN on a SAL:READ route (no SAL grant seeded for HR_MANAGER)', async () => {
     const ctx = mockContext(hrActor, [{ resource: 'sales.ipcs', action: 'READ' }]);
     await expect(rolesGuard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  // ── HolidayController — real @RequirePermission metadata, read off the actual handlers ──
+  // (aud-holidays-resource follow-up #48): every describe.each above proves the GUARD behaves
+  // correctly given an assumed set of requirements (mockContext fakes Reflector.getAllAndOverride).
+  // None of it proves HolidayController's SEVEN decorators actually carry those requirements — a
+  // partial revert (e.g. createGovernment slipping back to 'hr.attendance','CREATE', the exact write
+  // leak this brief closed) would still pass every test above AND catalog-guard-drift.spec.ts's
+  // "at least one route per catalogue resource" check, since the other six routes still annotate
+  // hr.holidays. This block reads Reflect.getMetadata(PERMISSION_KEY, ...) directly off
+  // HolidayController.prototype — real decorator metadata, not a hand-written string — so a partial
+  // revert on any one handler fails exactly that handler's assertion.
+  describe('HolidayController — exact (resource, action) per handler, from real decorator metadata', () => {
+    const HOLIDAY_HANDLER_TABLE: { handler: keyof HolidayController; resource: string; action: Action }[] = [
+      { handler: 'getWeekly', resource: 'hr.holidays', action: 'READ' },
+      { handler: 'setWeekly', resource: 'hr.holidays', action: 'UPDATE' },
+      { handler: 'getGovernment', resource: 'hr.holidays', action: 'READ' },
+      { handler: 'importFromApi', resource: 'hr.holidays', action: 'CREATE' },
+      { handler: 'importFromRows', resource: 'hr.holidays', action: 'CREATE' },
+      { handler: 'createGovernment', resource: 'hr.holidays', action: 'CREATE' },
+      { handler: 'deleteGovernment', resource: 'hr.holidays', action: 'DELETE' },
+    ];
+
+    describe.each(HOLIDAY_HANDLER_TABLE)('$handler', ({ handler, resource, action }) => {
+      it(`carries exactly @RequirePermission('${resource}', '${action}')`, () => {
+        const requirements: PermissionRequirement[] | undefined = Reflect.getMetadata(
+          PERMISSION_KEY,
+          HolidayController.prototype[handler],
+        );
+        expect(requirements).toEqual([{ resource, action }]);
+      });
+    });
   });
 });
