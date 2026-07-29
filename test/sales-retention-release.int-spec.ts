@@ -66,7 +66,10 @@ import { IpcLedgerLinkageAdapter } from '../src/modules/sales/infrastructure/ipc
 import { OverReleaseError } from '../src/modules/sales/domain/errors';
 
 // RolesGuard smoke test deps (mandatory per skill §13 — proves the controller's guard wiring is real).
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+// JwtAuthGuard raises DOMAIN errors, not Nest exceptions — the domain layer must not
+// import from @nestjs/common (nestjs-author §9); the global filter maps this to 401.
+import { UnauthenticatedError } from '../src/common/errors/domain-error';
 import { Reflector } from '@nestjs/core';
 import { RoleOrmEntity } from '../src/core/auth/infrastructure/role.orm-entity';
 import { PermissionOrmEntity } from '../src/core/auth/infrastructure/permission.orm-entity';
@@ -195,7 +198,10 @@ describe('SAL retention release + per-IPC outstanding + project register (real P
     await acc(ACC.revenue, '4100', 'Revenue — Construction', 'INCOME');
     await acc(ACC.vat, '2200', 'Output VAT Payable', 'LIABILITY');
     await acc(ACC.bank, '1110', 'Bank — Operating', 'ASSET');
-    await acc(ACC.tds, '1220', 'TDS Recoverable', 'ASSET');
+    // 1230, not 1220: AIT Recoverable already holds 1220 and `uq_account_code` is UNIQUE
+    // (company_id, code), so reusing it aborted the whole seed and failed every test in this file
+    // with a duplicate-key error that looked nothing like the account clash it actually was.
+    await acc(ACC.tds, '1230', 'TDS Recoverable', 'ASSET');
 
     await ds.query(
       `INSERT INTO party (id, company_id, name, is_customer, is_supplier, phone) VALUES ($1,$2,'Cust A',true,false,'+8801700000001')`,
@@ -552,8 +558,8 @@ describe('SAL retention release + per-IPC outstanding + project register (real P
     });
 
     it('401: no/invalid token', () => {
-      expect(() => jwtAuthGuard.handleRequest(null, false, null)).toThrow(UnauthorizedException);
-      expect(() => jwtAuthGuard.handleRequest(new Error('jwt malformed'), false, null)).toThrow(UnauthorizedException);
+      expect(() => jwtAuthGuard.handleRequest(null, false, null)).toThrow(UnauthenticatedError);
+      expect(() => jwtAuthGuard.handleRequest(new Error('jwt malformed'), false, null)).toThrow(UnauthenticatedError);
     });
 
     it.each([
