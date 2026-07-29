@@ -73,11 +73,10 @@ describe('AttendanceService.confirmDailyLabour', () => {
         insertMany: async () => undefined,
       } as never,
       { insert: async (p: LabourPayable) => void payables.push(p) } as never,
-      { findByCode: async () => null } as never,
       { accrualAccounts: async () => ({ labourCost: 'acc-l', labourPayable: 'acc-p' }) } as never,
       { assertNotClosed: async () => undefined } as never,
       { post: postSpy, reverse: jest.fn() } as never,
-      { parse: async () => [] } as never,
+      {} as never, // punches — OFFICE only, never touched by the daily-labour accrual
       audit as never,
       uow as never,
       idGen() as never,
@@ -105,7 +104,6 @@ describe('AttendanceService.confirmDailyLabour', () => {
     const svc = new AttendanceService(
       { findByIdForUpdate: async () => rec } as never,
       { insert: jest.fn() } as never,
-      {} as never,
       { accrualAccounts: async () => ({ labourCost: 'acc-l', labourPayable: 'acc-p' }) } as never,
       { assertNotClosed: async () => { throw new ClosedProjectError('p1'); } } as never,
       { post: postSpy } as never,
@@ -133,7 +131,6 @@ describe('AttendanceService.confirmDailyLabour', () => {
       { findByIdForUpdate: async () => sub } as never,
       {} as never,
       {} as never,
-      {} as never,
       { assertNotClosed: async () => undefined } as never,
       { post: postSpy } as never,
       {} as never,
@@ -151,8 +148,7 @@ describe('AttendanceService.capture — subcontractor is GL-free (FR-HR-005)', (
     const inserted: AttendanceRecord[] = [];
     const postSpy = jest.fn();
     const svc = new AttendanceService(
-      { insertMany: async (rows: AttendanceRecord[]) => void inserted.push(...rows), findOfficeRow: async () => null } as never,
-      {} as never,
+      { insertMany: async (rows: AttendanceRecord[]) => void inserted.push(...rows) } as never,
       {} as never,
       {} as never,
       {} as never,
@@ -189,7 +185,6 @@ describe('AttendanceService.applySettlement — no re-expense (FR-HR-011)', () =
     const svc = new AttendanceService(
       {} as never,
       { findByAccrualEntry: async () => lp, save: async (p: LabourPayable) => void saved.push(p) } as never,
-      {} as never,
       {} as never,
       {} as never,
       { post: postSpy, reverse: postSpy } as never,

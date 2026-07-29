@@ -9,6 +9,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import Decimal from 'decimal.js';
 import { DATA_SOURCE } from '../../../database/database.module';
+import { ID_GENERATOR, IdGenerator } from '../../../common/ports/id-generator.port';
 import { OptimisticLockConflictError } from '../../../common/errors/domain-error';
 import { getManager } from '../../../infrastructure/unit-of-work/transaction-context';
 import { AttendanceRecord } from '../domain/attendance-record';
@@ -18,7 +19,12 @@ import { AttendanceRecordOrmEntity } from './attendance-record.orm-entity';
 
 @Injectable()
 export class TypeOrmAttendanceRepository implements AttendanceRepository {
-  constructor(@Inject(DATA_SOURCE) private readonly dataSource: DataSource) {}
+  constructor(
+    @Inject(DATA_SOURCE) private readonly dataSource: DataSource,
+    // `patchOfficeDayFields` upserts by raw SQL rather than through the aggregate (the row may not
+    // exist yet), so it mints the id itself instead of receiving one on a mapped entity.
+    @Inject(ID_GENERATOR) private readonly ids: IdGenerator,
+  ) {}
 
   async insert(record: AttendanceRecord): Promise<void> {
     const row = AttendanceRecordMapper.toOrm(record);
@@ -93,6 +99,77 @@ export class TypeOrmAttendanceRepository implements AttendanceRepository {
       .getRepository(AttendanceRecordOrmEntity)
       .findOne({ where: { companyId, employeeId, attendanceDate, mode: 'OFFICE' } as never });
     return row ? AttendanceRecordMapper.toDomain(row) : null;
+  }
+
+  async findEmployeeCodeById(companyId: string, employeeId: string): Promise<string | null> {
+    const rows: Array<{ employeeCode: string }> = await getManager(this.dataSource).query(
+      `SELECT "employee_code" AS "employeeCode"
+         FROM "employee"
+        WHERE "company_id" = $1 AND "id" = $2::uuid AND "deleted_at" IS NULL
+        LIMIT 1`,
+      [companyId, employeeId],
+    );
+    return rows[0]?.employeeCode ?? null;
+  }
+
+  async findOfficeRowIds(
+    companyId: string,
+    rows: ReadonlyArray<{ employeeId: string; attendanceDate: string }>,
+  ): Promise<string[]> {
+    if (rows.length === 0) return [];
+
+    // One query, then a lookup per submitted row — the caller needs the ids in SUBMISSION order, and
+    // a per-row query would be N round-trips for a bulk roster paste.
+    const found: Array<{ id: string; employeeId: string; attendanceDate: string }> = await getManager(
+      this.dataSource,
+    ).query(
+      `SELECT "id"::text          AS "id",
+              "employee_id"::text AS "employeeId",
+              "attendance_date"::text AS "attendanceDate"
+         FROM "attendance_record"
+        WHERE "company_id" = $1 AND "mode" = 'OFFICE'
+          AND "employee_id" = ANY($2::uuid[])
+          AND "attendance_date" = ANY($3::date[])`,
+      [companyId, rows.map((r) => r.employeeId), rows.map((r) => r.attendanceDate)],
+    );
+
+    const byKey = new Map(found.map((r) => [`${r.employeeId}|${r.attendanceDate}`, r.id]));
+    // A row that reconciliation skipped (no project, no financial year) has no id — reported as an
+    // empty string rather than dropped, so the response array still lines up with what was submitted.
+    return rows.map((r) => byKey.get(`${r.employeeId}|${r.attendanceDate}`) ?? '');
+  }
+
+  async patchOfficeDayFields(
+    companyId: string,
+    financialYearId: string,
+    employeeId: string,
+    attendanceDate: string,
+    projectId: string,
+    fields: { dayStatus: string; overtimeHours: string },
+  ): Promise<void> {
+    // Upsert against the `uq_attendance_office_employee_day` PARTIAL unique index — the WHERE clause
+    // must be repeated verbatim for Postgres to infer it. `check_in`/`check_out` are deliberately
+    // absent from both the INSERT and the DO UPDATE: reconciliation owns the times.
+    await getManager(this.dataSource).query(
+      `INSERT INTO "attendance_record"
+              ("id","company_id","financial_year_id","mode","attendance_date","project_id",
+               "employee_id","day_status","overtime_hours","source")
+       VALUES ($1,$2,$3,'OFFICE',$4::date,$5::uuid,$6::uuid,$7,$8::numeric,'MANUAL')
+       ON CONFLICT ("company_id","employee_id","attendance_date") WHERE "mode" = 'OFFICE'
+       DO UPDATE SET "day_status"     = EXCLUDED."day_status",
+                     "overtime_hours" = EXCLUDED."overtime_hours",
+                     "updated_at"     = now()`,
+      [
+        this.ids.next(),
+        companyId,
+        financialYearId,
+        attendanceDate,
+        projectId,
+        employeeId,
+        fields.dayStatus,
+        fields.overtimeHours,
+      ],
+    );
   }
 
   async summarizeOffice(

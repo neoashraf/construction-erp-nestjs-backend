@@ -80,6 +80,8 @@ class ImportRowDto {
   @IsOptional() @IsString() date?: string;
   @IsOptional() @IsString() checkIn?: string;
   @IsOptional() @IsString() checkOut?: string;
+  /** Project CODE or name, as typed in the sheet. Optional — blank keeps the pre-existing behaviour. */
+  @IsOptional() @IsString() location?: string;
 }
 
 class ImportRequestDto {
@@ -429,6 +431,11 @@ export class DeviceStatusController {
    * Answers 200 with per-row errors rather than 4xx-ing the batch: one typo in row 417 must not
    * discard the other 499 good rows. A 400 is reserved for a payload that is unusable as a
    * whole (empty, or past the size guards).
+   *
+   * The optional per-row `location` (a project CODE or name) is the spreadsheet twin of manual
+   * entry's Location picker — without it a branch office importing its written entry log has every
+   * row costed to the company default. Blank behaves exactly as before, so existing sheets and raw
+   * machine dumps import unchanged.
    *
    * Requires `hr.attendance:UPDATE` — this writes attendance, exactly like a sync.
    */

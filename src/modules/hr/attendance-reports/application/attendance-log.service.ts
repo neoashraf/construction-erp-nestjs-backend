@@ -49,6 +49,21 @@ import { EmployeeIdentity, ReportPagination } from '../domain/attendance-report.
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 
+/**
+ * One punch behind a merged day — the provenance of `checkInAt`/`checkOutAt`.
+ *
+ * A day is now routinely built from punches that arrived by different paths (a machine check-in and a
+ * hand-keyed site visit in the same day). Reporting only first/last would hide that entirely, leaving
+ * an operator unable to answer "where did this come from and where was he?".
+ */
+export interface AttendancePunchBreakdown {
+  /** `HH:mm:ss` — the time-of-day part of the punch. */
+  time: string;
+  sourceType: string;
+  projectId: string | null;
+  projectName: string | null;
+}
+
 /** One day inside `attendanceRecords`. Holiday rows carry a synthetic `holiday-<date>` id. */
 export interface AttendanceLogRecord {
   id: string;
@@ -62,6 +77,8 @@ export interface AttendanceLogRecord {
   checkOutAt: string | null;
   status: AttendanceReportStatus;
   punchCount: number;
+  /** Every punch under the day, chronological. Read-only and additive; `punchCount` is unchanged. */
+  punches: AttendancePunchBreakdown[];
 }
 
 export interface AttendanceLogRow extends EmployeeIdentity {
@@ -260,6 +277,7 @@ export class AttendanceLogService {
           checkOutAt: null,
           status: STATUS.HOLIDAY,
           punchCount: 0,
+          punches: [],
         });
         continue;
       }
@@ -280,6 +298,14 @@ export class AttendanceLogService {
         checkOutAt: last.deviceTimestamp,
         status: resolveAttendanceStatus(first.deviceTimestamp, threshold),
         punchCount: dayPunches.length,
+        // Already chronological — the adapter orders by (user_id, device_timestamp) and the grouping
+        // above preserves that order, so no re-sort here.
+        punches: dayPunches.map((punch) => ({
+          time: punch.deviceTimestamp.slice(11),
+          sourceType: punch.sourceType,
+          projectId: punch.projectId,
+          projectName: punch.projectName,
+        })),
       });
     }
 

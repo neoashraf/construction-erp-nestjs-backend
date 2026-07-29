@@ -133,7 +133,6 @@ const ROUTE_ACTION_TABLE: { controller: string; resource: string; route: string;
   // attendance.controller.ts
   { controller: 'AttendanceController', resource: 'hr.attendance', route: 'GET /', action: 'READ' },
   { controller: 'AttendanceController', resource: 'hr.attendance', route: 'POST /office', action: 'CREATE' },
-  { controller: 'AttendanceController', resource: 'hr.attendance', route: 'POST /office/import', action: 'CREATE' },
   { controller: 'AttendanceController', resource: 'hr.attendance', route: 'POST /subcontractor', action: 'CREATE' },
   { controller: 'AttendanceController', resource: 'hr.attendance', route: 'POST /daily-labour', action: 'CREATE' },
   { controller: 'AttendanceController', resource: 'hr.attendance', route: 'PATCH /daily-labour/:id', action: 'UPDATE' },

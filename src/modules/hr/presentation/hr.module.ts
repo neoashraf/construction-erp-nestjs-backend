@@ -27,7 +27,6 @@ import { SALARY_SHEET_REPOSITORY } from '../domain/ports/salary-sheet.repository
 import { HR_ACCOUNT_RESOLVER_PORT } from '../domain/ports/hr-account-resolver.port';
 import { HR_PROJECT_STATUS_PORT } from '../domain/ports/project-status.port';
 import { POSTING_SERVICE_PORT } from '../domain/ports/posting.service.port';
-import { BIOMETRIC_IMPORT_PORT } from '../domain/ports/biometric-import.port';
 import { TypeOrmEmployeeRepository } from '../infrastructure/typeorm-employee.repository';
 import { TypeOrmAttendanceRepository } from '../infrastructure/typeorm-attendance.repository';
 import { TypeOrmLabourPayableRepository } from '../infrastructure/typeorm-labour-payable.repository';
@@ -35,7 +34,6 @@ import { TypeOrmSalarySheetRepository } from '../infrastructure/typeorm-salary-s
 import { HrAccountResolverAdapter } from '../infrastructure/hr-account-resolver.adapter';
 import { HrProjectStatusAdapter } from '../infrastructure/hr-project-status.adapter';
 import { PostingServiceAdapter } from '../infrastructure/posting-service.adapter';
-import { CsvBiometricImportAdapter } from '../infrastructure/biometric-import.adapter';
 import { AttendanceLogService } from '../attendance-reports/application/attendance-log.service';
 import { AttendanceReportService } from '../attendance-reports/application/attendance-report.service';
 import { AttendanceSettingService } from '../attendance-reports/application/attendance-setting.service';
@@ -108,7 +106,6 @@ import { SalaryController } from './salary.controller';
     { provide: HR_ACCOUNT_RESOLVER_PORT, useClass: HrAccountResolverAdapter },
     { provide: HR_PROJECT_STATUS_PORT, useClass: HrProjectStatusAdapter },
     { provide: POSTING_SERVICE_PORT, useClass: PostingServiceAdapter },
-    { provide: BIOMETRIC_IMPORT_PORT, useClass: CsvBiometricImportAdapter },
     { provide: ATTENDANCE_REPORT_READ_PORT, useClass: AttendanceReportReadAdapter },
     { provide: ATTENDANCE_LOG_READ_PORT, useClass: AttendanceLogReadAdapter },
     { provide: ATTENDANCE_CONFIG_REPOSITORY, useClass: TypeOrmAttendanceConfigRepository },

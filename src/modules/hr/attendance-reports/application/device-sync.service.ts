@@ -260,6 +260,9 @@ export class DeviceSyncService {
         status: punch.status || '0',
         occurredAt: parseDeviceTimestamp(punch.deviceTimestamp),
         deviceSn: null,
+        // A pull has no serial to resolve — we dialled the device, it did not announce itself — so
+        // the punch states no project and reconciliation falls back to the device/employee default.
+        projectId: null,
       });
     }
 

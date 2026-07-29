@@ -40,6 +40,29 @@ export interface AttendanceRepository {
   findByIdForUpdate(id: string, companyId: string): Promise<AttendanceRecord | null>;
   /** The existing OFFICE row for an employee on a day (edge §12.9 reconciliation), or null. */
   findOfficeRow(companyId: string, employeeId: string, attendanceDate: string): Promise<AttendanceRecord | null>;
+  /** The device-enrolment code for an employee — punches are keyed on the CODE, not the UUID. */
+  findEmployeeCodeById(companyId: string, employeeId: string): Promise<string | null>;
+  /** The OFFICE row id for each submitted (employee, date), in the order submitted. */
+  findOfficeRowIds(
+    companyId: string,
+    rows: ReadonlyArray<{ employeeId: string; attendanceDate: string }>,
+  ): Promise<string[]>;
+  /**
+   * Set the day-level fields that have no punch representation, creating the OFFICE row when the day
+   * has no punches at all (a leave or absence day — and `paidDays` counts ROWS, so without this the
+   * employee silently loses a day's pay).
+   *
+   * Times are NEVER written here: `reconcileDays` is the single writer of `check_in`/`check_out`, which
+   * is what lets a device punch merge with a hand-keyed roster instead of overwriting it.
+   */
+  patchOfficeDayFields(
+    companyId: string,
+    financialYearId: string,
+    employeeId: string,
+    attendanceDate: string,
+    projectId: string,
+    fields: { dayStatus: string; overtimeHours: string },
+  ): Promise<void>;
   /** Roll up one employee's OFFICE attendance over [periodStart, periodEnd] for salary generation. */
   summarizeOffice(
     companyId: string,
