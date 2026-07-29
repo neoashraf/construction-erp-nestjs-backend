@@ -42,14 +42,38 @@ export const WEEKDAY_NAMES = [
   'Saturday',
 ] as const;
 
+/**
+ * The report's day statuses. Exact strings, title-case — they are the contract, unlike the
+ * SCREAMING_SNAKE enums stored on `attendance_record.day_status`.
+ *
+ * `PAID_LEAVE` / `UNPAID_LEAVE` earn their own values rather than collapsing into `Absent`: a leave
+ * day has no times, so a punch-derived report could only call it an absence — and payroll PAYS a
+ * paid-leave day. Two documents an accountant reconciles must not disagree by construction.
+ */
 export const STATUS = {
   PRESENT: 'Present',
   LATE: 'Late',
   ABSENT: 'Absent',
   HOLIDAY: 'Holiday',
+  PAID_LEAVE: 'Paid leave',
+  UNPAID_LEAVE: 'Unpaid leave',
 } as const;
 
 export type AttendanceReportStatus = (typeof STATUS)[keyof typeof STATUS];
+
+/**
+ * `attendance_record.day_status` → the report's status vocabulary.
+ *
+ * `PRESENT` is deliberately absent: a present day's status is DERIVED from its check-in against the
+ * configured threshold (Present vs Late), which is the one thing the stored status cannot tell us.
+ * `ABSENT` maps straight through, so an explicitly-marked absence and a day with no record read
+ * identically — they mean the same thing to the reader and to payroll.
+ */
+export const DAY_STATUS_TO_REPORT: Readonly<Record<string, AttendanceReportStatus>> = {
+  PAID_LEAVE: STATUS.PAID_LEAVE,
+  UNPAID_LEAVE: STATUS.UNPAID_LEAVE,
+  ABSENT: STATUS.ABSENT,
+};
 
 export type HolidayType = 'weekly' | 'government';
 

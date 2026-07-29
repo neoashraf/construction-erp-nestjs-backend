@@ -15,6 +15,27 @@ export interface AttendanceTotals {
   absentCount: number;
   holidayCount: number;
   attendancePercentage: number;
+  /**
+   * Working days on approved paid leave. Its OWN bucket, never inside `absentCount`: payroll pays
+   * these days, so counting them as absences is what made the report contradict the payslip.
+   */
+  paidLeaveCount: number;
+  /** Working days on unpaid leave — not absences either, though payroll deducts them alike. */
+  unpaidLeaveCount: number;
+}
+
+/**
+ * Employee-days in the window that reconciliation could not place, grouped by reason (FR-HR-008a).
+ *
+ * Present on every report so a window built on incomplete data can never read as a complete one.
+ * `days` is 0 and `reasons` empty on a healthy window — the field is always there, so a client never
+ * has to distinguish "no problems" from "this API version doesn't tell me".
+ */
+export interface UnreconciledSummary {
+  days: number;
+  reasons: Record<string, number>;
+  /** Bounded sample for display; the full list is deliberately not paged into a report body. */
+  sample: Array<{ userId: string; attendanceDate: string; reason: string }>;
 }
 
 /** Report-wide totals: always the whole filtered set, never just the current page (§3.6). */
@@ -69,6 +90,7 @@ export interface AttendanceMatrix {
   totals: ReportWideTotals;
   data: EmployeeMatrixRow[];
   pagination: ReportPagination;
+  unreconciled: UnreconciledSummary;
 }
 
 // ── report bodies ─────────────────────────────────────────────────────────────────────────────────
@@ -91,6 +113,7 @@ export interface DailyReport {
   totals: ReportWideTotals;
   data: DailyReportRow[];
   pagination: ReportPagination;
+  unreconciled: UnreconciledSummary;
 }
 
 export interface RangeReportRow extends EmployeeIdentity, AttendanceTotals {
@@ -107,6 +130,7 @@ export interface RangeReport {
   totals: ReportWideTotals;
   data: RangeReportRow[];
   pagination: ReportPagination;
+  unreconciled: UnreconciledSummary;
 }
 
 /** `range` minus the per-employee `records` array (§4.4). */
