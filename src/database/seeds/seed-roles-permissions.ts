@@ -125,6 +125,10 @@ const ROLE_SEEDS: RoleSeed[] = [
       grant('hr.employees', 'READ', 'CREATE', 'UPDATE'),
       // HR Manager owns daily-labour confirmation (SRS 12 §7.C) — attendance R + confirm(POST)/reverse(CANCEL).
       grant('hr.attendance', 'READ', 'CREATE', 'UPDATE', 'POST', 'CANCEL'),
+      // aud-holidays-resource: Holidays is its own resource (split from hr.attendance) — HR Manager
+      // owns the weekly + government holiday calendar, full CRUD. No other built-in role gains it;
+      // ADMIN picks it up automatically via ADMIN_GRANTS (catalogue-derived, above).
+      grant('hr.holidays', 'READ', 'CREATE', 'UPDATE', 'DELETE'),
       all('hr.salary_sheets'),
       read('reports'),
     ],

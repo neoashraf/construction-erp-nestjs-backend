@@ -95,6 +95,11 @@ export const RESOURCE_CATALOG: readonly CatalogModule[] = [
     module: 'HR', label: 'HR & Payroll', resources: [
       { resource: 'hr.employees', module: 'HR', label: 'Employees', actions: [R, C, U] },
       { resource: 'hr.attendance', module: 'HR', label: 'Attendance', actions: [R, C, U, P, X] },
+      // aud-holidays-resource: split from hr.attendance — the weekly-holiday weekdays + dated
+      // government-holiday calendar (SRS 12 §10, FR-HR-008d) is its own screen with its own guard,
+      // so a role holding hr.attendance:CREATE (e.g. Site Engineer) cannot also write the HR
+      // Manager's holiday calendar. Full CRUD, unlike hr.attendance (no DELETE).
+      { resource: 'hr.holidays', module: 'HR', label: 'Holidays', actions: [R, C, U, D] },
       { resource: 'hr.salary_sheets', module: 'HR', label: 'Salary sheets', actions: [R, C, U, P, X] },
     ],
   },

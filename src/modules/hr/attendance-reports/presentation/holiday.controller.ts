@@ -11,8 +11,10 @@
  * shape identical to the source contract, as on the report routes. Validation messages come from the
  * pure normalisers in `holiday-rules`, not class-validator, for the same reason.
  *
- * RBAC note: `hr.attendance` has no DELETE action in the resource catalogue (R/C/U/P/X), so the delete
- * route is gated on UPDATE — the closest grant that means "may change attendance configuration".
+ * RBAC note (aud-holidays-resource): gated on `hr.holidays`, NOT `hr.attendance` — the Holidays screen
+ * is its own resource so a role holding `hr.attendance:CREATE` (e.g. Site Engineer) cannot also write
+ * the HR Manager's holiday calendar. `hr.holidays` declares a full CRUD action set, so `deleteGovernment`
+ * is gated on its own DELETE action (no UPDATE workaround needed, unlike the old hr.attendance gating).
  */
 import {
   Body,
@@ -77,14 +79,14 @@ export class HolidayController {
   // ── weekly ─────────────────────────────────────────────────────────────────────────────────────
 
   @Get('weekly')
-  @RequirePermission('hr.attendance', 'READ')
+  @RequirePermission('hr.holidays', 'READ')
   async getWeekly(@CurrentActor() actor: Actor): Promise<{ weekdays: number[] }> {
     return { weekdays: await this.holidays.getWeeklyHolidays(actor) };
   }
 
   /** FULL REPLACE — `{ "weekdays": [] }` clears every weekly holiday. Junk values are dropped. */
   @Put('weekly')
-  @RequirePermission('hr.attendance', 'UPDATE')
+  @RequirePermission('hr.holidays', 'UPDATE')
   async setWeekly(
     @Body() body: WeeklyHolidayDto,
     @CurrentActor() actor: Actor,
@@ -95,7 +97,7 @@ export class HolidayController {
   // ── government (import routes BEFORE the bare/param routes) ─────────────────────────────────────
 
   @Get('government')
-  @RequirePermission('hr.attendance', 'READ')
+  @RequirePermission('hr.holidays', 'READ')
   async getGovernment(
     @Query() q: HolidayYearQueryDto,
     @CurrentActor() actor: Actor,
@@ -106,7 +108,7 @@ export class HolidayController {
   /** Year-end sync from the public-holiday feed. Manual rows are never overwritten. */
   @Post('government/import')
   @HttpCode(200)
-  @RequirePermission('hr.attendance', 'CREATE')
+  @RequirePermission('hr.holidays', 'CREATE')
   async importFromApi(
     @Body() body: ImportYearDto,
     @CurrentActor() actor: Actor,
@@ -117,7 +119,7 @@ export class HolidayController {
   /** Despite the name this takes NO file — the frontend parses the workbook and posts rows. */
   @Post('government/import-excel')
   @HttpCode(200)
-  @RequirePermission('hr.attendance', 'CREATE')
+  @RequirePermission('hr.holidays', 'CREATE')
   async importFromRows(
     @Body() body: ImportRowsDto,
     @CurrentActor() actor: Actor,
@@ -128,7 +130,7 @@ export class HolidayController {
 
   @Post('government')
   @HttpCode(200)
-  @RequirePermission('hr.attendance', 'CREATE')
+  @RequirePermission('hr.holidays', 'CREATE')
   async createGovernment(
     @Body() body: GovernmentHolidayInputDto,
     @CurrentActor() actor: Actor,
@@ -138,7 +140,7 @@ export class HolidayController {
 
   @Delete('government/:id')
   @HttpCode(204)
-  @RequirePermission('hr.attendance', 'UPDATE')
+  @RequirePermission('hr.holidays', 'DELETE')
   async deleteGovernment(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentActor() actor: Actor,

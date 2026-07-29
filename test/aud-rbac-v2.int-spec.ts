@@ -177,6 +177,16 @@ describe('aud-rbac-v2 (#37) — resource-level permissions + custom roles (real 
       expect(ipcs?.actions).toEqual(expect.arrayContaining(['READ', 'CREATE', 'POST', 'CANCEL']));
     });
 
+    // aud-holidays-resource — `Holidays` gets its own resource, sibling of hr.attendance,
+    // full CRUD (unlike hr.attendance which has no DELETE) — FR-AUD-035.
+    it('GET /permissions/catalog includes hr.holidays under HR with full CRUD actions', () => {
+      const catalog = permQuery.catalog();
+      const hr = catalog.modules.find(m => m.module === 'HR');
+      const holidays = hr?.resources.find(r => r.resource === 'hr.holidays');
+      expect(holidays).toBeDefined();
+      expect(holidays?.actions).toEqual(expect.arrayContaining(['READ', 'CREATE', 'UPDATE', 'DELETE']));
+    });
+
     it('rejects an out-of-catalogue resource with VALIDATION_ERROR', async () => {
       const [role] = await ds.query(`SELECT id FROM "role" WHERE company_id=$1 AND name='ADMIN'`, [CO]);
       await expect(
@@ -194,6 +204,38 @@ describe('aud-rbac-v2 (#37) — resource-level permissions + custom roles (real 
           roleId: role.id, resource: 'ledger.journal_entries', action: 'POST', projectScope: 'ALL',
         }),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  // ── aud-holidays-resource: hr.holidays split from hr.attendance (FR-AUD-013/034/035) ──
+  describe('hr.holidays — split from hr.attendance, seeded to HR_MANAGER + ADMIN only', () => {
+    it('SITE_ENGINEER keeps hr.attendance:READ/CREATE but gets NO hr.holidays grant of any action', async () => {
+      const siteEngineerActor: Actor = { ...adminActor, role: 'SITE_ENGINEER', isUnscoped: false };
+      await expect(rolesGuard.canActivate(mockContext(siteEngineerActor, 'hr.attendance', 'READ'))).resolves.toBe(true);
+      await expect(rolesGuard.canActivate(mockContext(siteEngineerActor, 'hr.attendance', 'CREATE'))).resolves.toBe(true);
+      for (const action of ['READ', 'CREATE', 'UPDATE', 'DELETE']) {
+        await expect(rolesGuard.canActivate(mockContext(siteEngineerActor, 'hr.holidays', action))).rejects.toBeInstanceOf(ForbiddenException);
+      }
+    });
+
+    it('HR_MANAGER holds hr.holidays with all four actions (READ/CREATE/UPDATE/DELETE)', async () => {
+      const hrManagerActor: Actor = { ...adminActor, role: 'HR_MANAGER', isUnscoped: true };
+      for (const action of ['READ', 'CREATE', 'UPDATE', 'DELETE']) {
+        await expect(rolesGuard.canActivate(mockContext(hrManagerActor, 'hr.holidays', action))).resolves.toBe(true);
+      }
+    });
+
+    it('ADMIN holds hr.holidays automatically (ADMIN_GRANTS is catalogue-derived) with all four actions', async () => {
+      for (const action of ['READ', 'CREATE', 'UPDATE', 'DELETE']) {
+        await expect(rolesGuard.canActivate(mockContext(adminActor, 'hr.holidays', action))).resolves.toBe(true);
+      }
+    });
+
+    it('no other built-in role (ACCOUNTS_MANAGER, PROJECT_MANAGER, STORE_KEEPER) holds hr.holidays', async () => {
+      for (const role of ['ACCOUNTS_MANAGER', 'PROJECT_MANAGER', 'STORE_KEEPER']) {
+        const actor: Actor = { ...adminActor, role, isUnscoped: false };
+        await expect(rolesGuard.canActivate(mockContext(actor, 'hr.holidays', 'READ'))).rejects.toBeInstanceOf(ForbiddenException);
+      }
     });
   });
 

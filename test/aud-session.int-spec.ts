@@ -49,6 +49,8 @@ const ADMIN_USER = '00000000-0000-0000-0000-0000000ce8a1';
 const PM_USER = '00000000-0000-0000-0000-0000000ce8a2';
 const PM_ZERO_USER = '00000000-0000-0000-0000-0000000ce8a3';
 const GATE_USER = '00000000-0000-0000-0000-0000000ce8a4';
+const SITE_ENGINEER_USER = '00000000-0000-0000-0000-0000000ce8a5';
+const HR_MANAGER_USER = '00000000-0000-0000-0000-0000000ce8a6';
 const PROJECT_A = '00000000-0000-0000-0000-0000000ce8d1';
 
 function configService() {
@@ -124,6 +126,8 @@ describe('aud-session-and-forced-change (#38) — /auth/me + forced-change gate 
     await insertUser(PM_USER, 'pm@ze.local', 'PROJECT_MANAGER');
     await insertUser(PM_ZERO_USER, 'pmzero@ze.local', 'PROJECT_MANAGER');
     await insertUser(GATE_USER, 'gate@ze.local', 'ADMIN');
+    await insertUser(SITE_ENGINEER_USER, 'site-engineer@ze.local', 'SITE_ENGINEER');
+    await insertUser(HR_MANAGER_USER, 'hr-manager@ze.local', 'HR_MANAGER');
     await ds.query(`INSERT INTO user_project (id, user_id, project_id, company_id) VALUES (gen_random_uuid(),$1,$2,$3)`, [PM_USER, PROJECT_A, CO]);
 
     session = new SessionQueryService(ds);
@@ -174,6 +178,25 @@ describe('aud-session-and-forced-change (#38) — /auth/me + forced-change gate 
       await ds.query(`UPDATE "user" SET is_active=false WHERE id=$1`, [PM_ZERO_USER]);
       await expect(session.me(actorFor(PM_ZERO_USER))).rejects.toBeInstanceOf(ForbiddenException);
       await ds.query(`UPDATE "user" SET is_active=true WHERE id=$1`, [PM_ZERO_USER]);
+    });
+
+    // aud-holidays-resource — the split must show up in the caller's own live session projection,
+    // not just at the guard (FR-AUD-013/033).
+    it('me(site engineer): permissions contain hr.attendance:READ/CREATE but no hr.holidays grant', async () => {
+      const view = await session.me(actorFor(SITE_ENGINEER_USER));
+      expect(view.permissions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ resource: 'hr.attendance', action: 'READ' }),
+          expect.objectContaining({ resource: 'hr.attendance', action: 'CREATE' }),
+        ]),
+      );
+      expect(view.permissions.some(p => p.resource === 'hr.holidays')).toBe(false);
+    });
+
+    it('me(hr manager): permissions contain hr.holidays with all four actions', async () => {
+      const view = await session.me(actorFor(HR_MANAGER_USER));
+      const holidayActions = view.permissions.filter(p => p.resource === 'hr.holidays').map(p => p.action).sort();
+      expect(holidayActions).toEqual(['CREATE', 'DELETE', 'READ', 'UPDATE']);
     });
   });
 
