@@ -8,8 +8,8 @@
  * `reconcileDays` is the bridge that makes device data visible to `/api/reports/*`. For each touched
  * employee-day it computes first/last punch from `checkin_log` and upserts the OFFICE row. Three guards:
  *   - unknown `employee_code` → skipped and reported, never invented;
- *   - no project (employee default, then device default) → skipped: `attendance_record.project_id` is
- *     NOT NULL and guessing a project would corrupt job costing;
+ *   - no project (punch-stated, then device default, then employee default) → skipped:
+ *     `attendance_record.project_id` is NOT NULL and guessing a project would corrupt job costing;
  *   - a CONFIRMED row is never touched — that attendance has already been posted to the ledger, and
  *     posted work is corrected by reverse-and-repost, not by an overwrite (CLAUDE.md non-negotiable 4).
  * `day_status` is set to PRESENT only when the row is created; an existing row's leave status is left
@@ -85,6 +85,33 @@ export class TypeOrmPunchIngestionRepository implements PunchIngestionRepository
     return rows[0]?.defaultProjectId ?? null;
   }
 
+  async resolveProjectsByLocation(
+    companyId: string,
+    locations: readonly string[],
+  ): Promise<Map<string, string>> {
+    const wanted = [...new Set(locations.map((l) => l.trim().toLowerCase()).filter(Boolean))];
+    if (wanted.length === 0) return new Map();
+
+    // CODE first, then NAME — a code is the deliberate identifier, a name is the friendly label, so
+    // a project whose NAME happens to equal another project's CODE must never win. Ordering the
+    // union by rank and taking the first per key encodes that precedence in SQL.
+    const rows: Array<{ key: string; projectId: string }> = await getManager(this.dataSource).query(
+      `SELECT DISTINCT ON ("key") "key", "projectId"
+         FROM (
+           SELECT lower(trim("project_code")) AS "key", "id"::text AS "projectId", 1 AS "rank"
+             FROM "project" WHERE "company_id" = $1
+           UNION ALL
+           SELECT lower(trim("name")) AS "key", "id"::text AS "projectId", 2 AS "rank"
+             FROM "project" WHERE "company_id" = $1
+         ) AS "candidates"
+        WHERE "key" = ANY($2::text[])
+        ORDER BY "key", "rank"`,
+      [companyId, wanted],
+    );
+
+    return new Map(rows.map((r) => [r.key, r.projectId]));
+  }
+
   async insertPunches(companyId: string, punches: readonly PunchToStore[]): Promise<number> {
     if (punches.length === 0) return 0;
     const manager = getManager(this.dataSource);
@@ -100,8 +127,8 @@ export class TypeOrmPunchIngestionRepository implements PunchIngestionRepository
       const rows: Array<{ id: string }> = await manager.query(
         `INSERT INTO "checkin_log"
                 ("id", "company_id", "source_type", "user_id", "device_timestamp", "status",
-                 "device_sn", "occurred_at")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 "device_sn", "occurred_at", "project_id")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT ("company_id", "user_id", "device_timestamp") DO NOTHING
          RETURNING "id"`,
         [
@@ -113,6 +140,7 @@ export class TypeOrmPunchIngestionRepository implements PunchIngestionRepository
           punch.status,
           punch.deviceSn,
           punch.occurredAt,
+          punch.projectId,
         ],
       );
       inserted += rows.length;
@@ -142,7 +170,25 @@ export class TypeOrmPunchIngestionRepository implements PunchIngestionRepository
         continue;
       }
 
-      const projectId = employee.defaultProjectId ?? defaultProjectId;
+      // Resolution order — evidence before guesswork (design §5.1):
+      //   1. a project stated on one of the day's punches (an explicit manual entry or an imported
+      //      Location cell) — the operator said where this was;
+      //   2. the device's default project — the punch physically happened at that machine;
+      //   3. the employee's default project — a standing guess about where they usually work.
+      // The LATEST stating punch wins, so an afternoon site visit outranks a morning office punch.
+      // Previously the employee default outranked both, so a site engineer who walked into head
+      // office and punched there had that day costed to their construction site.
+      const stated: Array<{ projectId: string | null }> = await manager.query(
+        `SELECT "project_id"::text AS "projectId"
+           FROM "checkin_log"
+          WHERE "company_id" = $1 AND "user_id" = $2
+            AND substring("device_timestamp" from 1 for 10) = $3
+            AND "project_id" IS NOT NULL
+          ORDER BY "device_timestamp" DESC
+          LIMIT 1`,
+        [companyId, day.userId, day.attendanceDate],
+      );
+      const projectId = stated[0]?.projectId ?? defaultProjectId ?? employee.defaultProjectId;
       if (!projectId) {
         outcome.skipped.push({ ...day, reason: 'NO_PROJECT' });
         continue;

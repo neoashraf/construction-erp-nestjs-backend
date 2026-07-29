@@ -27,16 +27,22 @@ export class AttendanceLogReadAdapter implements AttendanceLogReadPort {
   ): Promise<PunchRow[]> {
     if (employeeCodes.length === 0) return [];
 
+    // The LEFT JOIN (not an inner join) is load-bearing: `project_id` is nullable — a device punch
+    // states no project — and an inner join would silently drop exactly those punches from the day.
     return getManager(this.dataSource).query(
-      `SELECT "id"::text          AS "id",
-              "user_id"           AS "userId",
-              "device_timestamp"  AS "deviceTimestamp",
-              "received_at"       AS "receivedAt"
-         FROM "checkin_log"
-        WHERE "company_id" = $1
-          AND "user_id" = ANY($2::varchar[])
-          AND "device_timestamp" >= $3 AND "device_timestamp" <= $4
-        ORDER BY "user_id" ASC, "device_timestamp" ASC`,
+      `SELECT c."id"::text          AS "id",
+              c."user_id"           AS "userId",
+              c."device_timestamp"  AS "deviceTimestamp",
+              c."received_at"       AS "receivedAt",
+              c."source_type"       AS "sourceType",
+              c."project_id"::text  AS "projectId",
+              p."name"              AS "projectName"
+         FROM "checkin_log" c
+         LEFT JOIN "project" p ON p."id" = c."project_id"
+        WHERE c."company_id" = $1
+          AND c."user_id" = ANY($2::varchar[])
+          AND c."device_timestamp" >= $3 AND c."device_timestamp" <= $4
+        ORDER BY c."user_id" ASC, c."device_timestamp" ASC`,
       [companyId, [...employeeCodes], `${dateFrom} 00:00:00`, `${dateTo} 23:59:59`],
     ) as Promise<PunchRow[]>;
   }

@@ -1,12 +1,17 @@
 /**
  * AttendanceController — `/api/attendance/*` (FR-HR-004..012). Three-mode capture (office / subcontractor /
- * daily-labour), bulk-capable, biometric import, and the daily-labour accrual lifecycle (confirm/reverse).
+ * daily-labour), bulk-capable, and the daily-labour accrual lifecycle (confirm/reverse).
  * camelCase JSON + `{data,meta}` envelope + canonical/module error codes. The daily-labour accrual posts
  * via the internal PostingService — there is NO `POST /api/ledger`; the ledger impact is triggered by
  * `.../daily-labour/:id/confirm` only. Subcontractor capture posts NOTHING (no `.../confirm` for it).
+ *
+ * There is exactly ONE spreadsheet import path and it does not live here: `POST /api/attendance/import`
+ * (`DeviceStatusController`). `POST /api/attendance/office/import` was a second importer with its own
+ * conflict model over the same job, and was retired when office capture converged on the punch pipeline.
+ *
  * Real `@UseGuards(JwtAuthGuard, RolesGuard)` + per-route `@Roles({module:'HR', action})`
- * (tier2-rbac-guard-wiring, FR-AUD-012/013/017) — GET list -> READ, POST office/office/import/
- * subcontractor/daily-labour -> CREATE, PATCH daily-labour/:id -> UPDATE, POST daily-labour/:id/confirm
+ * (tier2-rbac-guard-wiring, FR-AUD-012/013/017) — GET list -> READ, POST office/subcontractor/
+ * daily-labour -> CREATE, PATCH daily-labour/:id -> UPDATE, POST daily-labour/:id/confirm
  * -> POST, POST daily-labour/:id/reverse -> CANCEL.
  */
 import {
@@ -43,12 +48,7 @@ import { JwtAuthGuard } from '../../../core/auth/presentation/jwt-auth.guard';
 import { RolesGuard } from '../../../core/auth/presentation/roles.guard';
 import { RequirePermission } from '../../../core/auth/presentation/require-permission.decorator';
 import { Paginated } from '../../../infrastructure/http/pagination';
-import {
-  AttendanceService,
-  BiometricImportResult,
-  ConfirmResult,
-  ReverseResult,
-} from '../application/attendance.service';
+import { AttendanceService, ConfirmResult, ReverseResult } from '../application/attendance.service';
 import { AttendanceDto, HrQueryService } from '../application/hr-query.service';
 import { NewAttendance } from '../domain/attendance-record';
 
@@ -110,14 +110,6 @@ class ReverseDto {
   @IsString() reason!: string;
 }
 
-class BiometricImportDto {
-  @IsUUID() projectId!: string;
-  @IsOptional() @IsArray() deviceFeed?: unknown[];
-  /** Base64-encoded CSV/XLSX content (multipart file support is added when the upload pipe lands). */
-  @IsOptional() @IsString() fileBase64?: string;
-  @IsOptional() @IsString() fileName?: string;
-}
-
 class AttendanceQueryDto {
   @IsOptional() @IsIn(['OFFICE', 'SUBCONTRACTOR', 'DAILY_LABOUR']) mode?: string;
   @IsOptional() @IsDateString() attendanceDate?: string;
@@ -158,21 +150,6 @@ export class AttendanceController {
     @CurrentActor() actor: Actor,
   ): Promise<{ ids: string[] }> {
     return this.service.capture('OFFICE', body.rows as unknown as NewAttendance[], actor);
-  }
-
-  @Post('office/import')
-  @HttpCode(200)
-  @RequirePermission('hr.attendance', 'CREATE')
-  importBiometric(
-    @Body() body: BiometricImportDto,
-    @CurrentActor() actor: Actor,
-  ): Promise<BiometricImportResult> {
-    const file = body.fileBase64 ? Buffer.from(body.fileBase64, 'base64') : undefined;
-    return this.service.importBiometric(
-      { file, fileName: body.fileName, deviceFeed: body.deviceFeed as never },
-      body.projectId,
-      actor,
-    );
   }
 
   @Post('subcontractor')

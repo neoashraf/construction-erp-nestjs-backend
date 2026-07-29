@@ -22,8 +22,8 @@ describe('parseImportRows', () => {
     ]);
 
     expect(result.punches).toEqual([
-      { userId: '1001', deviceTimestamp: '2026-07-01 09:05:00', status: '0' },
-      { userId: '1001', deviceTimestamp: '2026-07-01 18:10:00', status: '1' },
+      { userId: '1001', deviceTimestamp: '2026-07-01 09:05:00', status: '0', location: null, row: 2 },
+      { userId: '1001', deviceTimestamp: '2026-07-01 18:10:00', status: '1', location: null, row: 2 },
     ]);
     expect(result.acceptedRows).toBe(1);
     expect(result.errors).toEqual([]);
@@ -108,6 +108,35 @@ describe('parseImportRows', () => {
     expect(result.errors[0]?.message).toContain('before check-in');
   });
 
+  it('carries the location cell onto every punch the row produces, trimmed but unresolved', () => {
+    // Trimmed because a stray space in a spreadsheet cell is never meant; UNRESOLVED because
+    // turning it into a project id needs the database, and the parser is pure.
+    const result = parseImportRows([
+      { userId: 'E1', date: '2026-07-10', checkIn: '09:00', checkOut: '18:00', location: ' BRIDGE-04 ' },
+    ]);
+
+    expect(result.punches.map((p) => p.location)).toEqual(['BRIDGE-04', 'BRIDGE-04']);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('treats a blank location as NOT STATED, so existing sheets import unchanged', () => {
+    const result = parseImportRows([
+      { userId: 'E2', date: '2026-07-10', checkIn: '09:05', location: '' },
+      { userId: 'E3', date: '2026-07-10', checkIn: '09:06' },
+    ]);
+
+    expect(result.punches[0]?.location).toBeNull();
+    expect(result.punches[1]?.location).toBeNull();
+    expect(result.errors).toEqual([]);
+  });
+
+  it('surfaces a row carrying ONLY a location rather than silently skipping it as blank', () => {
+    const result = parseImportRows([{ location: 'BRIDGE-04' }]);
+
+    expect(result.blankRows).toBe(0);
+    expect(result.errors).toEqual([{ row: 2, message: 'Employee ID is required' }]);
+  });
+
   it('rejects out-of-range clock values', () => {
     expect(parseImportRows([{ userId: '7', date: '2026-07-01', checkIn: '25:00' }]).errors).toHaveLength(1);
     expect(parseImportRows([{ userId: '7', date: '2026-07-01', checkIn: '09:75' }]).errors).toHaveLength(1);
@@ -120,6 +149,7 @@ describe('AttendanceImportService', () => {
       findDeviceMapping: jest.fn().mockResolvedValue(null),
       autoRegisterDevice: jest.fn().mockResolvedValue(null),
       findCompanyDefaultProject: jest.fn().mockResolvedValue(null),
+      resolveProjectsByLocation: jest.fn().mockResolvedValue(new Map()),
       insertPunches: jest.fn().mockResolvedValue(0),
       reconcileDays: jest.fn().mockResolvedValue({ reconciled: 0, skipped: [] }),
       findLatestPunch: jest.fn().mockResolvedValue(null),
@@ -229,6 +259,56 @@ describe('AttendanceImportService', () => {
     expect(repository.insertPunches).not.toHaveBeenCalled();
     expect(result.acceptedRows).toBe(0);
     expect(result.errors).toHaveLength(1);
+  });
+
+  it('resolves a stated location to rank 1 of the resolution order', async () => {
+    // Without this a branch office importing its written entry log has EVERY row costed to
+    // whatever the company default happens to be — head-office overhead.
+    const repository = repo({
+      resolveProjectsByLocation: jest.fn().mockResolvedValue(new Map([['bridge-04', 'proj-bridge']])),
+      insertPunches: jest.fn().mockResolvedValue(2),
+    });
+
+    await service(repository).import('co-1', 'proj-default', [
+      { userId: '1001', date: '2026-07-01', checkIn: '09:05', location: 'Bridge-04' },
+    ]);
+
+    const [, punches] = repository.insertPunches.mock.calls[0] as [string, PunchToStore[]];
+    expect(punches[0]?.projectId).toBe('proj-bridge');
+  });
+
+  it('leaves projectId null when no location is stated, exactly as before the column existed', async () => {
+    const repository = repo({ insertPunches: jest.fn().mockResolvedValue(2) });
+
+    await service(repository).import('co-1', 'proj-default', [ROW]);
+
+    const [, punches] = repository.insertPunches.mock.calls[0] as [string, PunchToStore[]];
+    expect(punches.every((p) => p.projectId === null)).toBe(true);
+    // The default still travels separately, so employees without a project are not skipped.
+    expect(repository.reconcileDays).toHaveBeenCalledWith('co-1', 'proj-default', expect.anything());
+  });
+
+  it('reports an unresolvable location per row and still imports the rest of the file', async () => {
+    const repository = repo({
+      resolveProjectsByLocation: jest.fn().mockResolvedValue(new Map([['ho-ovh', 'proj-ho']])),
+      insertPunches: jest.fn().mockResolvedValue(2),
+    });
+
+    const result = await service(repository).import('co-1', null, [
+      { userId: '1001', date: '2026-07-01', checkIn: '09:05', location: 'HO-OVH' },
+      { userId: '1002', date: '2026-07-01', checkIn: '09:06', location: 'Nowhere' },
+      { userId: '1003', date: '2026-07-01', checkIn: '09:07', location: 'ho-ovh' },
+    ]);
+
+    // The bad cell is named by its SHEET row, like a bad date — not a 400 for the whole file.
+    expect(result.errors).toEqual([
+      { row: 3, message: "Unknown location 'Nowhere' — expected a project code or name" },
+    ]);
+    expect(result.acceptedRows).toBe(2);
+
+    const [, punches] = repository.insertPunches.mock.calls[0] as [string, PunchToStore[]];
+    expect(punches).toHaveLength(2); // the rejected row contributed nothing
+    expect(punches.every((p) => p.projectId === 'proj-ho')).toBe(true); // matching is case-insensitive
   });
 
   it('rejects an empty payload and an oversized one', async () => {

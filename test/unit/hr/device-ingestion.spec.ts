@@ -188,6 +188,10 @@ class FakePunchRepo implements PunchIngestionRepository {
     return Promise.resolve(null);
   }
 
+  resolveProjectsByLocation(): Promise<Map<string, string>> {
+    return Promise.resolve(new Map());
+  }
+
   insertPunches(_companyId: string, punches: readonly PunchToStore[]): Promise<number> {
     this.stored.push(...punches);
     return Promise.resolve(punches.length);
@@ -238,6 +242,26 @@ describe('DeviceIngestionService', () => {
       { userId: '1043', attendanceDate: '2026-07-26' },
     ]);
     expect(repo.touched).toEqual(['ABC123']);
+  });
+
+  it('stores every pushed punch as DEVICE_PUSH, never the wire format it arrived in', async () => {
+    // `ATTLOG` / `TAB` / `CSV` describe how the device FRAMED the line, not where the punch came
+    // from. Storing them made source_type mean two different things for the same event, so the
+    // four stored values are exactly DEVICE_PUSH · DEVICE_SYNC · EXCEL_IMPORT · MANUAL.
+    const repo = new FakePunchRepo({ companyId: 'co1', defaultProjectId: 'p1' });
+    const svc = new DeviceIngestionService(repo, uow as never, deviceConfigService());
+
+    await svc.ingest(
+      ['ATTLOG 1042 2026-07-26 09:12:04 0', '1043\t2026-07-26 09:20:00\t0', '1044,2026-07-26 09:25:00,0'].join(
+        '\n',
+      ),
+      'ABC123',
+    );
+
+    expect(repo.stored).toHaveLength(3);
+    expect(repo.stored.every((p) => p.sourceType === 'DEVICE_PUSH')).toBe(true);
+    // A machine knows only itself — the project comes from the device row, never the punch.
+    expect(repo.stored.every((p) => p.projectId === null)).toBe(true);
   });
 
   it('DROPS punches from an unregistered device serial instead of guessing a company', async () => {

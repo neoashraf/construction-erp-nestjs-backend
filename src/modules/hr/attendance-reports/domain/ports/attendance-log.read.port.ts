@@ -16,6 +16,12 @@ export interface PunchRow {
   userId: string;
   deviceTimestamp: string;
   receivedAt: Date;
+  /** How the punch arrived: `DEVICE_PUSH` · `DEVICE_SYNC` · `EXCEL_IMPORT` · `MANUAL`. */
+  sourceType: string;
+  /** Where it happened, when the punch stated it. NULL = not stated. */
+  projectId: string | null;
+  /** Joined for display — the caller should never have to look a project up to render a row. */
+  projectName: string | null;
 }
 
 export const ATTENDANCE_LOG_READ_PORT = Symbol('ATTENDANCE_LOG_READ_PORT');

@@ -2,6 +2,9 @@
  * AttendanceService — three-mode capture (bulk-capable) + the ONE posting in this half: the daily-labour
  * accrual at head-count confirmation (design §5.1, FR-HR-004..012). Capture of OFFICE / SUBCONTRACTOR /
  * DAILY_LABOUR rows persists tracking data and posts NOTHING (subcontractor is GL-free — FR-HR-005).
+ * OFFICE capture writes through the shared PUNCH PIPELINE (`insertPunches` → `reconcileDays`), so all
+ * four ingestion paths — device push, device pull, spreadsheet import, manual entry — converge on one
+ * writer of `check_in`/`check_out` and one row per employee-day (`captureOffice`, design §4.1).
  * `confirmDailyLabour` is the only ledger-touching path: inside ONE uow.run it row-locks the row, guards
  * DAILY_LABOUR + unconfirmed, resolves the labour accounts (MAS), builds the balanced DAILY_LABOUR_ACCRUAL
  * command and calls the REAL PostingService.post (period→project→tags→refs→balance→NUMBER-last→write),
@@ -11,7 +14,7 @@
  * HR builds NO journal row itself and opens no transaction of its own (CLAUDE.md non-negotiable 2).
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { NotFoundError } from '../../../common/errors/domain-error';
+import { NotFoundError, ValidationError } from '../../../common/errors/domain-error';
 import { ID_GENERATOR, IdGenerator } from '../../../common/ports/id-generator.port';
 import { UNIT_OF_WORK, UnitOfWork } from '../../../common/ports/unit-of-work.port';
 import { Money } from '../../../common/money';
@@ -29,7 +32,6 @@ import { LabourPayable } from '../domain/labour-payable';
 import {
   AttendanceConfirmedImmutableError,
   AttendanceNotConfirmedError,
-  DuplicateAttendanceError,
 } from '../domain/errors';
 import { ATTENDANCE_REPOSITORY, AttendanceRepository } from '../domain/ports/attendance.repository';
 import {
@@ -37,11 +39,12 @@ import {
   LabourPayableRepository,
 } from '../domain/ports/labour-payable.repository';
 import {
-  BIOMETRIC_IMPORT_PORT,
-  BiometricFeed,
-  BiometricImportPort,
-} from '../domain/ports/biometric-import.port';
-import { EMPLOYEE_REPOSITORY, EmployeeRepository } from '../domain/ports/employee.repository';
+  PUNCH_INGESTION_REPOSITORY,
+  PunchIngestionRepository,
+  PunchToStore,
+} from '../attendance-reports/domain/ports/punch-ingestion.repository';
+import { normaliseTime } from '../attendance-reports/domain/attendance-import.parser';
+import { parseDeviceTimestamp } from '../attendance-reports/domain/punch-payload.parser';
 import {
   HR_ACCOUNT_RESOLVER_PORT,
   HrAccountResolverPort,
@@ -63,10 +66,11 @@ export interface ReverseResult {
   originalEntryId: string;
 }
 
-export interface BiometricImportResult {
-  imported: number;
-  reconciled: number;
-  conflicts: Array<{ employeeId: string; attendanceDate: string; reason: string }>;
+/** A required field the DTO already validates — asserted again so the domain is never fed a blank. */
+function requireField(value: string | null | undefined, field: string): string {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed) throw new ValidationError(`${field} is required`);
+  return trimmed;
 }
 
 @Injectable()
@@ -74,11 +78,10 @@ export class AttendanceService {
   constructor(
     @Inject(ATTENDANCE_REPOSITORY) private readonly repo: AttendanceRepository,
     @Inject(LABOUR_PAYABLE_REPOSITORY) private readonly payables: LabourPayableRepository,
-    @Inject(EMPLOYEE_REPOSITORY) private readonly employees: EmployeeRepository,
     @Inject(HR_ACCOUNT_RESOLVER_PORT) private readonly accounts: HrAccountResolverPort,
     @Inject(HR_PROJECT_STATUS_PORT) private readonly projectStatus: HrProjectStatusPort,
     @Inject(POSTING_SERVICE_PORT) private readonly posting: PostingServicePort,
-    @Inject(BIOMETRIC_IMPORT_PORT) private readonly biometric: BiometricImportPort,
+    @Inject(PUNCH_INGESTION_REPOSITORY) private readonly punches: PunchIngestionRepository,
     @Inject(AUDIT_SERVICE) private readonly audit: AuditService,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
     @Inject(ID_GENERATOR) private readonly ids: IdGenerator,
@@ -86,26 +89,20 @@ export class AttendanceService {
 
   /** Capture one or more attendance rows of a given mode (bulk, FR-HR-007). No ledger impact. */
   async capture(mode: AttendanceMode, rows: NewAttendance[], actor: Actor): Promise<{ ids: string[] }> {
+    // OFFICE writes through the punch pipeline instead of inserting an aggregate directly, so that
+    // `reconcileDays` stays the ONLY writer of check_in/check_out (design §4.1). SUBCONTRACTOR and
+    // DAILY_LABOUR are head counts, not punches — nothing to reconcile, so they are untouched.
+    if (mode === 'OFFICE') return this.captureOffice(rows, actor);
+
     return this.uow.run(async () => {
       const records: AttendanceRecord[] = [];
       for (const row of rows) {
-        const rec = AttendanceRecord.capture(this.ids.next(), actor.companyId, actor.financialYearId, {
-          ...row,
-          mode,
-        });
-        // OFFICE: reconcile to one row per employee per day — a conflicting same-day row is surfaced,
-        // never silently doubled (edge §12.9).
-        if (mode === 'OFFICE') {
-          const existing = await this.repo.findOfficeRow(
-            actor.companyId,
-            rec.props.employeeId as string,
-            rec.props.attendanceDate,
-          );
-          if (existing) {
-            throw new DuplicateAttendanceError(rec.props.employeeId as string, rec.props.attendanceDate);
-          }
-        }
-        records.push(rec);
+        records.push(
+          AttendanceRecord.capture(this.ids.next(), actor.companyId, actor.financialYearId, {
+            ...row,
+            mode,
+          }),
+        );
       }
       await this.repo.insertMany(records);
       await this.audit.record({
@@ -120,54 +117,102 @@ export class AttendanceService {
   }
 
   /**
-   * Biometric import (CSV/XLSX or device-API payload) reconciled to one OFFICE row per employee per day
-   * (FR-HR-004, edge §12.9). Rows whose day already has an OFFICE row are reported as conflicts (never
-   * silently doubled); unknown employee codes are reported as conflicts too.
+   * OFFICE capture — TWO-BRANCH (design §4.1, FR-HR-004):
+   *   times present → punches → `insertPunches` → `reconcileDays`, then patch the day-level fields;
+   *   no times      → patch/create the row directly, writing NO punches.
+   *
+   * Why two branches: a PAID_LEAVE or ABSENT day has no times, so it produces no punches and
+   * reconciliation would create no row at all — and `paidDays` counts ROWS. Without the second branch
+   * every leave day silently costs the employee a day's pay.
+   *
+   * Why through the pipeline at all: `attendance_record` used to have two independent writers with
+   * contradictory rules — this path REJECTED a second row for the day while `reconcileDays` MERGED,
+   * and reconciliation would overwrite a hand-keyed roster with a device punch. Now reconciliation is
+   * the single writer of times, so a manual 09:05 and a device 18:10 merge into one correct day, and
+   * an approved `day_status` survives a later punch (reconcile only sets it on create).
+   *
+   * Re-submitting the same day is therefore idempotent rather than a `DuplicateAttendanceError`: the
+   * punch key `(company, user, deviceTimestamp)` and the day-unique partial index both absorb it.
    */
-  async importBiometric(
-    feed: BiometricFeed,
-    projectId: string,
-    actor: Actor,
-  ): Promise<BiometricImportResult> {
-    const parsed = await this.biometric.parse(feed);
+  private async captureOffice(rows: NewAttendance[], actor: Actor): Promise<{ ids: string[] }> {
     return this.uow.run(async () => {
-      const conflicts: BiometricImportResult['conflicts'] = [];
-      const toInsert: AttendanceRecord[] = [];
-      for (const row of parsed) {
-        const employee = await this.employees.findByCode(actor.companyId, row.employeeCode);
-        if (!employee) {
-          conflicts.push({
-            employeeId: row.employeeCode,
-            attendanceDate: row.attendanceDate,
-            reason: 'UNKNOWN_EMPLOYEE_CODE',
-          });
-          continue;
-        }
-        const existing = await this.repo.findOfficeRow(actor.companyId, employee.id, row.attendanceDate);
-        if (existing) {
-          conflicts.push({
-            employeeId: employee.id,
-            attendanceDate: row.attendanceDate,
-            reason: 'ALREADY_RECORDED',
-          });
-          continue;
-        }
-        toInsert.push(
-          AttendanceRecord.capture(this.ids.next(), actor.companyId, actor.financialYearId, {
-            mode: 'OFFICE',
-            attendanceDate: row.attendanceDate,
+      for (const row of rows) {
+        const employeeId = requireField(row.employeeId, 'employeeId');
+        const projectId = requireField(row.projectId, 'projectId');
+        const attendanceDate = requireField(row.attendanceDate, 'attendanceDate');
+
+        // Punches are keyed on the device ENROLMENT CODE, never the employee UUID — that is what
+        // makes a hand-keyed row and a machine punch land on the same day.
+        const code = await this.repo.findEmployeeCodeById(actor.companyId, employeeId);
+        if (!code) throw new NotFoundError(`Employee ${employeeId} not found`);
+
+        const punches: PunchToStore[] = [];
+        for (const [time, status] of [
+          [row.checkIn, '0'],
+          [row.checkOut, '1'],
+        ] as const) {
+          const normalised = time == null ? null : normaliseTime(String(time));
+          if (!normalised) continue;
+          const deviceTimestamp = `${attendanceDate} ${normalised}`;
+          punches.push({
+            sourceType: 'MANUAL',
+            userId: code,
+            deviceTimestamp,
+            status,
+            occurredAt: parseDeviceTimestamp(deviceTimestamp),
+            deviceSn: null,
+            // The punch carries the SAME project as the row. `projectId` is required on an office row
+            // (FR-HR-008; `attendance_record.project_id` is NOT NULL) and the UI's Location picker
+            // always sends something explicit, so resolution rank 1 always wins for manual entry —
+            // which is correct: the operator stated where this was. Never send null here hoping the
+            // device default will cover it; that default is the HEAD-OFFICE machine's project and
+            // would mis-tag a branch office with no machine of its own.
             projectId,
-            employeeId: employee.id,
-            checkIn: row.checkIn ?? null,
-            checkOut: row.checkOut ?? null,
-            dayStatus: row.dayStatus ?? 'PRESENT',
-            overtimeHours: row.overtimeHours ?? '0',
-            source: 'BIOMETRIC_IMPORT',
-          }),
+          });
+        }
+
+        if (punches.length > 0) {
+          await this.punches.insertPunches(actor.companyId, punches);
+          await this.punches.reconcileDays(actor.companyId, null, [
+            { userId: code, attendanceDate },
+          ]);
+        }
+
+        // Always patch: `dayStatus` and `overtimeHours` have no punch representation, and on a
+        // timeless day this is what creates the row at all.
+        await this.repo.patchOfficeDayFields(
+          actor.companyId,
+          actor.financialYearId,
+          employeeId,
+          attendanceDate,
+          projectId,
+          {
+            dayStatus: String(row.dayStatus ?? 'PRESENT'),
+            overtimeHours: String(row.overtimeHours ?? '0'),
+          },
         );
       }
-      if (toInsert.length) await this.repo.insertMany(toInsert);
-      return { imported: parsed.length, reconciled: toInsert.length, conflicts };
+
+      // The RECONCILED row ids, not the ids of aggregates this path no longer creates: the response
+      // shape is unchanged, and a caller that submitted rows needs to know which row each landed on.
+      // The id is stable across resubmission because the day is unique per (company, employee, date).
+      const ids = await this.repo.findOfficeRowIds(
+        actor.companyId,
+        rows.map((row) => ({
+          employeeId: requireField(row.employeeId, 'employeeId'),
+          attendanceDate: row.attendanceDate,
+        })),
+      );
+
+      await this.audit.record({
+        action: 'CREATE',
+        entityType: ATTENDANCE_SOURCE_TYPE,
+        entityId: ids.join(','),
+        actorId: actor.userId,
+        companyId: actor.companyId,
+      });
+
+      return { ids };
     });
   }
 

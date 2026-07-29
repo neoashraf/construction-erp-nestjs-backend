@@ -133,6 +133,9 @@ class FakePunchRepo implements PunchIngestionRepository {
   findCompanyDefaultProject(): Promise<string | null> {
     return Promise.resolve('p1');
   }
+  resolveProjectsByLocation(): Promise<Map<string, string>> {
+    return Promise.resolve(new Map());
+  }
   insertPunches(_companyId: string, punches: readonly PunchToStore[]): Promise<number> {
     let inserted = 0;
     for (const p of punches) {

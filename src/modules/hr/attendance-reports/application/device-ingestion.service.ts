@@ -29,6 +29,9 @@ import {
   ReconcileOutcome,
 } from '../domain/ports/punch-ingestion.repository';
 
+/** Marks these punches as pushed-by-the-machine in `checkin_log.source_type` (`/iclock/cdata`). */
+const SOURCE_TYPE = 'DEVICE_PUSH';
+
 export interface IngestResult {
   parsed: number;
   stored: number;
@@ -142,12 +145,18 @@ export class DeviceIngestionService {
     }
 
     const punches: PunchToStore[] = records.map((record) => ({
-      sourceType: record.type,
+      // `record.type` is the WIRE FORMAT the line arrived in (ATTLOG / TAB / CSV), not a provenance.
+      // Storing it made `source_type` mean two different things depending on how the device framed
+      // its payload; the four stored values are exactly DEVICE_PUSH · DEVICE_SYNC · EXCEL_IMPORT ·
+      // MANUAL, and every push is a push regardless of framing.
+      sourceType: SOURCE_TYPE,
       userId: String(record.userId),
       deviceTimestamp: String(record.timestamp),
       status: String(record.status),
       occurredAt: parseDeviceTimestamp(String(record.timestamp)),
       deviceSn,
+      // A machine knows only itself, never a project — the device row supplies the fallback.
+      projectId: null,
     }));
 
     // The (employee, day) pairs this batch touched — only these need re-folding.

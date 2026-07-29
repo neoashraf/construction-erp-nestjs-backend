@@ -20,6 +20,13 @@
  * into two punch rows. That is what makes an imported day and a device day identical once
  * stored — and it is why re-importing a day the device later reports adds nothing: both paths
  * dedupe on the same `(company, user, deviceTimestamp)` key.
+ *
+ * ── Why the sheet carries an optional LOCATION ────────────────────────────────────────────
+ * Manual entry has a Location picker; import had no equivalent, so a branch office or project
+ * site importing its written entry log had EVERY row costed to whatever the company's default
+ * project happened to be — head-office overhead. The `Location` cell is that picker's
+ * spreadsheet twin. It is optional and blank-is-today's-behaviour by design, so existing sheets
+ * and raw machine dumps import completely unchanged.
  */
 
 /** One spreadsheet row as the client read it — every cell still a raw string. */
@@ -31,6 +38,11 @@ export interface RawImportRow {
   /** `HH:mm` or `HH:mm:ss`. */
   checkIn?: string;
   checkOut?: string;
+  /**
+   * Project CODE or name as typed in the sheet. Blank = not stated, so the day falls back to the
+   * device/employee default exactly as before. A STRING, not a uuid — a person fills this in.
+   */
+  location?: string;
 }
 
 /** A normalised punch ready for `checkin_log`; `deviceTimestamp` is the storage key. */
@@ -40,6 +52,17 @@ export interface ImportPunch {
   deviceTimestamp: string;
   /** ZKTeco convention: `0` = check-in, `1` = check-out. */
   status: string;
+  /**
+   * The raw `Location` cell, still unresolved. The parser is pure and DB-free, so turning this into a
+   * project id is the service's job; `null` means the cell was blank.
+   */
+  location: string | null;
+  /**
+   * The 1-based SHEET row this punch came from. Carried so the service can report an unresolvable
+   * `location` against the row the user is looking at in Excel — resolution needs the database, so it
+   * cannot happen here, but the row number is only knowable here.
+   */
+  row: number;
 }
 
 /** A row that could not be used, with the 1-based sheet row number so the user can find it. */
@@ -66,8 +89,10 @@ function pad(value: number): string {
 
 /** True when every cell in the row is empty — trailing spreadsheet filler, not a mistake. */
 function isBlank(row: RawImportRow): boolean {
+  // `location` counts: a row carrying only a location is a half-filled row, not filler, and must
+  // surface as "Employee ID is required" rather than vanish.
   return !(row.userId ?? '').trim() && !(row.date ?? '').trim() &&
-    !(row.checkIn ?? '').trim() && !(row.checkOut ?? '').trim();
+    !(row.checkIn ?? '').trim() && !(row.checkOut ?? '').trim() && !(row.location ?? '').trim();
 }
 
 /**
@@ -96,8 +121,14 @@ function normaliseDate(value: string): string | null {
   return `${y}-${m}-${d}`;
 }
 
-/** `9:05` → `09:05:00`. Seconds are optional because nobody types them. */
-function normaliseTime(value: string): string | null {
+/**
+ * `9:05` → `09:05:00`. Seconds are optional because nobody types them.
+ *
+ * Exported because manual OFFICE capture normalises its `checkIn`/`checkOut` through the SAME rule
+ * before turning them into punches — one definition of "what a time cell means", or a hand-keyed
+ * `9:05` and an imported `9:05` would produce different storage keys and stop deduping.
+ */
+export function normaliseTime(value: string): string | null {
   const match = TIME.exec(value.trim());
   if (!match) return null;
 
@@ -183,11 +214,29 @@ export function parseImportRows(rows: readonly RawImportRow[]): ParsedImport {
       return;
     }
 
-    if (checkIn) punches.push({ userId, deviceTimestamp: `${date} ${checkIn}`, status: '0' });
+    // Blank stays NULL rather than '' — "not stated" and "stated as nothing" resolve differently
+    // downstream, and only the former is allowed to fall back to the device/employee default.
+    const location = (row.location ?? '').trim() || null;
+
+    if (checkIn) {
+      punches.push({
+        userId,
+        deviceTimestamp: `${date} ${checkIn}`,
+        status: '0',
+        location,
+        row: rowNumber,
+      });
+    }
     // An identical check-out is not a second punch — it is the same event written twice, and
     // the storage key would collide anyway. Dropping it here keeps the counts honest.
     if (checkOut && checkOut !== checkIn) {
-      punches.push({ userId, deviceTimestamp: `${date} ${checkOut}`, status: '1' });
+      punches.push({
+        userId,
+        deviceTimestamp: `${date} ${checkOut}`,
+        status: '1',
+        location,
+        row: rowNumber,
+      });
     }
 
     acceptedRows += 1;

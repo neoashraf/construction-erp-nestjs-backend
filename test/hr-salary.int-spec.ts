@@ -256,7 +256,7 @@ describe('HR salary sheet & SALARY posting (real Postgres + real PostingService)
     const audit = { record: async () => undefined };
 
     const employeeRepo = new TypeOrmEmployeeRepository(ds);
-    const attendanceRepo = new TypeOrmAttendanceRepository(ds);
+    const attendanceRepo = new TypeOrmAttendanceRepository(ds, ids);
     const salaryRepo = new TypeOrmSalarySheetRepository(ds);
     const accountResolver = new HrAccountResolverAdapter(ds);
     const projectStatus = new HrProjectStatusAdapter(ds);
@@ -544,7 +544,7 @@ describe('HR salary sheet & SALARY posting (real Postgres + real PostingService)
     const svc = new SalaryService(
       failingRepo,
       new TypeOrmEmployeeRepository(ds),
-      new TypeOrmAttendanceRepository(ds),
+      new TypeOrmAttendanceRepository(ds, ids),
       new HrAccountResolverAdapter(ds),
       new HrProjectStatusAdapter(ds),
       new PostingServiceAdapter(posting),

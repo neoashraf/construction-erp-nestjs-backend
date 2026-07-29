@@ -107,10 +107,29 @@ export class AttendanceImportService {
       };
     }
 
+    // Resolve the sheet's `Location` cells to project ids before building the batch. A cell that
+    // names no project is a per-row error exactly like a bad date — the rest of the file still
+    // imports, and the operator is told which rows to fix rather than being left to bisect.
+    const stated = parsed.punches.map((p) => p.location).filter((l): l is string => l !== null);
+    const projectsByLocation = await this.punches.resolveProjectsByLocation(companyId, stated);
+    const locationErrors: ImportRowError[] = [];
+    const rejectedRows = new Set<number>();
+    for (const punch of parsed.punches) {
+      if (punch.location === null) continue;
+      if (projectsByLocation.has(punch.location.trim().toLowerCase())) continue;
+      if (rejectedRows.has(punch.row)) continue; // one error per sheet row, not per punch
+      rejectedRows.add(punch.row);
+      locationErrors.push({
+        row: punch.row,
+        message: `Unknown location '${punch.location}' — expected a project code or name`,
+      });
+    }
+
     // Dedupe within the file itself before touching the DB — the same punch listed twice in
     // one sheet must not be counted as an insert and then a duplicate of itself.
     const unique = new Map<string, PunchToStore>();
     for (const punch of parsed.punches) {
+      if (rejectedRows.has(punch.row)) continue;
       unique.set(`${punch.userId}|${punch.deviceTimestamp}`, {
         sourceType: SOURCE_TYPE,
         userId: punch.userId,
@@ -118,10 +137,33 @@ export class AttendanceImportService {
         status: punch.status,
         occurredAt: parseDeviceTimestamp(punch.deviceTimestamp),
         deviceSn: null,
+        // Rank 1 of the resolution order when the sheet stated a location; NULL (not stated) when it
+        // did not, which is byte-identical to how every sheet imported before this column existed.
+        projectId:
+          punch.location === null
+            ? null
+            : (projectsByLocation.get(punch.location.trim().toLowerCase()) ?? null),
       });
     }
 
+    // Sheet order, so the operator reads the errors in the order the rows appear in Excel.
+    const errors = [...parsed.errors, ...locationErrors].sort((a, b) => a.row - b.row);
+    const acceptedRows = parsed.acceptedRows - rejectedRows.size;
+
     const batch = [...unique.values()];
+    if (batch.length === 0) {
+      return {
+        acceptedRows: 0,
+        blankRows: parsed.blankRows,
+        punches: 0,
+        inserted: 0,
+        duplicates: 0,
+        reconciled: 0,
+        skippedReasons: {},
+        errors,
+      };
+    }
+
     const days = new Map<string, { userId: string; attendanceDate: string }>();
     for (const punch of batch) {
       const day = punchDayKey(punch.deviceTimestamp);
@@ -154,20 +196,20 @@ export class AttendanceImportService {
         );
       } else {
         this.logger.log(
-          `Excel import: ${parsed.acceptedRows} row(s) → ${batch.length} punch(es), ` +
+          `Excel import: ${acceptedRows} row(s) → ${batch.length} punch(es), ` +
             `+${inserted} stored (${batch.length - inserted} dup), reconciled ${outcome.reconciled}`,
         );
       }
 
       return {
-        acceptedRows: parsed.acceptedRows,
+        acceptedRows,
         blankRows: parsed.blankRows,
         punches: batch.length,
         inserted,
         duplicates: batch.length - inserted,
         reconciled: outcome.reconciled,
         skippedReasons,
-        errors: parsed.errors,
+        errors,
       };
     });
   }

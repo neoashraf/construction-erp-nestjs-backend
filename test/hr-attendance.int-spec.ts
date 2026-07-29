@@ -58,7 +58,7 @@ import { TypeOrmLabourPayableRepository } from '../src/modules/hr/infrastructure
 import { HrAccountResolverAdapter } from '../src/modules/hr/infrastructure/hr-account-resolver.adapter';
 import { HrProjectStatusAdapter } from '../src/modules/hr/infrastructure/hr-project-status.adapter';
 import { PostingServiceAdapter } from '../src/modules/hr/infrastructure/posting-service.adapter';
-import { CsvBiometricImportAdapter } from '../src/modules/hr/infrastructure/biometric-import.adapter';
+import { TypeOrmPunchIngestionRepository } from '../src/modules/hr/attendance-reports/infrastructure/typeorm-punch-ingestion.repository';
 import { AttendanceService } from '../src/modules/hr/application/attendance.service';
 import { EmployeeService } from '../src/modules/hr/application/employee.service';
 import { AlreadyConfirmedError } from '../src/modules/hr/domain/errors';
@@ -188,13 +188,12 @@ describe('HR attendance & daily-labour accrual (real Postgres + real PostingServ
     );
     const audit = { record: async () => undefined };
     attendance = new AttendanceService(
-      new TypeOrmAttendanceRepository(ds),
+      new TypeOrmAttendanceRepository(ds, ids),
       new TypeOrmLabourPayableRepository(ds),
-      new TypeOrmEmployeeRepository(ds),
       new HrAccountResolverAdapter(ds),
       new HrProjectStatusAdapter(ds),
       new PostingServiceAdapter(posting),
-      new CsvBiometricImportAdapter(),
+      new TypeOrmPunchIngestionRepository(ds, ids),
       audit as never,
       uow,
       ids,

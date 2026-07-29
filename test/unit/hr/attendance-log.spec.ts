@@ -83,8 +83,20 @@ class FakePunchRead implements AttendanceLogReadPort {
 }
 
 let punchSeq = 0;
-function punch(userId: string, ts: string): PunchRow {
-  return { id: String(++punchSeq), userId, deviceTimestamp: ts, receivedAt: new Date(`${ts.replace(' ', 'T')}Z`) };
+function punch(
+  userId: string,
+  ts: string,
+  provenance: { sourceType?: string; projectId?: string | null; projectName?: string | null } = {},
+): PunchRow {
+  return {
+    id: String(++punchSeq),
+    userId,
+    deviceTimestamp: ts,
+    receivedAt: new Date(`${ts.replace(' ', 'T')}Z`),
+    sourceType: provenance.sourceType ?? 'DEVICE_PUSH',
+    projectId: provenance.projectId ?? null,
+    projectName: provenance.projectName ?? null,
+  };
 }
 
 function service(
@@ -150,6 +162,42 @@ describe('GET /api/logs — shape', () => {
     });
     // Unlike the reports, punchCount here is the REAL number of punches, not 0/1/2.
     expect(record?.id).not.toMatch(/^holiday-/);
+  });
+
+  it('exposes each punch with its source and location under the merged day', async () => {
+    // A day is now routinely built from punches that arrived by different paths. Reporting only
+    // first/last hides that, leaving an operator unable to see where the time came from.
+    const { svc } = service(
+      [KARIM],
+      [
+        punch('1042', '2026-07-12 09:00:00', { sourceType: 'DEVICE_PUSH' }),
+        punch('1042', '2026-07-12 14:30:00', {
+          sourceType: 'MANUAL',
+          projectId: 'p-1',
+          projectName: 'Bridge-04',
+        }),
+      ],
+    );
+
+    const record = (await svc.getLogs({ date: '2026-07-12' }, ACTOR)).data[0]?.attendanceRecords[0];
+
+    expect(record?.checkInAt).toContain('09:00:00');
+    expect(record?.checkOutAt).toContain('14:30:00');
+    expect(record?.punchCount).toBe(2); // unchanged — punches[] is additive
+    expect(record?.punches).toEqual([
+      { time: '09:00:00', sourceType: 'DEVICE_PUSH', projectId: null, projectName: null },
+      { time: '14:30:00', sourceType: 'MANUAL', projectId: 'p-1', projectName: 'Bridge-04' },
+    ]);
+  });
+
+  it('gives a holiday record an empty punches array rather than omitting the field', async () => {
+    const { svc } = service([KARIM], [], (c) => {
+      c.government = [{ date: '2026-07-02', name: 'Ashura', localName: 'আশুরা' }];
+    });
+
+    const row = (await svc.getLogs({ date: '2026-07-02' }, ACTOR)).data[0];
+
+    expect(row?.attendanceRecords[0]?.punches).toEqual([]);
   });
 
   it('omits punch-less non-holiday days from attendanceRecords but still counts them absent', async () => {
