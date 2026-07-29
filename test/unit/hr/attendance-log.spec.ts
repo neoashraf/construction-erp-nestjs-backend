@@ -20,6 +20,7 @@ import {
   AttendanceReportReadPort,
   DailyPunchRow,
   EmployeeFilter,
+  UnreconciledDayRow,
 } from '../../../src/modules/hr/attendance-reports/domain/ports/attendance-report.read.port';
 import {
   GovernmentHoliday,
@@ -43,6 +44,11 @@ class FakeConfigRead implements AttendanceReportReadPort {
     return Promise.resolve(rows);
   }
   loadDailyPunches(): Promise<DailyPunchRow[]> {
+    return Promise.resolve([]);
+  }
+  // `/api/logs` never reads this — it is the reports' skipped-day guard. Present only to satisfy
+  // the port, which the log service shares.
+  loadUnreconciledDays(): Promise<UnreconciledDayRow[]> {
     return Promise.resolve([]);
   }
   getAttendanceSetting(): Promise<LateThreshold> {

@@ -28,13 +28,16 @@ import {
   RangeReport,
   ReportWideTotals,
   SummaryReport,
+  UnreconciledSummary,
 } from '../domain/attendance-report.model';
 import {
   ATTENDANCE_REPORT_READ_PORT,
   AttendanceReportReadPort,
+  UnreconciledDayRow,
 } from '../domain/ports/attendance-report.read.port';
 import {
   AttendanceReportStatus,
+  DAY_STATUS_TO_REPORT,
   LateThreshold,
   STATUS,
   WEEKDAY_NAMES,
@@ -154,7 +157,44 @@ function emptyTotals(): AttendanceTotals {
     absentCount: 0,
     holidayCount: 0,
     attendancePercentage: 0,
+    paidLeaveCount: 0,
+    unpaidLeaveCount: 0,
   };
+}
+
+/** How many skipped employee-days a report body carries in full before it just reports the count. */
+const UNRECONCILED_SAMPLE_LIMIT = 20;
+
+function summarizeUnreconciled(rows: readonly UnreconciledDayRow[]): UnreconciledSummary {
+  const reasons: Record<string, number> = {};
+  for (const row of rows) reasons[row.reason] = (reasons[row.reason] ?? 0) + 1;
+
+  return {
+    days: rows.length,
+    reasons,
+    sample: rows.slice(0, UNRECONCILED_SAMPLE_LIMIT).map((row) => ({
+      userId: row.userId,
+      attendanceDate: row.attendanceDate,
+      reason: row.reason,
+    })),
+  };
+}
+
+/**
+ * The day's report status.
+ *
+ * A stored `day_status` wins for the three statuses that have no punch representation — a leave or an
+ * explicit absence is a fact somebody asserted, not something to infer from missing times. `PRESENT`
+ * falls through to the threshold comparison, because Present-vs-Late is DERIVED and the stored status
+ * cannot express it. A row with times but no status (reconciliation creates these) does the same.
+ */
+function resolveDayStatus(
+  row: { checkInAt: string | null; dayStatus: string | null },
+  threshold: LateThreshold,
+): AttendanceReportStatus {
+  const declared = row.dayStatus ? DAY_STATUS_TO_REPORT[row.dayStatus] : undefined;
+  if (declared) return declared;
+  return resolveAttendanceStatus(row.checkInAt, threshold);
 }
 
 /**
@@ -179,6 +219,12 @@ function summarizeRecords(
       totals.absentCount += 1;
     } else if (record.status === STATUS.HOLIDAY) {
       totals.holidayCount += 1;
+    } else if (record.status === STATUS.PAID_LEAVE) {
+      // NOT an absence. Payroll pays this day, so folding it into absentCount is exactly the
+      // disagreement between the report and the payslip that this brief exists to remove.
+      totals.paidLeaveCount += 1;
+    } else if (record.status === STATUS.UNPAID_LEAVE) {
+      totals.unpaidLeaveCount += 1;
     }
   }
 
@@ -203,6 +249,8 @@ function aggregateTotals(
     totals.lateCount += employee.totals.lateCount;
     totals.absentCount += employee.totals.absentCount;
     totals.holidayCount += employee.totals.holidayCount;
+    totals.paidLeaveCount += employee.totals.paidLeaveCount;
+    totals.unpaidLeaveCount += employee.totals.unpaidLeaveCount;
   }
 
   totals.presentCount = totals.onTimeCount + totals.lateCount;
@@ -233,12 +281,16 @@ export class AttendanceReportService {
     const dateList = listDatesInclusive(window.start, window.end);
     const pagination = resolvePagination({ page, limit, includeAll });
 
-    const [employees, threshold, weeklyHolidayWeekdays, governmentHolidayMap] = await Promise.all([
-      this.read.loadEmployees(companyId, { userId, name }),
-      this.read.getAttendanceSetting(companyId),
-      this.read.getWeeklyHolidayWeekdays(companyId),
-      this.read.getGovernmentHolidayDates(companyId, dateList),
-    ]);
+    const [employees, threshold, weeklyHolidayWeekdays, governmentHolidayMap, unreconciledRows] =
+      await Promise.all([
+        this.read.loadEmployees(companyId, { userId, name }),
+        this.read.getAttendanceSetting(companyId),
+        this.read.getWeeklyHolidayWeekdays(companyId),
+        this.read.getGovernmentHolidayDates(companyId, dateList),
+        // Deliberately NOT filtered by the employee filter: a day skipped for an UNKNOWN employee
+        // code has no employee row to filter by, and that is the very case most worth surfacing.
+        this.read.loadUnreconciledDays(companyId, window.start, window.end),
+      ]);
 
     const holidayInfo = buildHolidayInfoMap(
       buildWeeklyHolidayDateSet(dateList, weeklyHolidayWeekdays),
@@ -285,6 +337,10 @@ export class AttendanceReportService {
         const punch = dayMap.get(attendanceDate);
 
         if (!punch) {
+          // No row for a working day. It reads Absent — the same as an explicitly-marked ABSENT —
+          // because absence of data is indistinguishable from absence of the person, and payroll
+          // deducts it either way (FR-HR-013a). Whether the row is MISSING because reconciliation
+          // skipped it is answered by `unreconciled`, not by silently changing this cell.
           return {
             attendanceDate,
             status: STATUS.ABSENT as AttendanceReportStatus,
@@ -298,7 +354,7 @@ export class AttendanceReportService {
 
         return {
           attendanceDate,
-          status: resolveAttendanceStatus(punch.checkInAt, threshold),
+          status: resolveDayStatus(punch, threshold),
           holidayName: null,
           holidayType: null,
           checkInAt: punch.checkInAt,
@@ -338,6 +394,7 @@ export class AttendanceReportService {
         total,
         totalPages: includeAll ? 1 : Math.max(1, Math.ceil(total / pagination.limit)),
       },
+      unreconciled: summarizeUnreconciled(unreconciledRows),
     };
   }
 
@@ -383,6 +440,7 @@ export class AttendanceReportService {
       totals: matrix.totals,
       data,
       pagination: matrix.pagination,
+      unreconciled: matrix.unreconciled,
     };
   }
 
@@ -421,6 +479,7 @@ export class AttendanceReportService {
         })),
       })),
       pagination: matrix.pagination,
+      unreconciled: matrix.unreconciled,
     };
   }
 
@@ -454,6 +513,7 @@ export class AttendanceReportService {
         ...employee.totals,
       })),
       pagination: matrix.pagination,
+      unreconciled: matrix.unreconciled,
     };
   }
 
@@ -473,11 +533,15 @@ export class AttendanceReportService {
     );
 
     const reportDate = matrix.window.start;
+    // Keyed by the STATUS map rather than four literals, so a new status can never be counted
+    // into `undefined` and silently vanish from the footer.
     const statusCounts: Record<AttendanceReportStatus, number> = {
-      Present: 0,
-      Late: 0,
-      Absent: 0,
-      Holiday: 0,
+      [STATUS.PRESENT]: 0,
+      [STATUS.LATE]: 0,
+      [STATUS.ABSENT]: 0,
+      [STATUS.HOLIDAY]: 0,
+      [STATUS.PAID_LEAVE]: 0,
+      [STATUS.UNPAID_LEAVE]: 0,
     };
 
     const rows: unknown[][] = [
@@ -504,10 +568,12 @@ export class AttendanceReportService {
     rows.push([]);
     rows.push([
       'Totals',
-      `Present: ${statusCounts.Present}`,
-      `Late: ${statusCounts.Late}`,
-      `Absent: ${statusCounts.Absent}`,
-      `Holiday: ${statusCounts.Holiday}`,
+      `Present: ${statusCounts[STATUS.PRESENT]}`,
+      `Late: ${statusCounts[STATUS.LATE]}`,
+      `Absent: ${statusCounts[STATUS.ABSENT]}`,
+      `Holiday: ${statusCounts[STATUS.HOLIDAY]}`,
+      `Paid leave: ${statusCounts[STATUS.PAID_LEAVE]}`,
+      `Unpaid leave: ${statusCounts[STATUS.UNPAID_LEAVE]}`,
     ]);
 
     return toCsv(rows);
@@ -576,6 +642,8 @@ export class AttendanceReportService {
         `Late: ${totals.lateCount}`,
         `Absent: ${totals.absentCount}`,
         `Holidays: ${totals.holidayCount}`,
+        `Paid leave: ${totals.paidLeaveCount}`,
+        `Unpaid leave: ${totals.unpaidLeaveCount}`,
       ]);
     }
 
@@ -611,6 +679,8 @@ export class AttendanceReportService {
         'On Time',
         'Late',
         'Absent',
+        'Paid Leave',
+        'Unpaid Leave',
         'Holidays',
         'Attendance %',
       ],
@@ -628,6 +698,8 @@ export class AttendanceReportService {
         totals.onTimeCount,
         totals.lateCount,
         totals.absentCount,
+        totals.paidLeaveCount,
+        totals.unpaidLeaveCount,
         totals.holidayCount,
         totals.attendancePercentage,
       ]);
@@ -645,6 +717,8 @@ export class AttendanceReportService {
       totals.onTimeCount,
       totals.lateCount,
       totals.absentCount,
+      totals.paidLeaveCount,
+      totals.unpaidLeaveCount,
       totals.holidayCount,
       totals.attendancePercentage,
     ]);

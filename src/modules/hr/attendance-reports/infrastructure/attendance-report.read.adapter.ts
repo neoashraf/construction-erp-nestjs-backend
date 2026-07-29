@@ -2,13 +2,11 @@
  * AttendanceReportReadAdapter (INFRASTRUCTURE) — the SQL behind the attendance reports. Reads HR's own
  * `employee` + `attendance_record` and the three config tables; writes nothing.
  *
- * The source project aggregated punch rows with `MIN/MAX(deviceTimestamp)` over a TEXT column
- * (REPORTS_MODULE_GUIDE §2). Here `attendance_record` already holds one OFFICE row per employee per day
+ * `attendance_record` holds exactly one OFFICE row per employee per day
  * (`uq_attendance_office_employee_day`) with `check_in` / `check_out` as `time`, so the adapter composes
- * the SAME `'YYYY-MM-DD HH:mm:ss'` string in SQL and keeps the MIN/MAX + GROUP BY anyway — zero-padded
- * text means lexicographic order is chronological order, so the first/last punch semantics survive even
- * if a day ever grows a second row. Aggregation stays in Postgres, not Node: a month-wide report returns
- * one row per worked day, not one per punch (§8).
+ * the `'YYYY-MM-DD HH:mm:ss'` string the report contract expects directly in SQL — no aggregation is
+ * needed, because the day IS the row. `loadDailyPunches` carries the full rationale for reading this
+ * table rather than raw punches; read it before changing the source.
  *
  * `name` is matched with `position(lower(...) in lower(...))` rather than ILIKE so a user typing `%` or
  * `_` gets a literal match instead of an accidental wildcard.
@@ -23,6 +21,7 @@ import {
   AttendanceReportReadPort,
   DailyPunchRow,
   EmployeeFilter,
+  UnreconciledDayRow,
 } from '../domain/ports/attendance-report.read.port';
 
 /** Used when the company has no `attendance_setting` row, so an un-configured DB still reports. */
@@ -70,37 +69,101 @@ export class AttendanceReportReadAdapter implements AttendanceReportReadPort {
       checkInAt: string | null;
       checkOutAt: string | null;
       punchCount: number;
+      dayStatus: string | null;
     }> = await getManager(this.dataSource).query(
-      // Reads `checkin_log` — the SAME source as `/api/logs` (attendance-log.read.adapter).
+      // Reads `attendance_record` (mode OFFICE) — the RESOLVED daily truth that payroll and the
+      // payslip also read (SRS §8). `/api/logs` keeps reading `checkin_log`; that is the punch
+      // surface, and the two are deliberately different views (design §6.1).
       //
-      // This deliberately does NOT read `attendance_record`. That table is populated only by
-      // reconciliation, which skips any employee-day it cannot place (no project, no financial
-      // year covering the date, an already-confirmed row). Reading it here made the two views
-      // disagree over the very same window: the log view showed real Present/Late counts from
-      // the raw punches while the summary reported everyone Absent, because nothing had
-      // reconciled. Attendance *reporting* must reflect what the device actually recorded;
-      // `attendance_record` stays the ledger-facing projection used for payroll.
+      // ── Why this changed back, and why it is safe now (do not revert this) ──────────────────
+      // This adapter read `checkin_log` between 27/07/2026 and this commit, for a real reason:
+      // reconciliation SKIPS any employee-day it cannot place (no project, no financial year, an
+      // already-confirmed row), so `attendance_record` was full of holes and the summary reported
+      // everyone Absent while the log view showed real punches. Reading punches was the correct
+      // fix for THAT bug.
       //
-      // `device_timestamp` is zero-padded text, so lexicographic MIN/MAX are chronological and
-      // `substring(...,1,10)` is the calendar date — no timezone conversion anywhere in SQL.
-      `SELECT e.id::text                                  AS "employeeId",
-              substring(c.device_timestamp from 1 for 10) AS "attendanceDate",
-              MIN(c.device_timestamp)                     AS "checkInAt",
-              MAX(c.device_timestamp)                     AS "checkOutAt",
-              COUNT(*)::int                               AS "punchCount"
-         FROM "checkin_log" c
+      // What made punches wrong instead: office capture now writes a day that has a STATUS but no
+      // TIMES (a PAID_LEAVE or ABSENT day — the two-branch rule, FR-HR-004). Such a day has no
+      // punches at all, so a punch-sourced report renders it `Absent` — for a day payroll PAYS.
+      // The report is the document HR reconciles a payslip against, so the two disagreed by
+      // construction.
+      //
+      // The holes were closed first, which is what makes this safe rather than a revert:
+      //   - evidence-first project resolution + the device default (#45) — days stop landing on
+      //     no project at all;
+      //   - `skippedReasons` surfaced on sync/import — a skip can no longer read as success;
+      //   - and `loadUnreconciledDays` below, so a window that still contains skipped days SAYS SO
+      //     instead of quietly showing Absent. That guard is the standing protection against the
+      //     27/07 bug returning; if you are tempted to remove it, the bug comes back with it.
+      //
+      // `punchCount` is derived (0/1/2) rather than counted: this row is a resolved DAY, and the
+      // real per-punch breakdown lives on `/api/logs`, which is exactly what it is for.
+      `SELECT e.id::text                              AS "employeeId",
+              to_char(a.attendance_date,'YYYY-MM-DD') AS "attendanceDate",
+              CASE WHEN a.check_in IS NULL THEN NULL
+                   ELSE to_char(a.attendance_date,'YYYY-MM-DD') || ' ' ||
+                        to_char(a.check_in,'HH24:MI:SS') END  AS "checkInAt",
+              CASE WHEN a.check_out IS NULL THEN NULL
+                   ELSE to_char(a.attendance_date,'YYYY-MM-DD') || ' ' ||
+                        to_char(a.check_out,'HH24:MI:SS') END AS "checkOutAt",
+              ((a.check_in IS NOT NULL)::int
+                 + (a.check_out IS NOT NULL AND a.check_out <> a.check_in)::int) AS "punchCount",
+              a.day_status                            AS "dayStatus"
+         FROM "attendance_record" a
          JOIN "employee" e
-           ON e.company_id = c.company_id
-          AND e.employee_code = c.user_id
+           ON e.company_id = a.company_id
+          AND e.id = a.employee_id
           AND e.deleted_at IS NULL
-        WHERE c.company_id = $1
-          AND c.device_timestamp >= $2 AND c.device_timestamp <= $3
-          AND e.id = ANY($4::uuid[])
-        GROUP BY e.id, substring(c.device_timestamp from 1 for 10)`,
-      [companyId, `${startDateText} 00:00:00`, `${endDateText} 23:59:59`, [...employeeIds]],
+        WHERE a.company_id = $1
+          AND a.mode = 'OFFICE'
+          AND a.attendance_date BETWEEN $2::date AND $3::date
+          AND a.employee_id = ANY($4::uuid[])`,
+      [companyId, startDateText, endDateText, [...employeeIds]],
     );
 
     return rows;
+  }
+
+  async loadUnreconciledDays(
+    companyId: string,
+    startDateText: string,
+    endDateText: string,
+  ): Promise<UnreconciledDayRow[]> {
+    // A skipped day leaves no record of the skip — `reconcileDays` returns its reasons and nothing
+    // persists them. The one durable signature is punches with no day row, so that is what this
+    // detects, and the reason is re-derived from the SAME guards reconciliation applies, in the
+    // same order (FR-HR-008a vocabulary; no fifth reason is invented).
+    //
+    // ALREADY_CONFIRMED is deliberately absent: that guard skips a day whose row already EXISTS, so
+    // it can never produce a missing row and is unreachable from here.
+    return getManager(this.dataSource).query(
+      `SELECT p."userId", p."attendanceDate",
+              CASE
+                WHEN e."id" IS NULL THEN 'UNKNOWN_EMPLOYEE_CODE'
+                WHEN NOT EXISTS (
+                  SELECT 1 FROM "financial_year" fy
+                   WHERE fy."company_id" = $1 AND fy."deleted_at" IS NULL
+                     AND p."attendanceDate"::date BETWEEN fy."start_date" AND fy."end_date"
+                ) THEN 'NO_FINANCIAL_YEAR'
+                ELSE 'NO_PROJECT'
+              END AS "reason"
+         FROM (
+           SELECT DISTINCT c."user_id" AS "userId",
+                  substring(c."device_timestamp" from 1 for 10) AS "attendanceDate"
+             FROM "checkin_log" c
+            WHERE c."company_id" = $1
+              AND c."device_timestamp" >= $2 AND c."device_timestamp" <= $3
+         ) p
+         LEFT JOIN "employee" e
+           ON e."company_id" = $1 AND e."employee_code" = p."userId" AND e."deleted_at" IS NULL
+         LEFT JOIN "attendance_record" a
+           ON a."company_id" = $1 AND a."mode" = 'OFFICE'
+          AND a."employee_id" = e."id"
+          AND a."attendance_date" = p."attendanceDate"::date
+        WHERE a."id" IS NULL
+        ORDER BY p."userId", p."attendanceDate"`,
+      [companyId, `${startDateText} 00:00:00`, `${endDateText} 23:59:59`],
+    ) as Promise<UnreconciledDayRow[]>;
   }
 
   async getAttendanceSetting(companyId: string): Promise<LateThreshold> {

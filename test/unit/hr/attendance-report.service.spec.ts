@@ -11,6 +11,7 @@ import {
   AttendanceReportReadPort,
   DailyPunchRow,
   EmployeeFilter,
+  UnreconciledDayRow,
 } from '../../../src/modules/hr/attendance-reports/domain/ports/attendance-report.read.port';
 import {
   GovernmentHoliday,
@@ -25,6 +26,8 @@ interface FakeData {
   threshold?: LateThreshold;
   weeklyHolidays?: number[];
   governmentHolidays?: GovernmentHoliday[];
+  /** Employee-days with punches but no reconciled row — the FR-HR-008a guard's input. */
+  unreconciled?: UnreconciledDayRow[];
 }
 
 class FakeReadPort implements AttendanceReportReadPort {
@@ -55,6 +58,10 @@ class FakeReadPort implements AttendanceReportReadPort {
           p.attendanceDate <= endDateText,
       ),
     );
+  }
+
+  loadUnreconciledDays(): Promise<UnreconciledDayRow[]> {
+    return Promise.resolve(this.data.unreconciled ?? []);
   }
 
   getAttendanceSetting(): Promise<LateThreshold> {
@@ -97,11 +104,16 @@ const SALMA: EmployeeIdentity = {
   designation: null,
 };
 
+/**
+ * A worked day. `dayStatus` defaults to PRESENT, which is what reconciliation writes on create, so
+ * Present-vs-Late still comes from the check-in against the threshold.
+ */
 function punch(
   employeeId: string,
   attendanceDate: string,
   checkIn: string | null,
   checkOut: string | null = null,
+  dayStatus: string | null = 'PRESENT',
 ): DailyPunchRow {
   return {
     employeeId,
@@ -109,6 +121,23 @@ function punch(
     checkInAt: checkIn ? `${attendanceDate} ${checkIn}` : null,
     checkOutAt: checkOut ? `${attendanceDate} ${checkOut}` : null,
     punchCount: (checkIn ? 1 : 0) + (checkOut ? 1 : 0),
+    dayStatus,
+  };
+}
+
+/** A day carrying a STATUS and no times — the case a punch-sourced report could not represent. */
+function timelessDay(
+  employeeId: string,
+  attendanceDate: string,
+  dayStatus: string,
+): DailyPunchRow {
+  return {
+    employeeId,
+    attendanceDate,
+    checkInAt: null,
+    checkOutAt: null,
+    punchCount: 0,
+    dayStatus,
   };
 }
 
@@ -163,6 +192,8 @@ describe('getDailyReport', () => {
       absentCount: 1,
       holidayCount: 0,
       attendancePercentage: 50,
+      paidLeaveCount: 0,
+      unpaidLeaveCount: 0,
     });
   });
 
@@ -371,7 +402,9 @@ describe('CSV exports', () => {
     expect(lines[3]).toBe(
       '1042,Karim Rahman,Operator,"=""2026-07-01""",Present,"=""9:12:04 AM""","=""6:03:51 PM"""',
     );
-    expect(lines[5]).toBe('Totals,Present: 1,Late: 0,Absent: 0,Holiday: 0');
+    expect(lines[5]).toBe(
+      'Totals,Present: 1,Late: 0,Absent: 0,Holiday: 0,Paid leave: 0,Unpaid leave: 0',
+    );
   });
 
   it('ignores pagination on export so every matching employee is in the file', async () => {
@@ -414,7 +447,9 @@ describe('CSV exports', () => {
       '1042,Karim Rahman,Operator,"=""2026-07-01""",Wednesday,Present,"=""9:12:04 AM""",,',
     );
     expect(lines[5]).toBe(',,,"=""2026-07-02""",Thursday,Absent,,,');
-    expect(lines[6]).toBe(',Totals,,Working: 2,,Present: 1,Late: 0,Absent: 1,Holidays: 0');
+    expect(lines[6]).toBe(
+      ',Totals,,Working: 2,,Present: 1,Late: 0,Absent: 1,Holidays: 0,Paid leave: 0,Unpaid leave: 0',
+    );
   });
 
   it('writes one row per employee plus a grand-total row in the summary export', async () => {
@@ -431,11 +466,11 @@ describe('CSV exports', () => {
 
     expect(lines[0]).toBe('Attendance Summary 1 Jul 2026');
     expect(lines[2]).toBe(
-      'User ID,Name,Designation,Working,Present,On Time,Late,Absent,Holidays,Attendance %',
+      'User ID,Name,Designation,Working,Present,On Time,Late,Absent,Paid Leave,Unpaid Leave,Holidays,Attendance %',
     );
-    expect(lines[3]).toBe('1042,Karim Rahman,Operator,1,1,1,0,0,0,100');
-    expect(lines[4]).toBe('1043,Salma Akter,,1,0,0,0,1,0,0');
-    expect(lines[6]).toBe(',Totals (2 employees),,1,1,1,0,1,0,50');
+    expect(lines[3]).toBe('1042,Karim Rahman,Operator,1,1,1,0,0,0,0,0,100');
+    expect(lines[4]).toBe('1043,Salma Akter,,1,0,0,0,1,0,0,0,0');
+    expect(lines[6]).toBe(',Totals (2 employees),,1,1,1,0,1,0,0,0,50');
   });
 
   it('pluralises the summary totals label for a single employee', async () => {
@@ -447,5 +482,168 @@ describe('CSV exports', () => {
     );
 
     expect(csv).toContain('Totals (1 employee)');
+  });
+});
+
+// ── attendance truth: a day can carry a STATUS with no times (FR-HR-004, FR-HR-013a) ─────────────
+
+describe('timeless day statuses', () => {
+  it('renders a PAID_LEAVE day as Paid leave and keeps it OUT of absentCount', async () => {
+    // The defect this closes: payroll PAYS this day while the report — the document HR reconciles
+    // a payslip against — called it an absence, because a leave day has no punches.
+    const service = serviceWith({
+      employees: [KARIM],
+      punches: [timelessDay('e1', '2026-07-01', 'PAID_LEAVE')],
+    });
+
+    const report = await service.getRangeReport(
+      { dateFrom: '2026-07-01', dateTo: '2026-07-01' },
+      ACTOR,
+    );
+    const row = report.data[0];
+
+    expect(row?.records[0]?.status).toBe('Paid leave');
+    expect(row?.records[0]?.checkInAt).toBeNull();
+    expect(row?.absentCount).toBe(0);
+    expect(row?.paidLeaveCount).toBe(1);
+    expect(report.totals.absentCount).toBe(0);
+  });
+
+  it('renders an UNPAID_LEAVE day as Unpaid leave, also outside absentCount', async () => {
+    const service = serviceWith({
+      employees: [KARIM],
+      punches: [timelessDay('e1', '2026-07-01', 'UNPAID_LEAVE')],
+    });
+
+    const row = (
+      await service.getRangeReport({ dateFrom: '2026-07-01', dateTo: '2026-07-01' }, ACTOR)
+    ).data[0];
+
+    expect(row?.records[0]?.status).toBe('Unpaid leave');
+    expect(row?.unpaidLeaveCount).toBe(1);
+    expect(row?.absentCount).toBe(0);
+  });
+
+  it('renders an explicitly-marked ABSENT day exactly like a day with no record', async () => {
+    // Both mean the same thing to a reader and to payroll, so they must not read differently.
+    const service = serviceWith({
+      employees: [KARIM],
+      punches: [timelessDay('e1', '2026-07-01', 'ABSENT')],
+    });
+
+    const row = (
+      await service.getRangeReport({ dateFrom: '2026-07-01', dateTo: '2026-07-01' }, ACTOR)
+    ).data[0];
+
+    expect(row?.records[0]?.status).toBe('Absent');
+    expect(row?.absentCount).toBe(1);
+  });
+
+  it('still DERIVES Present vs Late from the check-in, never from the stored PRESENT status', async () => {
+    // The stored status cannot express lateness; only the threshold comparison can (FR-HR-008c).
+    const service = serviceWith({
+      employees: [KARIM],
+      punches: [punch('e1', '2026-07-01', '09:41:00', '18:00:00', 'PRESENT')],
+    });
+
+    const row = (
+      await service.getRangeReport({ dateFrom: '2026-07-01', dateTo: '2026-07-01' }, ACTOR)
+    ).data[0];
+
+    expect(row?.records[0]?.status).toBe('Late');
+    expect(row?.lateCount).toBe(1);
+    expect(row?.presentCount).toBe(1); // late is a SUBSET of present (§3.5)
+  });
+
+  it('keeps 09:30:59 on time — the threshold minute must fully elapse', async () => {
+    const service = serviceWith({
+      employees: [KARIM],
+      punches: [punch('e1', '2026-07-01', '09:30:59')],
+    });
+
+    const row = (
+      await service.getRangeReport({ dateFrom: '2026-07-01', dateTo: '2026-07-01' }, ACTOR)
+    ).data[0];
+
+    expect(row?.records[0]?.status).toBe('Present');
+    expect(row?.lateCount).toBe(0);
+  });
+});
+
+// ── the skipped-day guard (FR-HR-008a) ───────────────────────────────────────────────────────────
+
+describe('unreconciled-day guard', () => {
+  it('reports a healthy window as zero rather than omitting the field', async () => {
+    // Always present, so a client never has to tell "no problems" apart from "this version of the
+    // API does not tell me".
+    const service = serviceWith({
+      employees: [KARIM],
+      punches: [punch('e1', '2026-07-01', '09:00:00')],
+    });
+
+    const report = await service.getRangeReport(
+      { dateFrom: '2026-07-01', dateTo: '2026-07-01' },
+      ACTOR,
+    );
+
+    expect(report.unreconciled).toEqual({ days: 0, reasons: {}, sample: [] });
+  });
+
+  it('says so when the window contains employee-days reconciliation could not place', async () => {
+    // THE 27/07 REGRESSION, pinned: punches exist, nothing reconciled. Before the guard the report
+    // rendered everyone Absent and looked like a complete, healthy report.
+    const service = serviceWith({
+      employees: [KARIM],
+      punches: [],
+      unreconciled: [
+        { userId: '1042', attendanceDate: '2026-07-01', reason: 'NO_PROJECT' },
+        { userId: '1043', attendanceDate: '2026-07-01', reason: 'NO_PROJECT' },
+        { userId: '9999', attendanceDate: '2026-07-01', reason: 'UNKNOWN_EMPLOYEE_CODE' },
+      ],
+    });
+
+    const report = await service.getRangeReport(
+      { dateFrom: '2026-07-01', dateTo: '2026-07-01' },
+      ACTOR,
+    );
+
+    expect(report.unreconciled.days).toBe(3);
+    expect(report.unreconciled.reasons).toEqual({ NO_PROJECT: 2, UNKNOWN_EMPLOYEE_CODE: 1 });
+    expect(report.unreconciled.sample).toHaveLength(3);
+    // The days themselves still read Absent — the guard is what tells the reader not to trust that.
+    expect(report.data[0]?.absentCount).toBe(1);
+  });
+
+  it('carries the guard on daily and summary too, not just range', async () => {
+    const unreconciled: UnreconciledDayRow[] = [
+      { userId: '1042', attendanceDate: '2026-07-01', reason: 'NO_FINANCIAL_YEAR' },
+    ];
+    const service = serviceWith({ employees: [KARIM], punches: [], unreconciled });
+
+    const daily = await service.getDailyReport({ date: '2026-07-01' }, ACTOR);
+    const summary = await service.getSummaryReport(
+      { dateFrom: '2026-07-01', dateTo: '2026-07-01' },
+      ACTOR,
+    );
+
+    expect(daily.unreconciled.reasons).toEqual({ NO_FINANCIAL_YEAR: 1 });
+    expect(summary.unreconciled.reasons).toEqual({ NO_FINANCIAL_YEAR: 1 });
+  });
+
+  it('bounds the sample at 20 while still reporting the true total', async () => {
+    const unreconciled: UnreconciledDayRow[] = Array.from({ length: 25 }, (_, i) => ({
+      userId: String(1000 + i),
+      attendanceDate: '2026-07-01',
+      reason: 'NO_PROJECT' as const,
+    }));
+    const service = serviceWith({ employees: [KARIM], punches: [], unreconciled });
+
+    const report = await service.getRangeReport(
+      { dateFrom: '2026-07-01', dateTo: '2026-07-01' },
+      ACTOR,
+    );
+
+    expect(report.unreconciled.days).toBe(25);
+    expect(report.unreconciled.sample).toHaveLength(20);
   });
 });
