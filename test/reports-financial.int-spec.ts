@@ -67,7 +67,10 @@ import { ReportScopeService } from '../src/reports/application/report-scope.serv
 import { LedgerQueryService } from '../src/core/posting/read/ledger-query.service';
 
 // RolesGuard smoke deps (mandatory per skill §13).
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+// JwtAuthGuard raises DOMAIN errors, not Nest exceptions — the domain layer must not
+// import from @nestjs/common (nestjs-author §9); the global filter maps this to 401.
+import { UnauthenticatedError } from '../src/common/errors/domain-error';
 import { Reflector } from '@nestjs/core';
 import { TypeOrmRoleRepository } from '../src/core/auth/infrastructure/typeorm-role.repository';
 import { TypeOrmPermissionRepository } from '../src/core/auth/infrastructure/typeorm-permission.repository';
@@ -420,7 +423,7 @@ describe('RPT financial statements (real Postgres, real LED ledger + typed CoA)'
     });
 
     it('401: no/invalid token', () => {
-      expect(() => jwtAuthGuard.handleRequest(null, false, null)).toThrow(UnauthorizedException);
+      expect(() => jwtAuthGuard.handleRequest(null, false, null)).toThrow(UnauthenticatedError);
     });
 
     it('success: ACCOUNTS_MANAGER holds RPT:READ → guard resolves true', async () => {
